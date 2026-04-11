@@ -9160,7 +9160,7 @@ impl<'ctx> Codegen<'ctx> {
         ordered_fields.sort_by_key(|(_, idx)| *idx);
         let field_llvm_types = ordered_fields
             .iter()
-            .map(|(name, _)| self.llvm_type(field_types.get(name).expect("field type must exist")))
+            .filter_map(|(name, _)| field_types.get(name).map(|ty| self.llvm_type(ty)))
             .collect::<Vec<_>>();
         let extends = base_info.extends.as_ref().map(|extends| {
             parse_type_source(extends)
@@ -18173,7 +18173,9 @@ impl<'ctx> Codegen<'ctx> {
                             &[self.context.i32_type().const_int(1, false).into()],
                             "task_timeout_sleep_call",
                         )
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to emit Sleep during task timeout")
+                        })?;
                 }
                 #[cfg(not(windows))]
                 {
@@ -18184,7 +18186,9 @@ impl<'ctx> Codegen<'ctx> {
                             &[self.context.i32_type().const_int(1000, false).into()],
                             "task_timeout_usleep_call",
                         )
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to emit usleep during task timeout")
+                        })?;
                 }
                 let next_iter = self
                     .builder
@@ -18193,9 +18197,17 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(1, false),
                         "task_timeout_next_iter",
                     )
-                    .unwrap();
-                self.builder.build_store(iter_ptr, next_iter).unwrap();
-                self.builder.build_unconditional_branch(check_bb).unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to increment task timeout loop counter")
+                    })?;
+                self.builder
+                    .build_store(iter_ptr, next_iter)
+                    .map_err(|_| CodegenError::new("failed to store task timeout loop counter"))?;
+                self.builder
+                    .build_unconditional_branch(check_bb)
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch back to task timeout check")
+                    })?;
 
                 self.builder.position_at_end(join_bb);
                 #[cfg(windows)]
@@ -18209,7 +18221,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.ptr_type(AddressSpace::default()),
                             "timed_join_handle",
                         )
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to convert timed join thread handle")
+                        })?;
                     self.builder
                         .build_call(
                             wait_fn,
@@ -18219,20 +18233,28 @@ impl<'ctx> Codegen<'ctx> {
                             ],
                             "timed_join_finalize",
                         )
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to emit WaitForSingleObject for task join")
+                        })?;
                     self.builder
                         .build_call(close_fn, &[handle.into()], "")
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to emit CloseHandle after timed join")
+                        })?;
                     self.builder
                         .build_store(thread_field, self.context.i64_type().const_zero())
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to clear joined task thread handle")
+                        })?;
                     self.builder
                         .build_load(
                             self.context.ptr_type(AddressSpace::default()),
                             result_field,
                             "joined_result",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to load joined task result pointer")
+                        })?
                         .into_pointer_value()
                 };
                 #[cfg(not(windows))]
@@ -18244,20 +18266,24 @@ impl<'ctx> Codegen<'ctx> {
                             &[thread_id.into(), join_result_ptr.into()],
                             "timed_join_finalize",
                         )
-                        .unwrap();
+                        .map_err(|_| CodegenError::new("failed to emit pthread_join for task"))?;
                     self.builder
                         .build_load(
                             self.context.ptr_type(AddressSpace::default()),
                             join_result_ptr,
                             "joined_result",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to load pthread join result pointer")
+                        })?
                         .into_pointer_value()
                 };
-                self.builder.build_store(result_field, joined_ptr).unwrap();
+                self.builder
+                    .build_store(result_field, joined_ptr)
+                    .map_err(|_| CodegenError::new("failed to store joined task result pointer"))?;
                 self.builder
                     .build_store(done_field, self.context.i8_type().const_int(1, false))
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store joined task done flag"))?;
                 self.build_atomic_bool_store(
                     completed_field,
                     self.context.i8_type().const_int(1, false),
@@ -18274,13 +18300,19 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.ptr_type(AddressSpace::default()),
                             "joined_typed_ptr",
                         )
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to cast joined task result pointer")
+                        })?;
                     self.builder
                         .build_load(inner_llvm, typed_ptr, "joined_value")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to load joined task value"))?
                 };
                 let succ_some = self.create_option_some(succ_value)?;
-                self.builder.build_unconditional_branch(merge_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(merge_bb)
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch from joined task timeout path")
+                    })?;
 
                 // timeout -> None
                 self.builder.position_at_end(timeout_bb);
@@ -18300,7 +18332,9 @@ impl<'ctx> Codegen<'ctx> {
                         },
                     ])
                     .into();
-                self.builder.build_unconditional_branch(merge_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(merge_bb)
+                    .map_err(|_| CodegenError::new("failed to branch from timed out task path"))?;
 
                 self.builder.position_at_end(merge_bb);
                 let phi = self
@@ -18309,7 +18343,7 @@ impl<'ctx> Codegen<'ctx> {
                         self.llvm_type(&Type::Option(Box::new(inner.clone()))),
                         "timeout_phi",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to build task timeout result phi"))?;
                 phi.add_incoming(&[
                     (&done_some, done_bb),
                     (&succ_some, join_bb),
@@ -18413,7 +18447,9 @@ impl<'ctx> Codegen<'ctx> {
         if self.enums.contains_key(&class_name) {
             return Err(Self::unknown_field_error(
                 field,
-                obj_ty.as_ref().expect("class-like type already validated"),
+                obj_ty.as_ref().ok_or_else(|| {
+                    CodegenError::new("class-like field receiver type missing after validation")
+                })?,
             ));
         }
         let interface_implementors = if receiver_interfaces.is_empty() {
@@ -18435,7 +18471,9 @@ impl<'ctx> Codegen<'ctx> {
                 })
                 .collect::<Vec<_>>();
             if candidates.len() == 1 {
-                let (method_name, func_ty) = candidates.pop().unwrap();
+                let (method_name, func_ty) = candidates.pop().ok_or_else(|| {
+                    CodegenError::new("field method candidate disappeared during dispatch")
+                })?;
                 return self.compile_bound_method_value(
                     object,
                     obj_ty.as_ref(),
@@ -18458,7 +18496,8 @@ impl<'ctx> Codegen<'ctx> {
                 candidates.len()
             )));
         }
-        let class_info = class_info.unwrap();
+        let class_info = class_info
+            .ok_or_else(|| CodegenError::new(format!("Unknown class metadata: {}", class_name)))?;
         let Some(field_idx) = class_info.field_indices.get(field).copied() else {
             if let Some(method_name) = self.resolve_method_function_name(&class_name, field) {
                 let (_, func_ty) =
@@ -18479,7 +18518,9 @@ impl<'ctx> Codegen<'ctx> {
             }
             return Err(Self::unknown_field_error(
                 field,
-                obj_ty.as_ref().expect("class-like type already validated"),
+                obj_ty.as_ref().ok_or_else(|| {
+                    CodegenError::new("class-like field receiver type missing after lookup")
+                })?,
             ));
         };
         let struct_type = class_info.struct_type;
@@ -18501,14 +18542,19 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, idx],
                     field,
                 )
-                .unwrap()
+                .map_err(|_| {
+                    CodegenError::new(format!("failed to access field pointer for '{}'", field))
+                })?
         };
 
-        let field_type = struct_type.get_field_type_at_index(field_idx).unwrap();
-        Ok(self
-            .builder
+        let field_type = struct_type
+            .get_field_type_at_index(field_idx)
+            .ok_or_else(|| {
+                CodegenError::new(format!("missing LLVM field type metadata for '{}'", field))
+            })?;
+        self.builder
             .build_load(field_type, field_ptr, field)
-            .unwrap())
+            .map_err(|_| CodegenError::new(format!("failed to load field '{}'", field)))
     }
 
     fn compile_bound_method_value(
@@ -18544,7 +18590,7 @@ impl<'ctx> Codegen<'ctx> {
         let env_alloc = self
             .builder
             .build_call(malloc, &[env_size.into()], "bound_method_env_alloc")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to allocate bound-method environment"))?;
         let env_ptr =
             self.extract_call_pointer_value(env_alloc, "malloc failed for bound-method env")?;
         let receiver_ptr = unsafe {
@@ -18558,11 +18604,11 @@ impl<'ctx> Codegen<'ctx> {
                     ],
                     "bound_method_receiver_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to access bound-method receiver slot"))?
         };
         self.builder
             .build_store(receiver_ptr, receiver_value)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to store bound-method receiver"))?;
 
         let adapter_name = format!("__bound_method_adapter_{}", self.lambda_counter);
         self.lambda_counter += 1;
@@ -18605,7 +18651,9 @@ impl<'ctx> Codegen<'ctx> {
                     ],
                     "bound_method_loaded_receiver_ptr",
                 )
-                .unwrap()
+                .map_err(|_| {
+                    CodegenError::new("failed to access bound-method receiver during load")
+                })?
         };
         let loaded_receiver = self
             .builder
@@ -18614,7 +18662,7 @@ impl<'ctx> Codegen<'ctx> {
                 stored_receiver_ptr,
                 "bound_method_receiver",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to load bound-method receiver"))?;
 
         let mut call_args: Vec<BasicMetadataValueEnum> =
             vec![ptr_type.const_null().into(), loaded_receiver.into()];
@@ -18627,15 +18675,19 @@ impl<'ctx> Codegen<'ctx> {
         let call = self
             .builder
             .build_call(method_fn, &call_args, "bound_method_call")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to emit bound-method adapter call"))?;
         match call.try_as_basic_value() {
             ValueKind::Basic(val) => {
-                self.builder.build_return(Some(&val)).unwrap();
+                self.builder.build_return(Some(&val)).map_err(|_| {
+                    CodegenError::new("failed to return bound-method adapter value")
+                })?;
             }
             ValueKind::Instruction(_) => {
                 self.builder
                     .build_return(Some(&self.context.i8_type().const_int(0, false)))
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to return bound-method adapter placeholder")
+                    })?;
             }
         }
 
@@ -18655,12 +18707,14 @@ impl<'ctx> Codegen<'ctx> {
                 0,
                 "fn",
             )
-            .unwrap()
+            .map_err(|_| {
+                CodegenError::new("failed to store bound-method function pointer in closure")
+            })?
             .into_struct_value();
         closure = self
             .builder
             .build_insert_value(closure, env_ptr, 1, "env")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to store bound-method environment in closure"))?
             .into_struct_value();
         Ok(closure.into())
     }
@@ -18694,7 +18748,9 @@ impl<'ctx> Codegen<'ctx> {
         if self.enums.contains_key(&class_name) {
             return Err(Self::unknown_field_error(
                 field,
-                obj_ty.as_ref().expect("class-like type already validated"),
+                obj_ty.as_ref().ok_or_else(|| {
+                    CodegenError::new("class-like field receiver type missing after validation")
+                })?,
             ));
         }
         let class_info = self
@@ -18705,7 +18761,7 @@ impl<'ctx> Codegen<'ctx> {
         let field_idx = *class_info.field_indices.get(field).ok_or_else(|| {
             Self::unknown_field_error(
                 field,
-                obj_ty.as_ref().expect("class-like type already validated"),
+                obj_ty.as_ref().unwrap_or(&Type::Named(class_name.clone())),
             )
         })?;
         let struct_type = class_info.struct_type;
@@ -18727,7 +18783,9 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, idx],
                     field,
                 )
-                .unwrap()
+                .map_err(|_| {
+                    CodegenError::new(format!("failed to access field pointer for '{}'", field))
+                })?
         };
 
         Ok(field_ptr)
@@ -18754,7 +18812,7 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_zero(),
                 "string_index_non_negative",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compare string index against zero"))?;
 
         let loop_bb = self
             .context
@@ -18814,23 +18872,25 @@ impl<'ctx> Codegen<'ctx> {
         let ptr_slot = self
             .builder
             .build_alloca(ptr_type, "utf8_string_ptr")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to allocate UTF-8 string pointer slot"))?;
         let char_index_slot = self
             .builder
             .build_alloca(i64_type, "utf8_string_char_index")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to allocate UTF-8 string index slot"))?;
         let char_result_slot = self
             .builder
             .build_alloca(i32_type, "utf8_string_char_result")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to allocate UTF-8 string result slot"))?;
 
-        self.builder.build_store(ptr_slot, string_ptr).unwrap();
+        self.builder
+            .build_store(ptr_slot, string_ptr)
+            .map_err(|_| CodegenError::new("failed to initialize UTF-8 string pointer slot"))?;
         self.builder
             .build_store(char_index_slot, i64_type.const_zero())
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize UTF-8 string index slot"))?;
         self.builder
             .build_conditional_branch(index_non_negative, loop_bb, fail_oob_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch into UTF-8 string index flow"))?;
 
         self.builder.position_at_end(fail_oob_bb);
         self.emit_runtime_error("String index out of bounds", "string_index_oob")?;
@@ -18845,22 +18905,22 @@ impl<'ctx> Codegen<'ctx> {
         let current_ptr = self
             .builder
             .build_load(ptr_type, ptr_slot, "utf8_string_ptr_load")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load UTF-8 string pointer"))?
             .into_pointer_value();
         let current_char_index = self
             .builder
             .build_load(i64_type, char_index_slot, "utf8_string_char_index_load")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load UTF-8 string character index"))?
             .into_int_value();
         let lead_byte = self
             .builder
             .build_load(i8_type, current_ptr, "utf8_string_lead_byte")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load UTF-8 lead byte"))?
             .into_int_value();
         let lead_u32 = self
             .builder
             .build_int_z_extend(lead_byte, i32_type, "utf8_string_lead_u32")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extend UTF-8 lead byte"))?;
         let is_end = self
             .builder
             .build_int_compare(
@@ -18869,7 +18929,7 @@ impl<'ctx> Codegen<'ctx> {
                 i8_type.const_zero(),
                 "utf8_string_is_end",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to check UTF-8 string end"))?;
         let is_ascii = self
             .builder
             .build_int_compare(
@@ -18878,7 +18938,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x80, false),
                 "utf8_string_is_ascii",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to classify ASCII UTF-8 byte"))?;
         let lead_mask_e0 = self
             .builder
             .build_and(
@@ -18886,7 +18946,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xE0, false),
                 "utf8_string_mask_e0",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask UTF-8 lead byte with 0xE0"))?;
         let lead_mask_f0 = self
             .builder
             .build_and(
@@ -18894,7 +18954,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xF0, false),
                 "utf8_string_mask_f0",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask UTF-8 lead byte with 0xF0"))?;
         let lead_mask_f8 = self
             .builder
             .build_and(
@@ -18902,7 +18962,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xF8, false),
                 "utf8_string_mask_f8",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask UTF-8 lead byte with 0xF8"))?;
         let is_two = self
             .builder
             .build_int_compare(
@@ -18911,7 +18971,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xC0, false),
                 "utf8_string_is_two",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to classify 2-byte UTF-8 sequence"))?;
         let is_three = self
             .builder
             .build_int_compare(
@@ -18920,7 +18980,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xE0, false),
                 "utf8_string_is_three",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to classify 3-byte UTF-8 sequence"))?;
         let is_four = self
             .builder
             .build_int_compare(
@@ -18929,7 +18989,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xF0, false),
                 "utf8_string_is_four",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to classify 4-byte UTF-8 sequence"))?;
         let width_two_or_zero = self
             .builder
             .build_select(
@@ -18938,7 +18998,7 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_zero(),
                 "utf8_string_width_two",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to select UTF-8 width for 2-byte sequence"))?
             .into_int_value();
         let width_three_or_prev = self
             .builder
@@ -18948,7 +19008,7 @@ impl<'ctx> Codegen<'ctx> {
                 width_two_or_zero,
                 "utf8_string_width_three",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to select UTF-8 width for 3-byte sequence"))?
             .into_int_value();
         let width_nonzero = self
             .builder
@@ -18958,7 +19018,7 @@ impl<'ctx> Codegen<'ctx> {
                 width_three_or_prev,
                 "utf8_string_width_ascii",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to select UTF-8 width for ASCII sequence"))?
             .into_int_value();
         let width = self
             .builder
@@ -18968,7 +19028,7 @@ impl<'ctx> Codegen<'ctx> {
                 width_nonzero,
                 "utf8_string_width",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to select UTF-8 width for 4-byte sequence"))?
             .into_int_value();
         let width_is_valid = self
             .builder
@@ -18978,11 +19038,11 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_zero(),
                 "utf8_string_width_is_valid",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to validate UTF-8 width"))?;
 
         self.builder
             .build_conditional_branch(is_end, fail_oob_bb, not_end_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch on UTF-8 string end"))?;
 
         self.builder.position_at_end(not_end_bb);
         let is_target = self
@@ -18993,21 +19053,21 @@ impl<'ctx> Codegen<'ctx> {
                 idx,
                 "utf8_string_is_target",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compare UTF-8 string index target"))?;
         self.builder
             .build_conditional_branch(is_target, target_dispatch_bb, advance_check_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for UTF-8 target dispatch"))?;
 
         self.builder.position_at_end(advance_check_bb);
         self.builder
             .build_conditional_branch(width_is_valid, advance_bb, fail_utf8_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch on UTF-8 width validity"))?;
 
         self.builder.position_at_end(advance_bb);
         let advanced_ptr = unsafe {
             self.builder
                 .build_gep(i8_type, current_ptr, &[width], "utf8_string_advance_ptr")
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to advance UTF-8 string pointer"))?
         };
         let next_char_index = self
             .builder
@@ -19016,38 +19076,44 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_int(1, false),
                 "utf8_string_next_char_index",
             )
-            .unwrap();
-        self.builder.build_store(ptr_slot, advanced_ptr).unwrap();
+            .map_err(|_| CodegenError::new("failed to increment UTF-8 string character index"))?;
+        self.builder
+            .build_store(ptr_slot, advanced_ptr)
+            .map_err(|_| CodegenError::new("failed to store advanced UTF-8 string pointer"))?;
         self.builder
             .build_store(char_index_slot, next_char_index)
-            .unwrap();
-        self.builder.build_unconditional_branch(loop_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to store advanced UTF-8 character index"))?;
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(|_| CodegenError::new("failed to branch UTF-8 string index loop"))?;
 
         self.builder.position_at_end(target_dispatch_bb);
         self.builder
             .build_conditional_branch(is_ascii, decode_ascii_bb, target_non_ascii_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for UTF-8 ASCII decode"))?;
 
         self.builder.position_at_end(target_non_ascii_bb);
         self.builder
             .build_conditional_branch(is_two, decode_two_bb, target_not_two_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for UTF-8 two-byte decode"))?;
 
         self.builder.position_at_end(target_not_two_bb);
         self.builder
             .build_conditional_branch(is_three, decode_three_bb, target_not_three_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for UTF-8 three-byte decode"))?;
 
         self.builder.position_at_end(target_not_three_bb);
         self.builder
             .build_conditional_branch(is_four, decode_four_bb, fail_utf8_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for UTF-8 four-byte decode"))?;
 
         self.builder.position_at_end(decode_ascii_bb);
         self.builder
             .build_store(char_result_slot, lead_u32)
-            .unwrap();
-        self.builder.build_unconditional_branch(return_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to store ASCII UTF-8 decode result"))?;
+        self.builder
+            .build_unconditional_branch(return_bb)
+            .map_err(|_| CodegenError::new("failed to branch from UTF-8 ASCII decode"))?;
 
         self.builder.position_at_end(decode_two_bb);
         let cont1_ptr = unsafe {
@@ -19058,17 +19124,17 @@ impl<'ctx> Codegen<'ctx> {
                     &[i64_type.const_int(1, false)],
                     "utf8_cont1_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to access first UTF-8 continuation byte"))?
         };
         let cont1 = self
             .builder
             .build_load(i8_type, cont1_ptr, "utf8_cont1")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load first UTF-8 continuation byte"))?
             .into_int_value();
         let cont1_u32 = self
             .builder
             .build_int_z_extend(cont1, i32_type, "utf8_cont1_u32")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extend first UTF-8 continuation byte"))?;
         let cont1_mask = self
             .builder
             .build_and(
@@ -19076,7 +19142,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xC0, false),
                 "utf8_cont1_mask",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask first UTF-8 continuation byte"))?;
         let cont1_valid = self
             .builder
             .build_int_compare(
@@ -19085,10 +19151,10 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x80, false),
                 "utf8_cont1_valid",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to validate first UTF-8 continuation byte"))?;
         self.builder
             .build_conditional_branch(cont1_valid, decode_two_ok_bb, fail_utf8_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for UTF-8 two-byte validation"))?;
 
         self.builder.position_at_end(decode_two_ok_bb);
         let lead_bits = self
@@ -19098,7 +19164,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x1F, false),
                 "utf8_two_lead_bits",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to isolate UTF-8 two-byte lead bits"))?;
         let cont1_bits = self
             .builder
             .build_and(
@@ -19106,7 +19172,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x3F, false),
                 "utf8_two_cont1_bits",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to isolate UTF-8 two-byte continuation bits"))?;
         let lead_shifted = self
             .builder
             .build_left_shift(
@@ -19114,15 +19180,17 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(6, false),
                 "utf8_two_lead_shifted",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to shift UTF-8 two-byte lead bits"))?;
         let codepoint = self
             .builder
             .build_or(lead_shifted, cont1_bits, "utf8_two_codepoint")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to combine UTF-8 two-byte codepoint"))?;
         self.builder
             .build_store(char_result_slot, codepoint)
-            .unwrap();
-        self.builder.build_unconditional_branch(return_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to store UTF-8 two-byte codepoint"))?;
+        self.builder
+            .build_unconditional_branch(return_bb)
+            .map_err(|_| CodegenError::new("failed to branch from UTF-8 two-byte decode"))?;
 
         self.builder.position_at_end(decode_three_bb);
         let cont2_ptr = unsafe {
@@ -19133,7 +19201,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[i64_type.const_int(1, false)],
                     "utf8_cont2_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to access second UTF-8 continuation byte"))?
         };
         let cont3_ptr = unsafe {
             self.builder
@@ -19143,26 +19211,26 @@ impl<'ctx> Codegen<'ctx> {
                     &[i64_type.const_int(2, false)],
                     "utf8_cont3_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to access third UTF-8 continuation byte"))?
         };
         let cont2 = self
             .builder
             .build_load(i8_type, cont2_ptr, "utf8_cont2")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load second UTF-8 continuation byte"))?
             .into_int_value();
         let cont3 = self
             .builder
             .build_load(i8_type, cont3_ptr, "utf8_cont3")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load third UTF-8 continuation byte"))?
             .into_int_value();
         let cont2_u32 = self
             .builder
             .build_int_z_extend(cont2, i32_type, "utf8_cont2_u32")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extend second UTF-8 continuation byte"))?;
         let cont3_u32 = self
             .builder
             .build_int_z_extend(cont3, i32_type, "utf8_cont3_u32")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extend third UTF-8 continuation byte"))?;
         let cont2_mask = self
             .builder
             .build_and(
@@ -19170,7 +19238,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xC0, false),
                 "utf8_cont2_mask",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask second UTF-8 continuation byte"))?;
         let cont3_mask = self
             .builder
             .build_and(
@@ -19178,7 +19246,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xC0, false),
                 "utf8_cont3_mask",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask third UTF-8 continuation byte"))?;
         let cont2_valid = self
             .builder
             .build_int_compare(
@@ -19187,7 +19255,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x80, false),
                 "utf8_cont2_valid",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to validate second UTF-8 continuation byte"))?;
         let cont3_valid = self
             .builder
             .build_int_compare(
@@ -19196,14 +19264,16 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x80, false),
                 "utf8_cont3_valid",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to validate third UTF-8 continuation byte"))?;
         let cont23_valid = self
             .builder
             .build_and(cont2_valid, cont3_valid, "utf8_cont23_valid")
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to combine UTF-8 three-byte continuation validation")
+            })?;
         self.builder
             .build_conditional_branch(cont23_valid, decode_three_ok_bb, fail_utf8_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for UTF-8 three-byte validation"))?;
 
         self.builder.position_at_end(decode_three_ok_bb);
         let lead_bits = self
@@ -19213,7 +19283,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x0F, false),
                 "utf8_three_lead_bits",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to isolate UTF-8 three-byte lead bits"))?;
         let cont2_bits = self
             .builder
             .build_and(
@@ -19221,7 +19291,9 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x3F, false),
                 "utf8_three_cont2_bits",
             )
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to isolate UTF-8 three-byte second continuation bits")
+            })?;
         let cont3_bits = self
             .builder
             .build_and(
@@ -19229,7 +19301,9 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x3F, false),
                 "utf8_three_cont3_bits",
             )
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to isolate UTF-8 three-byte third continuation bits")
+            })?;
         let lead_shifted = self
             .builder
             .build_left_shift(
@@ -19237,7 +19311,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(12, false),
                 "utf8_three_lead_shifted",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to shift UTF-8 three-byte lead bits"))?;
         let cont2_shifted = self
             .builder
             .build_left_shift(
@@ -19245,19 +19319,23 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(6, false),
                 "utf8_three_cont2_shifted",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to shift UTF-8 three-byte continuation bits"))?;
         let partial = self
             .builder
             .build_or(lead_shifted, cont2_shifted, "utf8_three_partial")
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to combine UTF-8 three-byte partial codepoint")
+            })?;
         let codepoint = self
             .builder
             .build_or(partial, cont3_bits, "utf8_three_codepoint")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to combine UTF-8 three-byte codepoint"))?;
         self.builder
             .build_store(char_result_slot, codepoint)
-            .unwrap();
-        self.builder.build_unconditional_branch(return_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to store UTF-8 three-byte codepoint"))?;
+        self.builder
+            .build_unconditional_branch(return_bb)
+            .map_err(|_| CodegenError::new("failed to branch from UTF-8 three-byte decode"))?;
 
         self.builder.position_at_end(decode_four_bb);
         let cont4_ptr = unsafe {
@@ -19268,7 +19346,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[i64_type.const_int(1, false)],
                     "utf8_cont4_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to access fourth UTF-8 continuation byte"))?
         };
         let cont5_ptr = unsafe {
             self.builder
@@ -19278,7 +19356,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[i64_type.const_int(2, false)],
                     "utf8_cont5_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to access fifth UTF-8 continuation byte"))?
         };
         let cont6_ptr = unsafe {
             self.builder
@@ -19288,35 +19366,35 @@ impl<'ctx> Codegen<'ctx> {
                     &[i64_type.const_int(3, false)],
                     "utf8_cont6_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to access sixth UTF-8 continuation byte"))?
         };
         let cont4 = self
             .builder
             .build_load(i8_type, cont4_ptr, "utf8_cont4")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load fourth UTF-8 continuation byte"))?
             .into_int_value();
         let cont5 = self
             .builder
             .build_load(i8_type, cont5_ptr, "utf8_cont5")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load fifth UTF-8 continuation byte"))?
             .into_int_value();
         let cont6 = self
             .builder
             .build_load(i8_type, cont6_ptr, "utf8_cont6")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load sixth UTF-8 continuation byte"))?
             .into_int_value();
         let cont4_u32 = self
             .builder
             .build_int_z_extend(cont4, i32_type, "utf8_cont4_u32")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extend fourth UTF-8 continuation byte"))?;
         let cont5_u32 = self
             .builder
             .build_int_z_extend(cont5, i32_type, "utf8_cont5_u32")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extend fifth UTF-8 continuation byte"))?;
         let cont6_u32 = self
             .builder
             .build_int_z_extend(cont6, i32_type, "utf8_cont6_u32")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extend sixth UTF-8 continuation byte"))?;
         let cont4_mask = self
             .builder
             .build_and(
@@ -19324,7 +19402,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xC0, false),
                 "utf8_cont4_mask",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask fourth UTF-8 continuation byte"))?;
         let cont5_mask = self
             .builder
             .build_and(
@@ -19332,7 +19410,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xC0, false),
                 "utf8_cont5_mask",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask fifth UTF-8 continuation byte"))?;
         let cont6_mask = self
             .builder
             .build_and(
@@ -19340,7 +19418,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xC0, false),
                 "utf8_cont6_mask",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask sixth UTF-8 continuation byte"))?;
         let cont4_valid = self
             .builder
             .build_int_compare(
@@ -19349,7 +19427,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x80, false),
                 "utf8_cont4_valid",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to validate fourth UTF-8 continuation byte"))?;
         let cont5_valid = self
             .builder
             .build_int_compare(
@@ -19358,7 +19436,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x80, false),
                 "utf8_cont5_valid",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to validate fifth UTF-8 continuation byte"))?;
         let cont6_valid = self
             .builder
             .build_int_compare(
@@ -19367,18 +19445,22 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x80, false),
                 "utf8_cont6_valid",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to validate sixth UTF-8 continuation byte"))?;
         let cont45_valid = self
             .builder
             .build_and(cont4_valid, cont5_valid, "utf8_cont45_valid")
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to combine UTF-8 four-byte continuation validation")
+            })?;
         let cont456_valid = self
             .builder
             .build_and(cont45_valid, cont6_valid, "utf8_cont456_valid")
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to finalize UTF-8 four-byte continuation validation")
+            })?;
         self.builder
             .build_conditional_branch(cont456_valid, decode_four_ok_bb, fail_utf8_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for UTF-8 four-byte validation"))?;
 
         self.builder.position_at_end(decode_four_ok_bb);
         let lead_bits = self
@@ -19388,7 +19470,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x07, false),
                 "utf8_four_lead_bits",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to isolate UTF-8 four-byte lead bits"))?;
         let cont4_bits = self
             .builder
             .build_and(
@@ -19396,7 +19478,9 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x3F, false),
                 "utf8_four_cont4_bits",
             )
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to isolate UTF-8 four-byte first continuation bits")
+            })?;
         let cont5_bits = self
             .builder
             .build_and(
@@ -19404,7 +19488,9 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x3F, false),
                 "utf8_four_cont5_bits",
             )
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to isolate UTF-8 four-byte second continuation bits")
+            })?;
         let cont6_bits = self
             .builder
             .build_and(
@@ -19412,7 +19498,9 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x3F, false),
                 "utf8_four_cont6_bits",
             )
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to isolate UTF-8 four-byte third continuation bits")
+            })?;
         let lead_shifted = self
             .builder
             .build_left_shift(
@@ -19420,7 +19508,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(18, false),
                 "utf8_four_lead_shifted",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to shift UTF-8 four-byte lead bits"))?;
         let cont4_shifted = self
             .builder
             .build_left_shift(
@@ -19428,7 +19516,9 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(12, false),
                 "utf8_four_cont4_shifted",
             )
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to shift UTF-8 four-byte first continuation bits")
+            })?;
         let cont5_shifted = self
             .builder
             .build_left_shift(
@@ -19436,29 +19526,34 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(6, false),
                 "utf8_four_cont5_shifted",
             )
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to shift UTF-8 four-byte second continuation bits")
+            })?;
         let partial = self
             .builder
             .build_or(lead_shifted, cont4_shifted, "utf8_four_partial_1")
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to combine UTF-8 four-byte partial codepoint")
+            })?;
         let partial = self
             .builder
             .build_or(partial, cont5_shifted, "utf8_four_partial_2")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extend UTF-8 four-byte partial codepoint"))?;
         let codepoint = self
             .builder
             .build_or(partial, cont6_bits, "utf8_four_codepoint")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to combine UTF-8 four-byte codepoint"))?;
         self.builder
             .build_store(char_result_slot, codepoint)
-            .unwrap();
-        self.builder.build_unconditional_branch(return_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to store UTF-8 four-byte codepoint"))?;
+        self.builder
+            .build_unconditional_branch(return_bb)
+            .map_err(|_| CodegenError::new("failed to branch from UTF-8 four-byte decode"))?;
 
         self.builder.position_at_end(return_bb);
-        Ok(self
-            .builder
+        self.builder
             .build_load(i32_type, char_result_slot, "utf8_string_char_result_load")
-            .unwrap())
+            .map_err(|_| CodegenError::new("failed to load UTF-8 string index result"))
     }
 
     fn compile_utf8_string_length_runtime(
@@ -19492,17 +19587,27 @@ impl<'ctx> Codegen<'ctx> {
         let ptr_slot = self
             .builder
             .build_alloca(ptr_type, "utf8_string_length_ptr")
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to allocate UTF-8 string length pointer slot")
+            })?;
         let char_count_slot = self
             .builder
             .build_alloca(i64_type, "utf8_string_length_count")
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to allocate UTF-8 string length counter slot")
+            })?;
 
-        self.builder.build_store(ptr_slot, string_ptr).unwrap();
+        self.builder
+            .build_store(ptr_slot, string_ptr)
+            .map_err(|_| {
+                CodegenError::new("failed to initialize UTF-8 string length pointer slot")
+            })?;
         self.builder
             .build_store(char_count_slot, i64_type.const_zero())
-            .unwrap();
-        self.builder.build_unconditional_branch(loop_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize UTF-8 string length counter"))?;
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(|_| CodegenError::new("failed to branch into UTF-8 string length loop"))?;
 
         self.builder.position_at_end(fail_utf8_bb);
         self.emit_runtime_error(
@@ -19514,22 +19619,22 @@ impl<'ctx> Codegen<'ctx> {
         let current_ptr = self
             .builder
             .build_load(ptr_type, ptr_slot, "utf8_string_length_ptr_load")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load UTF-8 string length pointer"))?
             .into_pointer_value();
         let current_count = self
             .builder
             .build_load(i64_type, char_count_slot, "utf8_string_length_count_load")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load UTF-8 string length counter"))?
             .into_int_value();
         let lead_byte = self
             .builder
             .build_load(i8_type, current_ptr, "utf8_string_length_lead_byte")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load UTF-8 string length lead byte"))?
             .into_int_value();
         let lead_u32 = self
             .builder
             .build_int_z_extend(lead_byte, i32_type, "utf8_string_length_lead_u32")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extend UTF-8 string length lead byte"))?;
         let is_end = self
             .builder
             .build_int_compare(
@@ -19538,7 +19643,7 @@ impl<'ctx> Codegen<'ctx> {
                 i8_type.const_zero(),
                 "utf8_string_length_is_end",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to check UTF-8 string length end"))?;
         let is_ascii = self
             .builder
             .build_int_compare(
@@ -19547,7 +19652,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0x80, false),
                 "utf8_string_length_is_ascii",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to classify ASCII UTF-8 length byte"))?;
         let lead_mask_e0 = self
             .builder
             .build_and(
@@ -19555,7 +19660,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xE0, false),
                 "utf8_string_length_mask_e0",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask UTF-8 length lead byte with 0xE0"))?;
         let lead_mask_f0 = self
             .builder
             .build_and(
@@ -19563,7 +19668,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xF0, false),
                 "utf8_string_length_mask_f0",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask UTF-8 length lead byte with 0xF0"))?;
         let lead_mask_f8 = self
             .builder
             .build_and(
@@ -19571,7 +19676,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xF8, false),
                 "utf8_string_length_mask_f8",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to mask UTF-8 length lead byte with 0xF8"))?;
         let is_two = self
             .builder
             .build_int_compare(
@@ -19580,7 +19685,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xC0, false),
                 "utf8_string_length_is_two",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to classify UTF-8 two-byte length sequence"))?;
         let is_three = self
             .builder
             .build_int_compare(
@@ -19589,7 +19694,9 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xE0, false),
                 "utf8_string_length_is_three",
             )
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to classify UTF-8 three-byte length sequence")
+            })?;
         let is_four = self
             .builder
             .build_int_compare(
@@ -19598,7 +19705,7 @@ impl<'ctx> Codegen<'ctx> {
                 i32_type.const_int(0xF0, false),
                 "utf8_string_length_is_four",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to classify UTF-8 four-byte length sequence"))?;
         let width_two_or_zero = self
             .builder
             .build_select(
@@ -19607,7 +19714,11 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_zero(),
                 "utf8_string_length_width_two",
             )
-            .unwrap()
+            .map_err(|_| {
+                CodegenError::new(
+                    "failed to select UTF-8 string length width for two-byte sequence",
+                )
+            })?
             .into_int_value();
         let width_three_or_prev = self
             .builder
@@ -19617,7 +19728,11 @@ impl<'ctx> Codegen<'ctx> {
                 width_two_or_zero,
                 "utf8_string_length_width_three",
             )
-            .unwrap()
+            .map_err(|_| {
+                CodegenError::new(
+                    "failed to select UTF-8 string length width for three-byte sequence",
+                )
+            })?
             .into_int_value();
         let width_nonzero = self
             .builder
@@ -19627,7 +19742,9 @@ impl<'ctx> Codegen<'ctx> {
                 width_three_or_prev,
                 "utf8_string_length_width_ascii",
             )
-            .unwrap()
+            .map_err(|_| {
+                CodegenError::new("failed to select UTF-8 string length width for ASCII sequence")
+            })?
             .into_int_value();
         let width = self
             .builder
@@ -19637,7 +19754,11 @@ impl<'ctx> Codegen<'ctx> {
                 width_nonzero,
                 "utf8_string_length_width",
             )
-            .unwrap()
+            .map_err(|_| {
+                CodegenError::new(
+                    "failed to select UTF-8 string length width for four-byte sequence",
+                )
+            })?
             .into_int_value();
         let width_is_valid = self
             .builder
@@ -19647,16 +19768,18 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_zero(),
                 "utf8_string_length_width_is_valid",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to validate UTF-8 string length width"))?;
 
         self.builder
             .build_conditional_branch(is_end, return_bb, continue_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch on UTF-8 string length end"))?;
 
         self.builder.position_at_end(continue_bb);
         self.builder
             .build_conditional_branch(width_is_valid, advance_bb, fail_utf8_bb)
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to branch on UTF-8 string length width validity")
+            })?;
 
         self.builder.position_at_end(advance_bb);
         let advanced_ptr = unsafe {
@@ -19667,7 +19790,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[width],
                     "utf8_string_length_advance_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to advance UTF-8 string length pointer"))?
         };
         let next_char_count = self
             .builder
@@ -19676,18 +19799,25 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_int(1, false),
                 "utf8_string_length_next_count",
             )
-            .unwrap();
-        self.builder.build_store(ptr_slot, advanced_ptr).unwrap();
+            .map_err(|_| CodegenError::new("failed to increment UTF-8 string length counter"))?;
+        self.builder
+            .build_store(ptr_slot, advanced_ptr)
+            .map_err(|_| {
+                CodegenError::new("failed to store advanced UTF-8 string length pointer")
+            })?;
         self.builder
             .build_store(char_count_slot, next_char_count)
-            .unwrap();
-        self.builder.build_unconditional_branch(loop_bb).unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to store advanced UTF-8 string length counter")
+            })?;
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(|_| CodegenError::new("failed to branch UTF-8 string length loop"))?;
 
         self.builder.position_at_end(return_bb);
-        Ok(self
-            .builder
+        self.builder
             .build_load(i64_type, char_count_slot, "utf8_string_length_result")
-            .unwrap())
+            .map_err(|_| CodegenError::new("failed to load UTF-8 string length result"))
     }
 
     pub fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>> {
@@ -19773,7 +19903,9 @@ impl<'ctx> Codegen<'ctx> {
                         i64_type.const_zero(),
                         "string_literal_index_non_negative",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to validate string literal index lower bound")
+                    })?;
                 let length = i64_type.const_int(char_values.len() as u64, false);
                 let in_bounds = self
                     .builder
@@ -19783,11 +19915,15 @@ impl<'ctx> Codegen<'ctx> {
                         length,
                         "string_literal_index_in_bounds",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to validate string literal index upper bound")
+                    })?;
                 let valid = self
                     .builder
                     .build_and(non_negative, in_bounds, "string_literal_index_valid")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to combine string literal index bounds")
+                    })?;
                 let current_fn = self.current_function.ok_or_else(|| {
                     CodegenError::new("string literal index used outside function")
                 })?;
@@ -19799,7 +19935,9 @@ impl<'ctx> Codegen<'ctx> {
                     .append_basic_block(current_fn, "string_literal_index_fail");
                 self.builder
                     .build_conditional_branch(valid, ok_bb, fail_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch for string literal index bounds")
+                    })?;
 
                 self.builder.position_at_end(fail_bb);
                 self.emit_runtime_error("String index out of bounds", "string_literal_index_oob")?;
@@ -19831,7 +19969,9 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, zero],
                             "string_literal_scalar_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access string literal scalar array")
+                        })?
                 };
                 let scalar_char_ptr = unsafe {
                     self.builder
@@ -19841,16 +19981,20 @@ impl<'ctx> Codegen<'ctx> {
                             &[idx],
                             "string_literal_char_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access indexed string literal character")
+                        })?
                 };
-                return Ok(self
+                return self
                     .builder
                     .build_load(
                         self.context.i32_type(),
                         scalar_char_ptr,
                         "string_literal_char",
                     )
-                    .unwrap());
+                    .map_err(|_| {
+                        CodegenError::new("failed to load indexed string literal character")
+                    });
             }
 
             let string_value = if matches!(object_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
@@ -19871,7 +20015,7 @@ impl<'ctx> Codegen<'ctx> {
                     i64_type.const_zero(),
                     "index_non_negative",
                 )
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to validate list index lower bound"))?;
 
             let (length, data_ptr, elem_ty) =
                 if let BasicValueEnum::StructValue(list_struct) = obj_val {
@@ -19912,7 +20056,7 @@ impl<'ctx> Codegen<'ctx> {
                                 &[zero, i32_type.const_int(1, false)],
                                 "list_len_ptr",
                             )
-                            .unwrap()
+                            .map_err(|_| CodegenError::new("failed to access list length field"))?
                     };
                     let data_ptr_ptr = unsafe {
                         self.builder
@@ -19922,12 +20066,14 @@ impl<'ctx> Codegen<'ctx> {
                                 &[zero, i32_type.const_int(2, false)],
                                 "list_data_ptr_ptr",
                             )
-                            .unwrap()
+                            .map_err(|_| {
+                                CodegenError::new("failed to access list data pointer field")
+                            })?
                     };
                     let length = self
                         .builder
                         .build_load(i64_type, len_ptr, "list_len")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to load list length"))?
                         .into_int_value();
                     let data_ptr = self
                         .builder
@@ -19936,7 +20082,7 @@ impl<'ctx> Codegen<'ctx> {
                             data_ptr_ptr,
                             "list_data_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to load list data pointer"))?
                         .into_pointer_value();
                     let elem_ty = match &deref_object_ty {
                         Some(list_ty @ Type::List(_)) => {
@@ -19950,11 +20096,11 @@ impl<'ctx> Codegen<'ctx> {
             let in_bounds = self
                 .builder
                 .build_int_compare(IntPredicate::SLT, idx, length, "index_in_bounds")
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to validate list index upper bound"))?;
             let valid = self
                 .builder
                 .build_and(non_negative, in_bounds, "index_valid")
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to combine list index bounds"))?;
             let current_fn = self
                 .current_function
                 .ok_or_else(|| CodegenError::new("list index used outside function"))?;
@@ -19962,7 +20108,7 @@ impl<'ctx> Codegen<'ctx> {
             let fail_bb = self.context.append_basic_block(current_fn, "index_fail");
             self.builder
                 .build_conditional_branch(valid, ok_bb, fail_bb)
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to branch for list index bounds"))?;
 
             self.builder.position_at_end(fail_bb);
             self.emit_runtime_error("List index out of bounds", "list_index_oob")?;
@@ -19975,13 +20121,16 @@ impl<'ctx> Codegen<'ctx> {
                     self.context.ptr_type(AddressSpace::default()),
                     "list_typed_data",
                 )
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to cast list data pointer for indexing"))?;
             let elem_ptr = unsafe {
                 self.builder
                     .build_gep(elem_ty, typed_data_ptr, &[idx], "elem")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to access indexed list element"))?
             };
-            return Ok(self.builder.build_load(elem_ty, elem_ptr, "load").unwrap());
+            return self
+                .builder
+                .build_load(elem_ty, elem_ptr, "load")
+                .map_err(|_| CodegenError::new("failed to load indexed list element"));
         }
 
         // List indexing may come either as:
@@ -20006,13 +20155,20 @@ impl<'ctx> Codegen<'ctx> {
                     self.context.ptr_type(AddressSpace::default()),
                     "list_typed_data",
                 )
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to cast materialized list data pointer"))?;
             let elem_ptr = unsafe {
                 self.builder
                     .build_gep(elem_ty, typed_data_ptr, &[idx], "elem")
-                    .unwrap()
+                    .map_err(|_| {
+                        CodegenError::new("failed to access indexed materialized list element")
+                    })?
             };
-            return Ok(self.builder.build_load(elem_ty, elem_ptr, "load").unwrap());
+            return self
+                .builder
+                .build_load(elem_ty, elem_ptr, "load")
+                .map_err(|_| {
+                    CodegenError::new("failed to load indexed materialized list element")
+                });
         }
 
         let obj_ptr = obj_val.into_pointer_value();
@@ -20023,9 +20179,11 @@ impl<'ctx> Codegen<'ctx> {
         let elem_ptr = unsafe {
             self.builder
                 .build_gep(elem_ty, obj_ptr, &[idx], "elem")
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to access indexed list element pointer"))?
         };
-        Ok(self.builder.build_load(elem_ty, elem_ptr, "load").unwrap())
+        self.builder
+            .build_load(elem_ty, elem_ptr, "load")
+            .map_err(|_| CodegenError::new("failed to load indexed list element"))
     }
 
     pub fn compile_construct(
@@ -20325,7 +20483,12 @@ impl<'ctx> Codegen<'ctx> {
 
         let args_meta: Vec<BasicMetadataValueEnum> =
             compiled_args.iter().map(|a| (*a).into()).collect();
-        let call = self.builder.build_call(func, &args_meta, "new").unwrap();
+        let call = self
+            .builder
+            .build_call(func, &args_meta, "new")
+            .map_err(|_| {
+                CodegenError::new(format!("failed to emit constructor call '{}'", func_name))
+            })?;
 
         self.extract_call_value_with_context(
             call,
@@ -20364,7 +20527,7 @@ impl<'ctx> Codegen<'ctx> {
 
             self.builder
                 .build_call(printf, &call_args, "printf")
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to emit printf for print argument"))?;
         }
 
         if newline {
@@ -20376,7 +20539,7 @@ impl<'ctx> Codegen<'ctx> {
             nl_global.set_initializer(&nl_str);
             self.builder
                 .build_call(printf, &[nl_global.as_pointer_value().into()], "printf")
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to emit trailing newline printf"))?;
         }
 
         Ok(self.context.i32_type().const_int(0, false).into())
@@ -20402,7 +20565,11 @@ impl<'ctx> Codegen<'ctx> {
                             i64_type.const_int(s.len() as u64, false),
                             "interp_literal_len",
                         )
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new(
+                                "failed to accumulate string interpolation literal length",
+                            )
+                        })?;
                 }
                 StringPart::Expr(expr) => {
                     let expr_ty = self.infer_builtin_argument_type(&expr.node);
@@ -20417,7 +20584,9 @@ impl<'ctx> Codegen<'ctx> {
                     let display_len_call = self
                         .builder
                         .build_call(strlen, &[display.into()], "interp_display_len")
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to emit strlen for interpolation segment")
+                        })?;
                     let display_len = self
                         .extract_call_value_with_context(
                             display_len_call,
@@ -20427,7 +20596,11 @@ impl<'ctx> Codegen<'ctx> {
                     rendered_len = self
                         .builder
                         .build_int_add(rendered_len, display_len, "interp_total_expr_len")
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new(
+                                "failed to accumulate string interpolation expression length",
+                            )
+                        })?;
                     fmt_str.push_str("%s");
                     args.push(display.into());
                 }
@@ -20444,11 +20617,11 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_int(1, false),
                 "interp_buffer_size",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute string interpolation buffer size"))?;
         let buffer_call = self
             .builder
             .build_call(malloc, &[buffer_size.into()], "strbuf")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to allocate string interpolation buffer"))?;
         let buffer = self.extract_call_pointer_value(
             buffer_call,
             "malloc did not produce a buffer pointer for string interpolation",
@@ -20471,7 +20644,7 @@ impl<'ctx> Codegen<'ctx> {
         snprintf_args.extend(args);
         self.builder
             .build_call(snprintf, &snprintf_args, "snprintf")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to emit snprintf for string interpolation"))?;
 
         Ok(buffer.into())
     }
@@ -20501,7 +20674,7 @@ impl<'ctx> Codegen<'ctx> {
         let tag = self
             .builder
             .build_extract_value(struct_val, 0, "tag")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extract try operator tag"))?;
         let tag_int = tag.into_int_value();
 
         // Compare tag with 1 (Some/Ok)
@@ -20513,7 +20686,7 @@ impl<'ctx> Codegen<'ctx> {
                 self.context.i8_type().const_int(1, false),
                 "is_some_or_ok",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compare try operator tag"))?;
 
         // Create basic blocks
         let success_block = self.context.append_basic_block(function, "try.success");
@@ -20523,7 +20696,7 @@ impl<'ctx> Codegen<'ctx> {
         // Branch based on tag
         self.builder
             .build_conditional_branch(is_some_or_ok, success_block, error_block)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for try operator"))?;
 
         // Error block: return early with None/Error
         self.builder.position_at_end(error_block);
@@ -20534,7 +20707,12 @@ impl<'ctx> Codegen<'ctx> {
                 let option_type = self
                     .context
                     .struct_type(&[self.context.i8_type().into(), inner_llvm], false);
-                let alloca = self.builder.build_alloca(option_type, "none_ret").unwrap();
+                let alloca = self
+                    .builder
+                    .build_alloca(option_type, "none_ret")
+                    .map_err(|_| {
+                        CodegenError::new("failed to allocate Option return slot for try operator")
+                    })?;
                 let i32_type = self.context.i32_type();
                 let zero = i32_type.const_int(0, false);
                 let tag_ptr = unsafe {
@@ -20545,13 +20723,24 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(0, false)],
                             "tag",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access Option return tag for try operator")
+                        })?
                 };
                 self.builder
                     .build_store(tag_ptr, self.context.i8_type().const_int(0, false))
-                    .unwrap();
-                let loaded = self.builder.build_load(option_type, alloca, "ret").unwrap();
-                self.builder.build_return(Some(&loaded)).unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to store Option return tag for try operator")
+                    })?;
+                let loaded = self
+                    .builder
+                    .build_load(option_type, alloca, "ret")
+                    .map_err(|_| {
+                        CodegenError::new("failed to load Option return value for try operator")
+                    })?;
+                self.builder.build_return(Some(&loaded)).map_err(|_| {
+                    CodegenError::new("failed to return Option value from try operator")
+                })?;
             }
             Type::Result(ok_ty, err_ty) => {
                 // Return Error - propagate the error from the inner Result
@@ -20565,8 +20754,15 @@ impl<'ctx> Codegen<'ctx> {
                 let err_val = self
                     .builder
                     .build_extract_value(struct_val, 2, "err_val")
-                    .unwrap();
-                let alloca = self.builder.build_alloca(result_type, "err_ret").unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to extract Result error value for try operator")
+                    })?;
+                let alloca = self
+                    .builder
+                    .build_alloca(result_type, "err_ret")
+                    .map_err(|_| {
+                        CodegenError::new("failed to allocate Result return slot for try operator")
+                    })?;
                 let i32_type = self.context.i32_type();
                 let zero = i32_type.const_int(0, false);
                 let tag_ptr = unsafe {
@@ -20577,11 +20773,15 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(0, false)],
                             "tag",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access Result return tag for try operator")
+                        })?
                 };
                 self.builder
                     .build_store(tag_ptr, self.context.i8_type().const_int(0, false))
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to store Result return tag for try operator")
+                    })?;
                 let err_ptr = unsafe {
                     self.builder
                         .build_gep(
@@ -20590,11 +20790,22 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(2, false)],
                             "err",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access Result error slot for try operator")
+                        })?
                 };
-                self.builder.build_store(err_ptr, err_val).unwrap();
-                let loaded = self.builder.build_load(result_type, alloca, "ret").unwrap();
-                self.builder.build_return(Some(&loaded)).unwrap();
+                self.builder.build_store(err_ptr, err_val).map_err(|_| {
+                    CodegenError::new("failed to store Result error value for try operator")
+                })?;
+                let loaded = self
+                    .builder
+                    .build_load(result_type, alloca, "ret")
+                    .map_err(|_| {
+                        CodegenError::new("failed to load Result return value for try operator")
+                    })?;
+                self.builder.build_return(Some(&loaded)).map_err(|_| {
+                    CodegenError::new("failed to return Result value from try operator")
+                })?;
             }
             _ => {
                 return Err(CodegenError::new(
@@ -20608,10 +20819,10 @@ impl<'ctx> Codegen<'ctx> {
         let extracted = self
             .builder
             .build_extract_value(struct_val, 1, "unwrapped")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to extract success value for try operator"))?;
         self.builder
             .build_unconditional_branch(merge_block)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch from try success block"))?;
 
         // Merge block: return the extracted value
         self.builder.position_at_end(merge_block);
@@ -20669,10 +20880,16 @@ impl<'ctx> Codegen<'ctx> {
                     let is_min_value = self
                         .builder
                         .build_int_compare(IntPredicate::EQ, v, min_value, "math_abs_is_min")
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new(
+                                "failed to compare Math.abs input against minimum value",
+                            )
+                        })?;
                     self.builder
                         .build_conditional_branch(is_min_value, overflow_bb, ok_bb)
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to branch for Math.abs overflow check")
+                        })?;
 
                     self.builder.position_at_end(overflow_bb);
                     self.emit_runtime_error(
@@ -20689,13 +20906,25 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.i64_type().const_int(0, false),
                             "is_neg",
                         )
-                        .unwrap();
-                    let neg = self.builder.build_int_neg(v, "neg").unwrap();
-                    let result = self.builder.build_select(is_neg, neg, v, "abs").unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to compare Math.abs input against zero")
+                        })?;
+                    let neg = self.builder.build_int_neg(v, "neg").map_err(|_| {
+                        CodegenError::new("failed to negate Math.abs integer input")
+                    })?;
+                    let result =
+                        self.builder
+                            .build_select(is_neg, neg, v, "abs")
+                            .map_err(|_| {
+                                CodegenError::new("failed to select Math.abs integer result")
+                            })?;
                     Ok(Some(result))
                 } else {
                     let fabs = self.get_or_declare_math_func("fabs", true);
-                    let call = self.builder.build_call(fabs, &[val.into()], "abs").unwrap();
+                    let call = self
+                        .builder
+                        .build_call(fabs, &[val.into()], "abs")
+                        .map_err(|_| CodegenError::new("failed to emit fabs call for Math.abs"))?;
                     Ok(Some(self.extract_call_value(call)?))
                 }
             }
@@ -20716,7 +20945,11 @@ impl<'ctx> Codegen<'ctx> {
                                 self.context.f64_type(),
                                 "tofloat",
                             )
-                            .unwrap()
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to promote first Math.min operand to float",
+                                )
+                            })?
                             .into()
                     };
                     let bv = if b.is_float_value() {
@@ -20728,13 +20961,17 @@ impl<'ctx> Codegen<'ctx> {
                                 self.context.f64_type(),
                                 "tofloat",
                             )
-                            .unwrap()
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to promote second Math.min operand to float",
+                                )
+                            })?
                             .into()
                     };
                     let call = self
                         .builder
                         .build_call(fmin, &[av.into(), bv.into()], "min")
-                        .unwrap();
+                        .map_err(|_| CodegenError::new("failed to emit fmin call"))?;
                     Ok(Some(self.extract_call_value(call)?))
                 } else {
                     let av = a.into_int_value();
@@ -20742,8 +20979,15 @@ impl<'ctx> Codegen<'ctx> {
                     let cond = self
                         .builder
                         .build_int_compare(IntPredicate::SLT, av, bv, "cmp")
-                        .unwrap();
-                    let result = self.builder.build_select(cond, av, bv, "min").unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to compare Math.min integer operands")
+                        })?;
+                    let result = self
+                        .builder
+                        .build_select(cond, av, bv, "min")
+                        .map_err(|_| {
+                            CodegenError::new("failed to select Math.min integer result")
+                        })?;
                     Ok(Some(result))
                 }
             }
@@ -20764,7 +21008,11 @@ impl<'ctx> Codegen<'ctx> {
                                 self.context.f64_type(),
                                 "tofloat",
                             )
-                            .unwrap()
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to promote first Math.max operand to float",
+                                )
+                            })?
                             .into()
                     };
                     let bv = if b.is_float_value() {
@@ -20776,13 +21024,17 @@ impl<'ctx> Codegen<'ctx> {
                                 self.context.f64_type(),
                                 "tofloat",
                             )
-                            .unwrap()
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to promote second Math.max operand to float",
+                                )
+                            })?
                             .into()
                     };
                     let call = self
                         .builder
                         .build_call(fmax, &[av.into(), bv.into()], "max")
-                        .unwrap();
+                        .map_err(|_| CodegenError::new("failed to emit fmax call"))?;
                     Ok(Some(self.extract_call_value(call)?))
                 } else {
                     let av = a.into_int_value();
@@ -20790,8 +21042,15 @@ impl<'ctx> Codegen<'ctx> {
                     let cond = self
                         .builder
                         .build_int_compare(IntPredicate::SGT, av, bv, "cmp")
-                        .unwrap();
-                    let result = self.builder.build_select(cond, av, bv, "max").unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to compare Math.max integer operands")
+                        })?;
+                    let result = self
+                        .builder
+                        .build_select(cond, av, bv, "max")
+                        .map_err(|_| {
+                            CodegenError::new("failed to select Math.max integer result")
+                        })?;
                     Ok(Some(result))
                 }
             }
@@ -20807,7 +21066,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.sqrt operand to float")
+                        })?
                         .into()
                 } else {
                     val
@@ -20815,7 +21076,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(sqrt, &[fval.into()], "sqrt")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit sqrt call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__pow" => {
@@ -20832,7 +21093,7 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to promote Math.pow base to float"))?
                         .into()
                 } else {
                     base
@@ -20844,7 +21105,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.pow exponent to float")
+                        })?
                         .into()
                 } else {
                     exp
@@ -20852,7 +21115,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(pow_fn, &[fbase.into(), fexp.into()], "pow")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit pow call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__sin" => {
@@ -20867,7 +21130,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.sin operand to float")
+                        })?
                         .into()
                 } else {
                     val
@@ -20875,7 +21140,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(sin_fn, &[fval.into()], "sin")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit sin call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__cos" => {
@@ -20890,7 +21155,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.cos operand to float")
+                        })?
                         .into()
                 } else {
                     val
@@ -20898,7 +21165,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(cos_fn, &[fval.into()], "cos")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit cos call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__tan" => {
@@ -20913,7 +21180,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.tan operand to float")
+                        })?
                         .into()
                 } else {
                     val
@@ -20921,7 +21190,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(tan_fn, &[fval.into()], "tan")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit tan call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__floor" => {
@@ -20936,7 +21205,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.floor operand to float")
+                        })?
                         .into()
                 } else {
                     val
@@ -20944,7 +21215,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(floor_fn, &[fval.into()], "floor")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit floor call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__ceil" => {
@@ -20959,7 +21230,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.ceil operand to float")
+                        })?
                         .into()
                 } else {
                     val
@@ -20967,7 +21240,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(ceil_fn, &[fval.into()], "ceil")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit ceil call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__round" => {
@@ -20982,7 +21255,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.round operand to float")
+                        })?
                         .into()
                 } else {
                     val
@@ -20990,7 +21265,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(round_fn, &[fval.into()], "round")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit round call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__log" => {
@@ -21005,7 +21280,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.log operand to float")
+                        })?
                         .into()
                 } else {
                     val
@@ -21013,7 +21290,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(log_fn, &[fval.into()], "log")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit log call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__log10" => {
@@ -21028,7 +21305,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.log10 operand to float")
+                        })?
                         .into()
                 } else {
                     val
@@ -21036,7 +21315,7 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(log10_fn, &[fval.into()], "log10")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit log10 call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__exp" => {
@@ -21051,7 +21330,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to promote Math.exp operand to float")
+                        })?
                         .into()
                 } else {
                     val
@@ -21059,20 +21340,26 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(exp_fn, &[fval.into()], "exp")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit exp call"))?;
                 Ok(Some(self.extract_call_value(call)?))
             }
 
             "Math__random" => {
                 let rand_fn = self.get_or_declare_rand();
-                let res = self.builder.build_call(rand_fn, &[], "r").unwrap();
+                let res = self
+                    .builder
+                    .build_call(rand_fn, &[], "r")
+                    .map_err(|_| CodegenError::new("failed to emit rand call"))?;
                 let val = self.extract_call_value(res)?.into_int_value();
                 let fval = self
                     .builder
                     .build_unsigned_int_to_float(val, self.context.f64_type(), "rf")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to convert rand result to float"))?;
                 let rand_max = self.context.f64_type().const_float(32767.0);
-                let norm = self.builder.build_float_div(fval, rand_max, "rnd").unwrap();
+                let norm = self
+                    .builder
+                    .build_float_div(fval, rand_max, "rnd")
+                    .map_err(|_| CodegenError::new("failed to normalize rand result"))?;
                 Ok(Some(norm.into()))
             }
 
@@ -21107,7 +21394,7 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.f64_type(),
                             "tofloat",
                         )
-                        .unwrap();
+                        .map_err(|_| CodegenError::new("failed to convert Integer to Float"))?;
                     Ok(Some(result.into()))
                 } else {
                     Ok(Some(val))
@@ -21130,7 +21417,7 @@ impl<'ctx> Codegen<'ctx> {
                             self.context.i64_type(),
                             "toint",
                         )
-                        .unwrap();
+                        .map_err(|_| CodegenError::new("failed to convert Float to Integer"))?;
                     Ok(Some(result.into()))
                 } else if val.is_pointer_value() {
                     let strtoll = self.get_or_declare_strtoll();
@@ -21148,7 +21435,7 @@ impl<'ctx> Codegen<'ctx> {
                             ],
                             "toint",
                         )
-                        .unwrap();
+                        .map_err(|_| CodegenError::new("failed to emit strtoll call"))?;
                     Ok(Some(self.extract_call_value(call)?))
                 } else if val.is_int_value() {
                     Ok(Some(val))
@@ -21197,13 +21484,13 @@ impl<'ctx> Codegen<'ctx> {
                 let call = self
                     .builder
                     .build_call(strcmp_fn, &[s1.into(), s2.into()], "cmp")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit strcmp for Str.compare"))?;
                 // strcmp returns i32, extend to i64
                 let result = self.extract_call_value(call)?.into_int_value();
                 let extended = self
                     .builder
                     .build_int_s_extend(result, self.context.i64_type(), "cmp64")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to extend Str.compare result"))?;
                 Ok(Some(extended.into()))
             }
             "Str__concat" => {
@@ -21226,16 +21513,23 @@ impl<'ctx> Codegen<'ctx> {
                 let len1_call = self
                     .builder
                     .build_call(strlen_fn, &[s1.into()], "len1")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to emit strlen for first Str.concat argument")
+                    })?;
                 let len1 = self.extract_call_value(len1_call)?.into_int_value();
                 let len2_call = self
                     .builder
                     .build_call(strlen_fn, &[s2.into()], "len2")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to emit strlen for second Str.concat argument")
+                    })?;
                 let len2 = self.extract_call_value(len2_call)?.into_int_value();
 
                 // Allocate len1 + len2 + 1
-                let total_len = self.builder.build_int_add(len1, len2, "total").unwrap();
+                let total_len = self
+                    .builder
+                    .build_int_add(len1, len2, "total")
+                    .map_err(|_| CodegenError::new("failed to compute Str.concat length"))?;
                 let buffer_size = self
                     .builder
                     .build_int_add(
@@ -21243,22 +21537,22 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(1, false),
                         "bufsize",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute Str.concat buffer size"))?;
 
                 let buffer_call = self
                     .builder
                     .build_call(malloc, &[buffer_size.into()], "buf")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate Str.concat buffer"))?;
                 let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
 
                 // strcpy(buffer, s1)
                 self.builder
                     .build_call(strcpy_fn, &[buffer.into(), s1.into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit strcpy for Str.concat"))?;
                 // strcat(buffer, s2)
                 self.builder
                     .build_call(strcat_fn, &[buffer.into(), s2.into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit strcat for Str.concat"))?;
 
                 Ok(Some(buffer.into()))
             }
@@ -21290,17 +21584,17 @@ impl<'ctx> Codegen<'ctx> {
                 let len_call = self
                     .builder
                     .build_call(strlen_fn, &[s_ptr.into()], "len")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit strlen for Str.trim"))?;
                 let len = self.extract_call_value(len_call)?.into_int_value();
 
                 // Find start (first non-space)
                 let start_ptr = self
                     .builder
                     .build_alloca(self.context.i64_type(), "start")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate Str.trim start slot"))?;
                 self.builder
                     .build_store(start_ptr, self.context.i64_type().const_int(0, false))
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to initialize Str.trim start slot"))?;
 
                 let cur_fn = self
                     .current_function
@@ -21308,35 +21602,39 @@ impl<'ctx> Codegen<'ctx> {
                 let start_cond = self.context.append_basic_block(cur_fn, "trim.start.cond");
                 let start_body = self.context.append_basic_block(cur_fn, "trim.start.body");
                 let start_after = self.context.append_basic_block(cur_fn, "trim.start.after");
-                self.builder.build_unconditional_branch(start_cond).unwrap();
+                self.builder
+                    .build_unconditional_branch(start_cond)
+                    .map_err(|_| CodegenError::new("failed to branch into Str.trim start scan"))?;
 
                 self.builder.position_at_end(start_cond);
                 let start_val = self
                     .builder
                     .build_load(self.context.i64_type(), start_ptr, "s")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Str.trim start index"))?
                     .into_int_value();
                 let in_bounds = self
                     .builder
                     .build_int_compare(IntPredicate::SLT, start_val, len, "bounds")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare Str.trim start bounds"))?;
                 let char_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), s_ptr, &[start_val], "")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access Str.trim start character")
+                        })?
                 };
                 let char_val = self
                     .builder
                     .build_load(self.context.i8_type(), char_ptr, "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load Str.trim start character"))?;
                 let char_i32 = self
                     .builder
                     .build_int_s_extend(char_val.into_int_value(), self.context.i32_type(), "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to extend Str.trim start character"))?;
                 let is_space_call = self
                     .builder
                     .build_call(isspace_fn, &[char_i32.into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit isspace for Str.trim start"))?;
                 let is_space = self
                     .builder
                     .build_int_compare(
@@ -21345,70 +21643,85 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i32_type().const_int(0, false),
                         "",
                     )
-                    .unwrap();
-                let cond = self.builder.build_and(in_bounds, is_space, "").unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare Str.trim start whitespace test")
+                    })?;
+                let cond = self
+                    .builder
+                    .build_and(in_bounds, is_space, "")
+                    .map_err(|_| CodegenError::new("failed to combine Str.trim start condition"))?;
                 self.builder
                     .build_conditional_branch(cond, start_body, start_after)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch in Str.trim start scan"))?;
 
                 self.builder.position_at_end(start_body);
                 let next_start = self
                     .builder
                     .build_int_add(start_val, self.context.i64_type().const_int(1, false), "")
-                    .unwrap();
-                self.builder.build_store(start_ptr, next_start).unwrap();
-                self.builder.build_unconditional_branch(start_cond).unwrap();
+                    .map_err(|_| CodegenError::new("failed to increment Str.trim start index"))?;
+                self.builder
+                    .build_store(start_ptr, next_start)
+                    .map_err(|_| CodegenError::new("failed to store Str.trim start index"))?;
+                self.builder
+                    .build_unconditional_branch(start_cond)
+                    .map_err(|_| CodegenError::new("failed to loop Str.trim start scan"))?;
 
                 self.builder.position_at_end(start_after);
                 let start_final = self
                     .builder
                     .build_load(self.context.i64_type(), start_ptr, "start_f")
-                    .unwrap()
+                    .map_err(|_| {
+                        CodegenError::new("failed to load Str.trim finalized start index")
+                    })?
                     .into_int_value();
 
                 // Find end (last non-space)
                 let end_ptr = self
                     .builder
                     .build_alloca(self.context.i64_type(), "end")
-                    .unwrap();
-                self.builder.build_store(end_ptr, len).unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate Str.trim end slot"))?;
+                self.builder
+                    .build_store(end_ptr, len)
+                    .map_err(|_| CodegenError::new("failed to initialize Str.trim end slot"))?;
 
                 let end_cond = self.context.append_basic_block(cur_fn, "trim.end.cond");
                 let end_body = self.context.append_basic_block(cur_fn, "trim.end.body");
                 let end_after = self.context.append_basic_block(cur_fn, "trim.end.after");
-                self.builder.build_unconditional_branch(end_cond).unwrap();
+                self.builder
+                    .build_unconditional_branch(end_cond)
+                    .map_err(|_| CodegenError::new("failed to branch into Str.trim end scan"))?;
 
                 self.builder.position_at_end(end_cond);
                 let end_val = self
                     .builder
                     .build_load(self.context.i64_type(), end_ptr, "e")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Str.trim end index"))?
                     .into_int_value();
                 let gt_start = self
                     .builder
                     .build_int_compare(IntPredicate::SGT, end_val, start_final, "gt_start")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare Str.trim end bounds"))?;
                 let last_idx = self
                     .builder
                     .build_int_sub(end_val, self.context.i64_type().const_int(1, false), "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute Str.trim last index"))?;
                 let char_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), s_ptr, &[last_idx], "")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to access Str.trim end character"))?
                 };
                 let char_val = self
                     .builder
                     .build_load(self.context.i8_type(), char_ptr, "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load Str.trim end character"))?;
                 let char_i32 = self
                     .builder
                     .build_int_s_extend(char_val.into_int_value(), self.context.i32_type(), "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to extend Str.trim end character"))?;
                 let is_space_call = self
                     .builder
                     .build_call(isspace_fn, &[char_i32.into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit isspace for Str.trim end"))?;
                 let is_space = self
                     .builder
                     .build_int_compare(
@@ -21417,32 +21730,41 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i32_type().const_int(0, false),
                         "",
                     )
-                    .unwrap();
-                let cond = self.builder.build_and(gt_start, is_space, "").unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare Str.trim end whitespace test")
+                    })?;
+                let cond = self
+                    .builder
+                    .build_and(gt_start, is_space, "")
+                    .map_err(|_| CodegenError::new("failed to combine Str.trim end condition"))?;
                 self.builder
                     .build_conditional_branch(cond, end_body, end_after)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch in Str.trim end scan"))?;
 
                 self.builder.position_at_end(end_body);
                 let next_end = self
                     .builder
                     .build_int_sub(end_val, self.context.i64_type().const_int(1, false), "")
-                    .unwrap();
-                self.builder.build_store(end_ptr, next_end).unwrap();
-                self.builder.build_unconditional_branch(end_cond).unwrap();
+                    .map_err(|_| CodegenError::new("failed to decrement Str.trim end index"))?;
+                self.builder
+                    .build_store(end_ptr, next_end)
+                    .map_err(|_| CodegenError::new("failed to store Str.trim end index"))?;
+                self.builder
+                    .build_unconditional_branch(end_cond)
+                    .map_err(|_| CodegenError::new("failed to loop Str.trim end scan"))?;
 
                 self.builder.position_at_end(end_after);
                 let end_final = self
                     .builder
                     .build_load(self.context.i64_type(), end_ptr, "end_f")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Str.trim finalized end index"))?
                     .into_int_value();
 
                 // Allocate and copy result
                 let new_len = self
                     .builder
                     .build_int_sub(end_final, start_final, "new_len")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute Str.trim output length"))?;
                 let alloc_size = self
                     .builder
                     .build_int_add(
@@ -21450,17 +21772,17 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(1, false),
                         "alloc",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute Str.trim allocation size"))?;
                 let buf_call = self
                     .builder
                     .build_call(malloc_fn, &[alloc_size.into()], "buf")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate Str.trim buffer"))?;
                 let buf = self.extract_call_value(buf_call)?.into_pointer_value();
 
                 let src_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), s_ptr, &[start_final], "src")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to access Str.trim source slice"))?
                 };
                 self.builder
                     .build_call(
@@ -21468,17 +21790,19 @@ impl<'ctx> Codegen<'ctx> {
                         &[buf.into(), src_ptr.into(), new_len.into()],
                         "",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit strncpy for Str.trim"))?;
 
                 // Null terminate
                 let term_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), buf, &[new_len], "")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access Str.trim terminator slot")
+                        })?
                 };
                 self.builder
                     .build_store(term_ptr, self.context.i8_type().const_int(0, false))
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to null-terminate Str.trim result"))?;
 
                 Ok(Some(buf.into()))
             }
@@ -21496,10 +21820,15 @@ impl<'ctx> Codegen<'ctx> {
                 let res = self
                     .builder
                     .build_call(strstr, &[s.into(), sub.into()], "pos")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit strstr for Str.contains"))?;
                 let ptr = self.extract_call_value(res)?.into_pointer_value();
-                let is_null = self.builder.build_is_null(ptr, "not_found").unwrap();
-                let found = self.builder.build_not(is_null, "found").unwrap();
+                let is_null = self.builder.build_is_null(ptr, "not_found").map_err(|_| {
+                    CodegenError::new("failed to test Str.contains result for null")
+                })?;
+                let found = self
+                    .builder
+                    .build_not(is_null, "found")
+                    .map_err(|_| CodegenError::new("failed to negate Str.contains null test"))?;
                 Ok(Some(found.into()))
             }
             "Str__startsWith" => {
@@ -21517,7 +21846,9 @@ impl<'ctx> Codegen<'ctx> {
                 let pre_len = self
                     .builder
                     .build_call(strlen, &[pre.into()], "pre_len")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to emit strlen for Str.startsWith prefix")
+                    })?;
                 let res = self
                     .builder
                     .build_call(
@@ -21529,7 +21860,7 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "cmp",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit strncmp for Str.startsWith"))?;
                 let is_zero = self
                     .builder
                     .build_int_compare(
@@ -21538,7 +21869,7 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i32_type().const_int(0, false),
                         "is_zero",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare Str.startsWith result"))?;
                 Ok(Some(is_zero.into()))
             }
             "Str__endsWith" => {
@@ -21556,11 +21887,15 @@ impl<'ctx> Codegen<'ctx> {
                 let s_len = self
                     .builder
                     .build_call(strlen, &[s.into()], "s_len")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to emit strlen for Str.endsWith input")
+                    })?;
                 let suf_len = self
                     .builder
                     .build_call(strlen, &[suf.into()], "suf_len")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to emit strlen for Str.endsWith suffix")
+                    })?;
 
                 let s_len_val = self.extract_call_value(s_len)?.into_int_value();
                 let suf_len_val = self.extract_call_value(suf_len)?.into_int_value();
@@ -21568,22 +21903,26 @@ impl<'ctx> Codegen<'ctx> {
                 let can_end = self
                     .builder
                     .build_int_compare(IntPredicate::UGE, s_len_val, suf_len_val, "can_end")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare Str.endsWith lengths"))?;
 
                 let start_idx = self
                     .builder
                     .build_int_sub(s_len_val, suf_len_val, "")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compute Str.endsWith suffix start")
+                    })?;
                 let s_suffix_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), s, &[start_idx], "")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access Str.endsWith suffix pointer")
+                        })?
                 };
 
                 let res = self
                     .builder
                     .build_call(strcmp, &[s_suffix_ptr.into(), suf.into()], "cmp")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit strcmp for Str.endsWith"))?;
                 let is_zero = self
                     .builder
                     .build_int_compare(
@@ -21592,9 +21931,12 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i32_type().const_int(0, false),
                         "is_zero",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare Str.endsWith result"))?;
 
-                let final_res = self.builder.build_and(can_end, is_zero, "").unwrap();
+                let final_res = self
+                    .builder
+                    .build_and(can_end, is_zero, "")
+                    .map_err(|_| CodegenError::new("failed to combine Str.endsWith conditions"))?;
                 Ok(Some(final_res.into()))
             }
 
@@ -21615,30 +21957,36 @@ impl<'ctx> Codegen<'ctx> {
                 let buffer_call = self
                     .builder
                     .build_call(malloc, &[initial_capacity.into()], "linebuf")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate read_line buffer"))?;
                 let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
                 let buffer_slot = self
                     .builder
                     .build_alloca(ptr_type, "read_line_buffer_slot")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate read_line buffer slot"))?;
                 let capacity_slot = self
                     .builder
                     .build_alloca(i64_type, "read_line_capacity_slot")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate read_line capacity slot"))?;
                 let total_read_slot = self
                     .builder
                     .build_alloca(i64_type, "read_line_total_slot")
-                    .unwrap();
-                self.builder.build_store(buffer_slot, buffer).unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate read_line total slot"))?;
+                self.builder
+                    .build_store(buffer_slot, buffer)
+                    .map_err(|_| CodegenError::new("failed to initialize read_line buffer slot"))?;
                 self.builder
                     .build_store(capacity_slot, initial_capacity)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to initialize read_line capacity slot")
+                    })?;
                 self.builder
                     .build_store(total_read_slot, i64_type.const_zero())
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to initialize read_line total slot"))?;
                 self.builder
                     .build_store(buffer, i8_type.const_zero())
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to initialize read_line buffer terminator")
+                    })?;
 
                 let current_fn = self
                     .current_function
@@ -21666,18 +22014,18 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_unconditional_branch(read_cond_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch into read_line loop"))?;
 
                 self.builder.position_at_end(read_cond_bb);
                 let current_capacity = self
                     .builder
                     .build_load(i64_type, capacity_slot, "read_line_capacity")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load read_line capacity"))?
                     .into_int_value();
                 let current_total = self
                     .builder
                     .build_load(i64_type, total_read_slot, "read_line_total")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load read_line total"))?
                     .into_int_value();
                 let remaining_capacity = self
                     .builder
@@ -21686,7 +22034,9 @@ impl<'ctx> Codegen<'ctx> {
                         current_total,
                         "read_line_remaining_capacity",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compute read_line remaining capacity")
+                    })?;
                 let enough_room = self
                     .builder
                     .build_int_compare(
@@ -21695,16 +22045,18 @@ impl<'ctx> Codegen<'ctx> {
                         i64_type.const_int(1, false),
                         "read_line_enough_room",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare read_line remaining capacity")
+                    })?;
                 self.builder
                     .build_conditional_branch(enough_room, read_body_bb, grow_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on read_line capacity"))?;
 
                 self.builder.position_at_end(read_body_bb);
                 let getchar_call = self
                     .builder
                     .build_call(getchar_fn, &[], "read_line_char")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit getchar for read_line"))?;
                 let char_i32 = self.extract_call_value(getchar_call)?.into_int_value();
                 let is_eof = self
                     .builder
@@ -21714,19 +22066,21 @@ impl<'ctx> Codegen<'ctx> {
                         i32_type.const_int(u32::MAX as u64, false),
                         "read_line_is_eof",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare read_line EOF sentinel"))?;
                 self.builder
                     .build_conditional_branch(is_eof, eof_bb, append_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on read_line EOF"))?;
 
                 self.builder.position_at_end(eof_bb);
-                self.builder.build_unconditional_branch(done_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(done_bb)
+                    .map_err(|_| CodegenError::new("failed to branch read_line EOF to done"))?;
 
                 self.builder.position_at_end(append_bb);
                 let current_buffer = self
                     .builder
                     .build_load(ptr_type, buffer_slot, "read_line_buffer")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load read_line buffer pointer"))?
                     .into_pointer_value();
                 let write_ptr = unsafe {
                     self.builder
@@ -21736,13 +22090,17 @@ impl<'ctx> Codegen<'ctx> {
                             &[current_total],
                             "read_line_write_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access read_line write pointer")
+                        })?
                 };
                 let char_i8 = self
                     .builder
                     .build_int_truncate(char_i32, i8_type, "read_line_char_i8")
-                    .unwrap();
-                self.builder.build_store(write_ptr, char_i8).unwrap();
+                    .map_err(|_| CodegenError::new("failed to truncate read_line character"))?;
+                self.builder
+                    .build_store(write_ptr, char_i8)
+                    .map_err(|_| CodegenError::new("failed to store read_line character"))?;
                 let next_total = self
                     .builder
                     .build_int_add(
@@ -21750,18 +22108,20 @@ impl<'ctx> Codegen<'ctx> {
                         i64_type.const_int(1, false),
                         "read_line_next_total",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to increment read_line total"))?;
                 self.builder
                     .build_store(total_read_slot, next_total)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store read_line total"))?;
                 let term_ptr = unsafe {
                     self.builder
                         .build_gep(i8_type, current_buffer, &[next_total], "read_line_term_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access read_line terminator slot")
+                        })?
                 };
                 self.builder
                     .build_store(term_ptr, i8_type.const_zero())
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store read_line terminator"))?;
                 let saw_newline = self
                     .builder
                     .build_int_compare(
@@ -21770,20 +22130,20 @@ impl<'ctx> Codegen<'ctx> {
                         i8_type.const_int(b'\n' as u64, false),
                         "read_line_saw_newline",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare read_line newline"))?;
                 self.builder
                     .build_conditional_branch(saw_newline, done_bb, read_cond_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on read_line newline"))?;
 
                 self.builder.position_at_end(grow_bb);
                 let grown_capacity = self
                     .builder
                     .build_int_add(current_capacity, chunk_chars, "read_line_new_capacity")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute grown read_line capacity"))?;
                 let grown_buffer = self
                     .builder
                     .build_load(ptr_type, buffer_slot, "read_line_grow_buffer")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load read_line grow buffer"))?
                     .into_pointer_value();
                 let realloc_call = self
                     .builder
@@ -21792,33 +22152,37 @@ impl<'ctx> Codegen<'ctx> {
                         &[grown_buffer.into(), grown_capacity.into()],
                         "read_line_realloc",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit realloc for read_line"))?;
                 let realloc_ptr = self.extract_call_value(realloc_call)?.into_pointer_value();
                 let realloc_failed = self
                     .builder
                     .build_is_null(realloc_ptr, "read_line_realloc_failed")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to test read_line realloc result"))?;
                 self.builder
                     .build_conditional_branch(realloc_failed, oom_bb, grow_ok_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on read_line realloc result")
+                    })?;
 
                 self.builder.position_at_end(oom_bb);
                 self.emit_runtime_error("read_line() out of memory", "read_line_out_of_memory")?;
 
                 self.builder.position_at_end(grow_ok_bb);
-                self.builder.build_store(buffer_slot, realloc_ptr).unwrap();
+                self.builder
+                    .build_store(buffer_slot, realloc_ptr)
+                    .map_err(|_| CodegenError::new("failed to store grown read_line buffer"))?;
                 self.builder
                     .build_store(capacity_slot, grown_capacity)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store grown read_line capacity"))?;
                 self.builder
                     .build_unconditional_branch(read_cond_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to loop read_line after growth"))?;
 
                 self.builder.position_at_end(done_bb);
                 let final_buffer = self
                     .builder
                     .build_load(ptr_type, buffer_slot, "read_line_final_buffer")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load final read_line buffer"))?;
 
                 Ok(Some(final_buffer))
             }
@@ -21832,10 +22196,10 @@ impl<'ctx> Codegen<'ctx> {
                 let code_i32 = self
                     .builder
                     .build_int_truncate(code.into_int_value(), self.context.i32_type(), "exitcode")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to truncate exit code to i32"))?;
                 self.builder
                     .build_call(exit_fn, &[code_i32.into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit exit call"))?;
                 Ok(None) // void function
             }
             "range" => {
@@ -21909,10 +22273,13 @@ impl<'ctx> Codegen<'ctx> {
                         &[path.into(), mode_global.as_pointer_value().into()],
                         "file",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fopen for File.write"))?;
                 let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
 
-                let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
+                let is_null = self
+                    .builder
+                    .build_is_null(file_ptr, "is_null")
+                    .map_err(|_| CodegenError::new("failed to test File.write file pointer"))?;
 
                 let current_fn = self
                     .current_function
@@ -21927,25 +22294,25 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_conditional_branch(is_null, fail_block, success_block)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on File.write open result"))?;
 
                 // Fail
                 self.builder.position_at_end(fail_block);
                 self.builder
                     .build_unconditional_branch(merge_block)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch File.write open failure"))?;
 
                 // Success
                 self.builder.position_at_end(success_block);
                 let write_result = self
                     .builder
                     .build_call(fputs, &[content.into(), file_ptr.into()], "write")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fputs for File.write"))?;
                 let write_code = self.extract_call_value(write_result)?.into_int_value();
                 let close_result = self
                     .builder
                     .build_call(fclose, &[file_ptr.into()], "close")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fclose for File.write"))?;
                 let close_code = self.extract_call_value(close_result)?.into_int_value();
                 let write_failed = self
                     .builder
@@ -21955,7 +22322,7 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i32_type().const_zero(),
                         "file_write_failed",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare File.write result"))?;
                 let close_failed = self
                     .builder
                     .build_int_compare(
@@ -21964,31 +22331,37 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i32_type().const_zero(),
                         "file_close_failed",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare File.write close result"))?;
                 let io_failed = self
                     .builder
                     .build_or(write_failed, close_failed, "file_io_failed")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to combine File.write failure conditions")
+                    })?;
                 self.builder
                     .build_conditional_branch(io_failed, write_fail_block, write_ok_block)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on File.write I/O result"))?;
 
                 self.builder.position_at_end(write_fail_block);
                 self.builder
                     .build_unconditional_branch(merge_block)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch File.write failure to merge")
+                    })?;
 
                 self.builder.position_at_end(write_ok_block);
                 self.builder
                     .build_unconditional_branch(merge_block)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch File.write success to merge")
+                    })?;
 
                 // Merge
                 self.builder.position_at_end(merge_block);
                 let phi = self
                     .builder
                     .build_phi(self.context.bool_type(), "result")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to build File.write result phi"))?;
                 let true_val = self.context.bool_type().const_int(1, false);
                 let false_val = self.context.bool_type().const_int(0, false);
                 phi.add_incoming(&[
@@ -22033,10 +22406,13 @@ impl<'ctx> Codegen<'ctx> {
                         &[path.into(), mode_global.as_pointer_value().into()],
                         "file",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fopen for File.read"))?;
                 let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
 
-                let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
+                let is_null = self
+                    .builder
+                    .build_is_null(file_ptr, "is_null")
+                    .map_err(|_| CodegenError::new("failed to test File.read file pointer"))?;
 
                 let current_fn = self
                     .current_function
@@ -22054,7 +22430,7 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_conditional_branch(is_null, fail_block, success_block)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on File.read open result"))?;
 
                 self.builder.position_at_end(fail_block);
                 self.emit_runtime_error(
@@ -22070,7 +22446,7 @@ impl<'ctx> Codegen<'ctx> {
                 let seek_result = self
                     .builder
                     .build_call(fseek, &[file_ptr.into(), zero.into(), seek_end.into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fseek for File.read"))?;
                 let seek_code = self.extract_call_value(seek_result)?.into_int_value();
                 let seek_succeeded = self
                     .builder
@@ -22080,10 +22456,10 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i32_type().const_zero(),
                         "file_read_seek_succeeded",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare File.read seek result"))?;
                 self.builder
                     .build_conditional_branch(seek_succeeded, seek_ok_block, seek_fail_block)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on File.read seek result"))?;
 
                 self.builder.position_at_end(seek_fail_block);
                 self.emit_runtime_error(
@@ -22097,7 +22473,7 @@ impl<'ctx> Codegen<'ctx> {
                 let size_call = self
                     .builder
                     .build_call(ftell, &[file_ptr.into()], "size")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit ftell for File.read"))?;
                 let size = self.extract_call_value(size_call)?.into_int_value();
                 let size_non_negative = self
                     .builder
@@ -22107,10 +22483,14 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_zero(),
                         "file_read_size_non_negative",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare File.read size against zero")
+                    })?;
                 self.builder
                     .build_conditional_branch(size_non_negative, size_ok_block, size_fail_block)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on File.read size validity")
+                    })?;
 
                 self.builder.position_at_end(size_fail_block);
                 self.emit_runtime_error(
@@ -22123,15 +22503,20 @@ impl<'ctx> Codegen<'ctx> {
                 // rewind(f)
                 self.builder
                     .build_call(rewind, &[file_ptr.into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit rewind for File.read"))?;
 
                 // buffer = malloc(size + 1)
                 let one = self.context.i64_type().const_int(1, false);
-                let alloc_size = self.builder.build_int_add(size, one, "alloc_size").unwrap();
+                let alloc_size = self
+                    .builder
+                    .build_int_add(size, one, "alloc_size")
+                    .map_err(|_| {
+                        CodegenError::new("failed to compute File.read allocation size")
+                    })?;
                 let buffer_call = self
                     .builder
                     .build_call(malloc, &[alloc_size.into()], "buffer")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate File.read buffer"))?;
                 let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
 
                 // fread(buffer, 1, size, f)
@@ -22147,15 +22532,19 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fread for File.read"))?;
 
                 let scan_index_slot = self
                     .builder
                     .build_alloca(self.context.i64_type(), "file_read_scan_index")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to allocate File.read scan index slot")
+                    })?;
                 self.builder
                     .build_store(scan_index_slot, self.context.i64_type().const_zero())
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to initialize File.read scan index slot")
+                    })?;
 
                 let scan_cond_block = self
                     .context
@@ -22175,7 +22564,7 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_unconditional_branch(scan_cond_block)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch into File.read scan loop"))?;
 
                 self.builder.position_at_end(scan_cond_block);
                 let scan_index = self
@@ -22185,7 +22574,7 @@ impl<'ctx> Codegen<'ctx> {
                         scan_index_slot,
                         "file_read_scan_index_value",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load File.read scan index"))?
                     .into_int_value();
                 let scan_has_more = self
                     .builder
@@ -22195,10 +22584,10 @@ impl<'ctx> Codegen<'ctx> {
                         size,
                         "file_read_scan_has_more",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare File.read scan bounds"))?;
                 self.builder
                     .build_conditional_branch(scan_has_more, scan_body_block, scan_done_block)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch in File.read scan loop"))?;
 
                 self.builder.position_at_end(scan_body_block);
                 let scan_byte_ptr = unsafe {
@@ -22209,12 +22598,14 @@ impl<'ctx> Codegen<'ctx> {
                             &[scan_index],
                             "file_read_scan_byte_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access File.read scan byte pointer")
+                        })?
                 };
                 let scan_byte = self
                     .builder
                     .build_load(self.context.i8_type(), scan_byte_ptr, "file_read_scan_byte")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load File.read scan byte"))?
                     .into_int_value();
                 let scan_is_zero = self
                     .builder
@@ -22224,10 +22615,14 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i8_type().const_zero(),
                         "file_read_scan_is_zero",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare File.read scan byte against zero")
+                    })?;
                 self.builder
                     .build_conditional_branch(scan_is_zero, scan_fail_block, scan_next_block)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on File.read NUL byte scan")
+                    })?;
 
                 self.builder.position_at_end(scan_fail_block);
                 self.emit_runtime_error("File.read() cannot load NUL bytes", "file_read_nul_byte")?;
@@ -22240,31 +22635,33 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(1, false),
                         "file_read_next_scan_index",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to increment File.read scan index"))?;
                 self.builder
                     .build_store(scan_index_slot, next_scan_index)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store File.read scan index"))?;
                 self.builder
                     .build_unconditional_branch(scan_cond_block)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to loop File.read scan"))?;
 
                 self.builder.position_at_end(scan_done_block);
                 // buffer[size] = 0 (null terminate)
                 let term_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), buffer, &[size], "term_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access File.read terminator slot")
+                        })?
                 };
                 self.builder
                     .build_store(term_ptr, self.context.i8_type().const_int(0, false))
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to null-terminate File.read buffer"))?;
 
                 self.compile_utf8_string_length_runtime(buffer)?;
 
                 // fclose(f)
                 self.builder
                     .build_call(fclose, &[file_ptr.into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fclose for File.read"))?;
 
                 Ok(Some(buffer.into()))
             }
@@ -22298,17 +22695,22 @@ impl<'ctx> Codegen<'ctx> {
                         &[path.into(), mode_global.as_pointer_value().into()],
                         "file",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fopen for File.exists"))?;
                 let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
 
-                let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
+                let is_null = self
+                    .builder
+                    .build_is_null(file_ptr, "is_null")
+                    .map_err(|_| CodegenError::new("failed to test File.exists file pointer"))?;
                 let alloca_exists_slot = self
                     .builder
                     .build_alloca(self.context.bool_type(), "exists_result_slot")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate File.exists result slot"))?;
                 self.builder
                     .build_store(alloca_exists_slot, self.context.bool_type().const_zero())
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to initialize File.exists result slot")
+                    })?;
 
                 let current_fn = self
                     .current_function
@@ -22318,13 +22720,17 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_conditional_branch(is_null, end_block, probe_block)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on File.exists open result")
+                    })?;
 
                 self.builder.position_at_end(probe_block);
                 let buf_slot = self
                     .builder
                     .build_alloca(self.context.i8_type(), "exists_buf")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to allocate File.exists probe buffer")
+                    })?;
                 let one_i64 = self.context.i64_type().const_int(1, false);
                 self.builder
                     .build_call(
@@ -22337,15 +22743,15 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fread for File.exists"))?;
                 let err_call = self
                     .builder
                     .build_call(ferror, &[file_ptr.into()], "exists_err")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit ferror for File.exists"))?;
                 let err_code = self.extract_call_value(err_call)?.into_int_value();
                 self.builder
                     .build_call(fclose, &[file_ptr.into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fclose for File.exists"))?;
                 let is_regular = self
                     .builder
                     .build_int_compare(
@@ -22354,11 +22760,13 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i32_type().const_zero(),
                         "exists_is_regular",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare File.exists probe result"))?;
                 self.builder
                     .build_store(alloca_exists_slot, is_regular)
-                    .unwrap();
-                self.builder.build_unconditional_branch(end_block).unwrap();
+                    .map_err(|_| CodegenError::new("failed to store File.exists result"))?;
+                self.builder
+                    .build_unconditional_branch(end_block)
+                    .map_err(|_| CodegenError::new("failed to branch File.exists to end"))?;
 
                 self.builder.position_at_end(end_block);
                 let final_exists = self
@@ -22368,7 +22776,7 @@ impl<'ctx> Codegen<'ctx> {
                         alloca_exists_slot,
                         "exists_final_value",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load File.exists final result"))?;
                 Ok(Some(final_exists))
             }
 
@@ -22404,7 +22812,7 @@ impl<'ctx> Codegen<'ctx> {
                         &[path.into(), mode_global.as_pointer_value().into()],
                         "delete_file_probe",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fopen for File.delete probe"))?;
                 let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
                 let current_fn = self
                     .current_function
@@ -22424,24 +22832,30 @@ impl<'ctx> Codegen<'ctx> {
                 let delete_result_slot = self
                     .builder
                     .build_alloca(self.context.bool_type(), "file_delete_result_slot")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate File.delete result slot"))?;
                 self.builder
                     .build_store(delete_result_slot, self.context.bool_type().const_zero())
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to initialize File.delete result slot")
+                    })?;
 
                 let probe_is_null = self
                     .builder
                     .build_is_null(file_ptr, "delete_probe_is_null")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to test File.delete probe pointer"))?;
                 self.builder
                     .build_conditional_branch(probe_is_null, delete_fail_bb, probe_open_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on File.delete probe open result")
+                    })?;
 
                 self.builder.position_at_end(probe_open_bb);
                 let buf_slot = self
                     .builder
                     .build_alloca(self.context.i8_type(), "delete_probe_buf")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to allocate File.delete probe buffer")
+                    })?;
                 let one_i64 = self.context.i64_type().const_int(1, false);
                 self.builder
                     .build_call(
@@ -22454,15 +22868,19 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fread for File.delete probe"))?;
                 let err_call = self
                     .builder
                     .build_call(ferror, &[file_ptr.into()], "delete_probe_err")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to emit ferror for File.delete probe")
+                    })?;
                 let err_code = self.extract_call_value(err_call)?.into_int_value();
                 self.builder
                     .build_call(fclose, &[file_ptr.into()], "delete_probe_close")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to emit fclose for File.delete probe")
+                    })?;
                 let probe_is_regular = self
                     .builder
                     .build_int_compare(
@@ -22471,36 +22889,42 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i32_type().const_zero(),
                         "delete_probe_is_regular",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare File.delete probe result"))?;
                 self.builder
                     .build_conditional_branch(probe_is_regular, delete_remove_bb, delete_fail_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on File.delete probe regularity")
+                    })?;
 
                 self.builder.position_at_end(delete_remove_bb);
                 let res_call = self
                     .builder
                     .build_call(remove, &[path.into()], "res")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit remove for File.delete"))?;
                 let res = self.extract_call_value(res_call)?.into_int_value();
                 let zero = self.context.i32_type().const_int(0, false);
                 let success = self
                     .builder
                     .build_int_compare(IntPredicate::EQ, res, zero, "success")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare File.delete result"))?;
                 self.builder
                     .build_store(delete_result_slot, success)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store File.delete success flag"))?;
                 self.builder
                     .build_unconditional_branch(delete_merge_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch File.delete success to merge")
+                    })?;
 
                 self.builder.position_at_end(delete_fail_bb);
                 self.builder
                     .build_store(delete_result_slot, self.context.bool_type().const_zero())
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store File.delete failure flag"))?;
                 self.builder
                     .build_unconditional_branch(delete_merge_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch File.delete failure to merge")
+                    })?;
 
                 self.builder.position_at_end(delete_merge_bb);
                 let final_result = self
@@ -22510,7 +22934,7 @@ impl<'ctx> Codegen<'ctx> {
                         delete_result_slot,
                         "file_delete_result",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load File.delete final result"))?;
                 Ok(Some(final_result))
             }
 
@@ -22530,21 +22954,25 @@ impl<'ctx> Codegen<'ctx> {
                 let t_val = self
                     .builder
                     .build_call(time_fn, &[null.into()], "t")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit time() for Time.now"))?;
                 let t_raw = self.extract_call_value(t_val)?;
 
                 // 2. Alloca for time_t (i64)
                 let t_ptr = self
                     .builder
                     .build_alloca(self.context.i64_type(), "t_ptr")
-                    .unwrap();
-                self.builder.build_store(t_ptr, t_raw).unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to allocate time_t slot for Time.now")
+                    })?;
+                self.builder
+                    .build_store(t_ptr, t_raw)
+                    .map_err(|_| CodegenError::new("failed to store time_t value for Time.now"))?;
 
                 // 3. Get local time struct pointer
                 let tm_ptr_val = self
                     .builder
                     .build_call(localtime_fn, &[t_ptr.into()], "tm")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit localtime() for Time.now"))?;
                 let tm_ptr = self.extract_call_value(tm_ptr_val)?.into_pointer_value();
 
                 // 4. Allocate a buffer sized from the format string instead of a fixed
@@ -22553,7 +22981,7 @@ impl<'ctx> Codegen<'ctx> {
                 let format_len_call = self
                     .builder
                     .build_call(strlen_fn, &[format.into()], "format_len")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit strlen for Time.now format"))?;
                 let format_len = self.extract_call_value(format_len_call)?.into_int_value();
                 let scaled_format_len = self
                     .builder
@@ -22562,7 +22990,7 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(8, false),
                         "scaled_format_len",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to scale Time.now format length"))?;
                 let dynamic_buf_size = self
                     .builder
                     .build_int_add(
@@ -22570,7 +22998,9 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(64, false),
                         "dynamic_time_buf_size",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compute Time.now dynamic buffer size")
+                    })?;
                 let min_buf_size = self.context.i64_type().const_int(64, false);
                 let use_dynamic_buf = self
                     .builder
@@ -22580,7 +23010,7 @@ impl<'ctx> Codegen<'ctx> {
                         min_buf_size,
                         "use_dynamic_time_buf",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare Time.now buffer sizes"))?;
                 let buf_size = self
                     .builder
                     .build_select(
@@ -22589,12 +23019,12 @@ impl<'ctx> Codegen<'ctx> {
                         min_buf_size,
                         "time_buf_size",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to select Time.now buffer size"))?
                     .into_int_value();
                 let buf_ptr_val = self
                     .builder
                     .build_call(malloc, &[buf_size.into()], "buf")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate Time.now buffer"))?;
                 let buf_ptr = self.extract_call_value(buf_ptr_val)?.into_pointer_value();
                 let last_byte_offset = self
                     .builder
@@ -22603,7 +23033,9 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(1, false),
                         "time_last_byte_offset",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compute Time.now last byte offset")
+                    })?;
                 let last_byte_ptr = unsafe {
                     self.builder
                         .build_gep(
@@ -22612,20 +23044,24 @@ impl<'ctx> Codegen<'ctx> {
                             &[last_byte_offset],
                             "time_last_byte_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access Time.now last byte pointer")
+                        })?
                 };
                 self.builder
                     .build_store(buf_ptr, self.context.i8_type().const_zero())
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to initialize Time.now buffer"))?;
                 self.builder
                     .build_store(last_byte_ptr, self.context.i8_type().const_zero())
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to initialize Time.now buffer tail"))?;
 
                 // 5. If format is empty string, use default "%H:%M:%S"
                 let is_empty = self
                     .builder
                     .build_call(strlen_fn, &[format.into()], "len")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to emit strlen for Time.now empty check")
+                    })?;
                 let is_empty_val = self.extract_call_value(is_empty)?.into_int_value();
                 let is_zero = self
                     .builder
@@ -22635,7 +23071,9 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(0, false),
                         "is_zero",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare Time.now format length against zero")
+                    })?;
 
                 let default_fmt = self.context.const_string(b"%H:%M:%S", true);
                 let default_fmt_global =
@@ -22652,7 +23090,7 @@ impl<'ctx> Codegen<'ctx> {
                         format,
                         "fmt",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to select Time.now format string"))?;
 
                 // 6. Call strftime(buf, 64, format, tm)
                 self.builder
@@ -22666,7 +23104,7 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "res",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit strftime for Time.now"))?;
 
                 Ok(Some(buf_ptr.into()))
             }
@@ -22677,7 +23115,7 @@ impl<'ctx> Codegen<'ctx> {
                 let res = self
                     .builder
                     .build_call(time_fn, &[null.into()], "time")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit time() for Time.unix"))?;
                 Ok(Some(self.extract_call_value(res)?))
             }
 
@@ -22705,7 +23143,9 @@ impl<'ctx> Codegen<'ctx> {
                 let ms_i64 = self
                     .builder
                     .build_int_cast(ms.into_int_value(), self.context.i64_type(), "sleep_ms")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to cast Time.sleep milliseconds to i64")
+                    })?;
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("Time.sleep used outside function"))?;
@@ -22723,10 +23163,12 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_zero(),
                         "time_sleep_negative",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare Time.sleep milliseconds against zero")
+                    })?;
                 self.builder
                     .build_conditional_branch(sleep_negative, sleep_invalid_bb, sleep_valid_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for Time.sleep validation"))?;
 
                 self.builder.position_at_end(sleep_invalid_bb);
                 self.emit_runtime_error(
@@ -22741,10 +23183,12 @@ impl<'ctx> Codegen<'ctx> {
                     let ms_i32 = self
                         .builder
                         .build_int_truncate(ms_i64, self.context.i32_type(), "ms32")
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to truncate Time.sleep milliseconds to i32")
+                        })?;
                     self.builder
                         .build_call(sleep_fn, &[ms_i32.into()], "")
-                        .unwrap();
+                        .map_err(|_| CodegenError::new("failed to emit Sleep for Time.sleep"))?;
                 }
                 #[cfg(not(windows))]
                 {
@@ -22752,14 +23196,20 @@ impl<'ctx> Codegen<'ctx> {
                     let us = self
                         .builder
                         .build_int_mul(ms_i64, self.context.i64_type().const_int(1000, false), "us")
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new(
+                                "failed to convert Time.sleep milliseconds to microseconds",
+                            )
+                        })?;
                     let us_i32 = self
                         .builder
                         .build_int_truncate(us, self.context.i32_type(), "us32")
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to truncate Time.sleep microseconds to i32")
+                        })?;
                     self.builder
                         .build_call(usleep_fn, &[us_i32.into()], "")
-                        .unwrap();
+                        .map_err(|_| CodegenError::new("failed to emit usleep for Time.sleep"))?;
                 }
                 Ok(Some(self.context.i8_type().const_int(0, false).into()))
             }
@@ -22774,11 +23224,13 @@ impl<'ctx> Codegen<'ctx> {
                 let res = self
                     .builder
                     .build_call(getenv_fn, &[name.into()], "env")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit getenv for System.getenv"))?;
                 let val = self.extract_call_value(res)?.into_pointer_value();
 
                 // If NULL, return empty string
-                let is_null = self.builder.build_is_null(val, "is_null").unwrap();
+                let is_null = self.builder.build_is_null(val, "is_null").map_err(|_| {
+                    CodegenError::new("failed to test System.getenv result for null")
+                })?;
                 let empty_str = self.get_or_create_empty_string();
 
                 let current_fn = self
@@ -22790,10 +23242,16 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_conditional_branch(is_null, fail_bb, success_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on System.getenv null result")
+                    })?;
 
                 self.builder.position_at_end(fail_bb);
-                self.builder.build_unconditional_branch(merge_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(merge_bb)
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch System.getenv failure to merge")
+                    })?;
 
                 self.builder.position_at_end(success_bb);
                 self.compile_utf8_string_length_runtime(val)?;
@@ -22801,13 +23259,17 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .get_insert_block()
                     .ok_or_else(|| CodegenError::new("System.getenv merge predecessor missing"))?;
-                self.builder.build_unconditional_branch(merge_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(merge_bb)
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch System.getenv success to merge")
+                    })?;
 
                 self.builder.position_at_end(merge_bb);
                 let phi = self
                     .builder
                     .build_phi(self.context.ptr_type(AddressSpace::default()), "res")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to build System.getenv result phi"))?;
                 phi.add_incoming(&[(&empty_str, fail_bb), (&val, success_merge_block)]);
                 Ok(Some(phi.as_basic_value()))
             }
@@ -22821,7 +23283,7 @@ impl<'ctx> Codegen<'ctx> {
                 let res = self
                     .builder
                     .build_call(system_fn, &[cmd.into()], "exit_code")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit system() for System.shell"))?;
                 let code = self.extract_call_value(res)?.into_int_value();
                 #[cfg(not(windows))]
                 let code = {
@@ -22853,13 +23315,23 @@ impl<'ctx> Codegen<'ctx> {
                             i32_type.const_all_ones(),
                             "system_shell_call_failed",
                         )
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new(
+                                "failed to compare System.shell raw status against failure",
+                            )
+                        })?;
                     self.builder
                         .build_conditional_branch(call_failed, decode_error_bb, signal_check_bb)
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to branch on System.shell call failure")
+                        })?;
 
                     self.builder.position_at_end(decode_error_bb);
-                    self.builder.build_unconditional_branch(merge_bb).unwrap();
+                    self.builder
+                        .build_unconditional_branch(merge_bb)
+                        .map_err(|_| {
+                            CodegenError::new("failed to branch System.shell decode error to merge")
+                        })?;
 
                     self.builder.position_at_end(signal_check_bb);
                     let signal_bits = self
@@ -22869,7 +23341,9 @@ impl<'ctx> Codegen<'ctx> {
                             i32_type.const_int(0x7f, false),
                             "system_shell_signal_bits",
                         )
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to mask System.shell signal bits")
+                        })?;
                     let has_signal = self
                         .builder
                         .build_int_compare(
@@ -22878,10 +23352,14 @@ impl<'ctx> Codegen<'ctx> {
                             i32_type.const_zero(),
                             "system_shell_has_signal",
                         )
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to compare System.shell signal bits")
+                        })?;
                     self.builder
                         .build_conditional_branch(has_signal, signaled_bb, exited_bb)
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to branch on System.shell signal state")
+                        })?;
 
                     self.builder.position_at_end(signaled_bb);
                     let signaled_code = self
@@ -22891,8 +23369,16 @@ impl<'ctx> Codegen<'ctx> {
                             i32_type.const_int(128, false),
                             "system_shell_signaled_code",
                         )
-                        .unwrap();
-                    self.builder.build_unconditional_branch(merge_bb).unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute System.shell signal exit code")
+                        })?;
+                    self.builder
+                        .build_unconditional_branch(merge_bb)
+                        .map_err(|_| {
+                            CodegenError::new(
+                                "failed to branch System.shell signaled path to merge",
+                            )
+                        })?;
 
                     self.builder.position_at_end(exited_bb);
                     let shifted_code = self
@@ -22903,7 +23389,9 @@ impl<'ctx> Codegen<'ctx> {
                             false,
                             "system_shell_shifted_code",
                         )
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to shift System.shell exit status")
+                        })?;
                     let exit_code = self
                         .builder
                         .build_and(
@@ -22911,14 +23399,20 @@ impl<'ctx> Codegen<'ctx> {
                             i32_type.const_int(0xff, false),
                             "system_shell_exit_code",
                         )
-                        .unwrap();
-                    self.builder.build_unconditional_branch(merge_bb).unwrap();
+                        .map_err(|_| CodegenError::new("failed to mask System.shell exit code"))?;
+                    self.builder
+                        .build_unconditional_branch(merge_bb)
+                        .map_err(|_| {
+                            CodegenError::new("failed to branch System.shell exited path to merge")
+                        })?;
 
                     self.builder.position_at_end(merge_bb);
                     let decoded_phi = self
                         .builder
                         .build_phi(i32_type, "system_shell_decoded")
-                        .unwrap();
+                        .map_err(|_| {
+                            CodegenError::new("failed to build System.shell decoded status phi")
+                        })?;
                     decoded_phi.add_incoming(&[
                         (&i32_type.const_all_ones(), decode_error_bb),
                         (&signaled_code, signaled_bb),
@@ -22929,7 +23423,9 @@ impl<'ctx> Codegen<'ctx> {
                 let code64 = self
                     .builder
                     .build_int_s_extend(code, self.context.i64_type(), "code64")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to extend System.shell exit code to i64")
+                    })?;
                 Ok(Some(code64.into()))
             }
 
@@ -22956,10 +23452,13 @@ impl<'ctx> Codegen<'ctx> {
                         &[cmd.into(), mode_global.as_pointer_value().into()],
                         "pipe",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit popen for System.exec"))?;
                 let pipe_ptr = self.extract_call_value(pipe_val)?.into_pointer_value();
 
-                let is_null = self.builder.build_is_null(pipe_ptr, "is_null").unwrap();
+                let is_null = self
+                    .builder
+                    .build_is_null(pipe_ptr, "is_null")
+                    .map_err(|_| CodegenError::new("failed to test System.exec pipe pointer"))?;
 
                 let current_fn = self
                     .current_function
@@ -22970,12 +23469,18 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_conditional_branch(is_null, fail_bb, success_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on System.exec pipe result")
+                    })?;
 
                 // Fail - return empty string
                 self.builder.position_at_end(fail_bb);
                 let empty_str = self.get_or_create_empty_string();
-                self.builder.build_unconditional_branch(merge_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(merge_bb)
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch System.exec failure to merge")
+                    })?;
 
                 // Success - Read from pipe
                 self.builder.position_at_end(success_bb);
@@ -23008,42 +23513,52 @@ impl<'ctx> Codegen<'ctx> {
                 let buf_slot = self
                     .builder
                     .build_alloca(ptr_type, "exec_buf_slot")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate System.exec buffer slot"))?;
                 let capacity_slot = self
                     .builder
                     .build_alloca(i64_type, "exec_capacity_slot")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to allocate System.exec capacity slot")
+                    })?;
                 let total_read_slot = self
                     .builder
                     .build_alloca(i64_type, "exec_total_read_slot")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to allocate System.exec total read slot")
+                    })?;
 
                 let buf_call = self
                     .builder
                     .build_call(malloc, &[initial_capacity.into()], "buf")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate System.exec buffer"))?;
                 let buf = self.extract_call_value(buf_call)?.into_pointer_value();
-                self.builder.build_store(buf_slot, buf).unwrap();
+                self.builder
+                    .build_store(buf_slot, buf)
+                    .map_err(|_| CodegenError::new("failed to store System.exec buffer pointer"))?;
                 self.builder
                     .build_store(capacity_slot, initial_capacity)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store System.exec capacity"))?;
                 self.builder
                     .build_store(total_read_slot, i64_type.const_zero())
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to initialize System.exec total read")
+                    })?;
                 self.builder
                     .build_unconditional_branch(read_cond_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch into System.exec read loop")
+                    })?;
 
                 self.builder.position_at_end(read_cond_bb);
                 let current_capacity = self
                     .builder
                     .build_load(i64_type, capacity_slot, "exec_capacity")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load System.exec capacity"))?
                     .into_int_value();
                 let current_total = self
                     .builder
                     .build_load(i64_type, total_read_slot, "exec_total_read")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load System.exec total read"))?
                     .into_int_value();
                 let remaining_capacity = self
                     .builder
@@ -23051,10 +23566,16 @@ impl<'ctx> Codegen<'ctx> {
                         current_capacity,
                         self.builder
                             .build_int_add(current_total, one, "exec_total_plus_term")
-                            .unwrap(),
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to compute System.exec total plus terminator",
+                                )
+                            })?,
                         "exec_remaining_capacity",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compute System.exec remaining capacity")
+                    })?;
                 let needs_grow = self
                     .builder
                     .build_int_compare(
@@ -23063,21 +23584,25 @@ impl<'ctx> Codegen<'ctx> {
                         i64_type.const_zero(),
                         "exec_needs_grow",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare System.exec remaining capacity")
+                    })?;
                 self.builder
                     .build_conditional_branch(needs_grow, grow_bb, read_body_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on System.exec growth"))?;
 
                 self.builder.position_at_end(read_body_bb);
                 let current_buf = self
                     .builder
                     .build_load(ptr_type, buf_slot, "exec_buf")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load System.exec buffer"))?
                     .into_pointer_value();
                 let write_ptr = unsafe {
                     self.builder
                         .build_gep(i8_type, current_buf, &[current_total], "exec_write_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access System.exec write pointer")
+                        })?
                 };
                 let read_len_call = self
                     .builder
@@ -23091,7 +23616,7 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "read_len",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit fread for System.exec"))?;
                 let read_len = self.extract_call_value(read_len_call)?.into_int_value();
                 let reached_eof = self
                     .builder
@@ -23101,19 +23626,25 @@ impl<'ctx> Codegen<'ctx> {
                         i64_type.const_zero(),
                         "exec_reached_eof",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare System.exec read length against zero")
+                    })?;
                 self.builder
                     .build_conditional_branch(reached_eof, done_bb, read_after_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on System.exec EOF"))?;
 
                 self.builder.position_at_end(read_after_bb);
                 let next_total = self
                     .builder
                     .build_int_add(current_total, read_len, "exec_next_total")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compute System.exec next total read")
+                    })?;
                 self.builder
                     .build_store(total_read_slot, next_total)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to store System.exec next total read")
+                    })?;
                 let filled_chunk = self
                     .builder
                     .build_int_compare(
@@ -23122,25 +23653,27 @@ impl<'ctx> Codegen<'ctx> {
                         remaining_capacity,
                         "exec_filled_chunk",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare System.exec filled chunk"))?;
                 self.builder
                     .build_conditional_branch(filled_chunk, grow_bb, read_cond_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch after System.exec read chunk")
+                    })?;
 
                 self.builder.position_at_end(grow_bb);
                 let grow_capacity = self
                     .builder
                     .build_load(i64_type, capacity_slot, "exec_grow_capacity")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load System.exec grow capacity"))?
                     .into_int_value();
                 let new_capacity = self
                     .builder
                     .build_int_add(grow_capacity, chunk_size, "exec_new_capacity")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute System.exec new capacity"))?;
                 let grow_buf = self
                     .builder
                     .build_load(ptr_type, buf_slot, "exec_grow_buf")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load System.exec grow buffer"))?
                     .into_pointer_value();
                 let realloc_call = self
                     .builder
@@ -23149,46 +23682,54 @@ impl<'ctx> Codegen<'ctx> {
                         &[grow_buf.into(), new_capacity.into()],
                         "exec_realloc",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit realloc for System.exec"))?;
                 let realloc_buf = self.extract_call_value(realloc_call)?.into_pointer_value();
                 let realloc_failed = self
                     .builder
                     .build_is_null(realloc_buf, "exec_realloc_failed")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to test System.exec realloc result"))?;
                 self.builder
                     .build_conditional_branch(realloc_failed, oom_bb, grow_ok_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on System.exec realloc result")
+                    })?;
 
                 self.builder.position_at_end(oom_bb);
                 self.emit_runtime_error("System.exec() out of memory", "exec_out_of_memory")?;
 
                 self.builder.position_at_end(grow_ok_bb);
-                self.builder.build_store(buf_slot, realloc_buf).unwrap();
+                self.builder
+                    .build_store(buf_slot, realloc_buf)
+                    .map_err(|_| CodegenError::new("failed to store grown System.exec buffer"))?;
                 self.builder
                     .build_store(capacity_slot, new_capacity)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store grown System.exec capacity"))?;
                 self.builder
                     .build_unconditional_branch(read_cond_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to loop System.exec after growth"))?;
 
                 self.builder.position_at_end(done_bb);
                 let final_total = self
                     .builder
                     .build_load(i64_type, total_read_slot, "exec_final_total")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load System.exec final total"))?
                     .into_int_value();
                 let final_buf = self
                     .builder
                     .build_load(ptr_type, buf_slot, "exec_final_buf")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load System.exec final buffer"))?
                     .into_pointer_value();
                 let scan_index_slot = self
                     .builder
                     .build_alloca(i64_type, "exec_scan_index_slot")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to allocate System.exec scan index slot")
+                    })?;
                 self.builder
                     .build_store(scan_index_slot, i64_type.const_zero())
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to initialize System.exec scan index")
+                    })?;
                 let scan_cond_bb = self
                     .context
                     .append_basic_block(current_fn, "exec.scan.cond");
@@ -23206,13 +23747,13 @@ impl<'ctx> Codegen<'ctx> {
                     .append_basic_block(current_fn, "exec.validate_utf8");
                 self.builder
                     .build_unconditional_branch(scan_cond_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch into System.exec NUL scan"))?;
 
                 self.builder.position_at_end(scan_cond_bb);
                 let scan_index = self
                     .builder
                     .build_load(i64_type, scan_index_slot, "exec_scan_index")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load System.exec scan index"))?
                     .into_int_value();
                 let scan_has_more = self
                     .builder
@@ -23222,21 +23763,23 @@ impl<'ctx> Codegen<'ctx> {
                         final_total,
                         "exec_scan_has_more",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare System.exec scan bounds"))?;
                 self.builder
                     .build_conditional_branch(scan_has_more, scan_body_bb, validate_utf8_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch in System.exec NUL scan"))?;
 
                 self.builder.position_at_end(scan_body_bb);
                 let scan_byte_ptr = unsafe {
                     self.builder
                         .build_gep(i8_type, final_buf, &[scan_index], "exec_scan_byte_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access System.exec scan byte pointer")
+                        })?
                 };
                 let scan_byte = self
                     .builder
                     .build_load(i8_type, scan_byte_ptr, "exec_scan_byte")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load System.exec scan byte"))?
                     .into_int_value();
                 let scan_is_zero = self
                     .builder
@@ -23246,10 +23789,14 @@ impl<'ctx> Codegen<'ctx> {
                         i8_type.const_zero(),
                         "exec_scan_is_zero",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare System.exec scan byte against zero")
+                    })?;
                 self.builder
                     .build_conditional_branch(scan_is_zero, scan_fail_bb, scan_next_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on System.exec NUL byte detection")
+                    })?;
 
                 self.builder.position_at_end(scan_fail_bb);
                 self.emit_runtime_error(
@@ -23265,39 +23812,47 @@ impl<'ctx> Codegen<'ctx> {
                         i64_type.const_int(1, false),
                         "exec_next_scan_index",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to increment System.exec scan index"))?;
                 self.builder
                     .build_store(scan_index_slot, next_scan_index)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store System.exec scan index"))?;
                 self.builder
                     .build_unconditional_branch(scan_cond_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to loop System.exec NUL scan"))?;
 
                 self.builder.position_at_end(validate_utf8_bb);
                 let term_ptr = unsafe {
                     self.builder
                         .build_gep(i8_type, final_buf, &[final_total], "term_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to access System.exec terminator slot")
+                        })?
                 };
                 self.builder
                     .build_store(term_ptr, i8_type.const_zero())
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to null-terminate System.exec buffer")
+                    })?;
                 self.compile_utf8_string_length_runtime(final_buf)?;
                 self.builder
                     .build_call(pclose_fn, &[pipe_ptr.into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit pclose for System.exec"))?;
                 let success_merge_block = self
                     .builder
                     .get_insert_block()
                     .ok_or_else(|| CodegenError::new("System.exec merge predecessor missing"))?;
-                self.builder.build_unconditional_branch(merge_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(merge_bb)
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch System.exec success to merge")
+                    })?;
 
                 // Merge
                 self.builder.position_at_end(merge_bb);
                 let phi = self
                     .builder
                     .build_phi(self.context.ptr_type(AddressSpace::default()), "res")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to build System.exec result phi"))?;
                 phi.add_incoming(&[(&empty_str, fail_bb), (&final_buf, success_merge_block)]);
                 Ok(Some(phi.as_basic_value()))
             }
@@ -23315,9 +23870,12 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "cwd",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit getcwd for System.cwd"))?;
                 let cwd_ptr = self.extract_call_value(cwd_call)?.into_pointer_value();
-                let cwd_failed = self.builder.build_is_null(cwd_ptr, "cwd_failed").unwrap();
+                let cwd_failed = self
+                    .builder
+                    .build_is_null(cwd_ptr, "cwd_failed")
+                    .map_err(|_| CodegenError::new("failed to test System.cwd result for null"))?;
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("System.cwd used outside function"))?;
@@ -23327,7 +23885,7 @@ impl<'ctx> Codegen<'ctx> {
                     .append_basic_block(current_fn, "system_cwd_fail");
                 self.builder
                     .build_conditional_branch(cwd_failed, cwd_fail_bb, cwd_ok_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on System.cwd result"))?;
 
                 self.builder.position_at_end(cwd_fail_bb);
                 self.emit_runtime_error("System.cwd() failed", "system_cwd_failed")?;
@@ -23364,12 +23922,12 @@ impl<'ctx> Codegen<'ctx> {
                         argc_global.as_pointer_value(),
                         "argc",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load argc global"))?
                     .into_int_value();
                 let argc64 = self
                     .builder
                     .build_int_s_extend(argc, self.context.i64_type(), "argc64")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to extend argc to i64"))?;
                 Ok(Some(argc64.into()))
             }
 
@@ -23396,12 +23954,12 @@ impl<'ctx> Codegen<'ctx> {
                         argc_global.as_pointer_value(),
                         "argc",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load argc global"))?
                     .into_int_value();
                 let argc64 = self
                     .builder
                     .build_int_s_extend(argc, self.context.i64_type(), "argc64")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to extend argc to i64"))?;
                 let argv = self
                     .builder
                     .build_load(
@@ -23409,7 +23967,7 @@ impl<'ctx> Codegen<'ctx> {
                         argv_global.as_pointer_value(),
                         "argv",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load argv global"))?
                     .into_pointer_value();
 
                 let current_fn = self
@@ -23431,10 +23989,14 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_zero(),
                         "args_get_non_negative",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare Args.get index against zero")
+                    })?;
                 self.builder
                     .build_conditional_branch(non_negative, bounds_check_bb, negative_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on Args.get negative check")
+                    })?;
 
                 self.builder.position_at_end(negative_bb);
                 self.emit_runtime_error(
@@ -23446,10 +24008,12 @@ impl<'ctx> Codegen<'ctx> {
                 let in_bounds = self
                     .builder
                     .build_int_compare(IntPredicate::SLT, index, argc64, "args_get_in_bounds")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to compare Args.get index against argc")
+                    })?;
                 self.builder
                     .build_conditional_branch(in_bounds, ok_bb, oob_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on Args.get bounds check"))?;
 
                 self.builder.position_at_end(oob_bb);
                 self.emit_runtime_error(
@@ -23467,7 +24031,7 @@ impl<'ctx> Codegen<'ctx> {
                             &[index],
                             "arg_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to access argv element pointer"))?
                 };
                 let arg_ptr = self
                     .builder
@@ -23476,7 +24040,7 @@ impl<'ctx> Codegen<'ctx> {
                         elem_ptr,
                         "arg",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load argv element"))?;
                 Ok(Some(arg_ptr))
             }
 
@@ -23493,7 +24057,7 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_conditional_branch(condition_bool, ok_bb, panic_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for assert()"))?;
 
                 // Panic block
                 self.builder.position_at_end(panic_bb);
@@ -23501,10 +24065,10 @@ impl<'ctx> Codegen<'ctx> {
                 let panic_msg = self
                     .builder
                     .build_global_string_ptr("Assertion failed!\\n", "assert_fail")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to build assert panic message"))?;
                 self.builder
                     .build_call(printf, &[panic_msg.as_pointer_value().into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit printf for assert()"))?;
                 let exit_fn = self.get_or_declare_exit();
                 self.builder
                     .build_call(
@@ -23512,8 +24076,10 @@ impl<'ctx> Codegen<'ctx> {
                         &[self.context.i32_type().const_int(1, false).into()],
                         "",
                     )
-                    .unwrap();
-                self.builder.build_unreachable().unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit exit for assert()"))?;
+                self.builder
+                    .build_unreachable()
+                    .map_err(|_| CodegenError::new("failed to emit unreachable for assert()"))?;
 
                 // OK block
                 self.builder.position_at_end(ok_bb);
@@ -23536,7 +24102,7 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_conditional_branch(equal, ok_bb, panic_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for assert_eq()"))?;
 
                 // Panic block
                 self.builder.position_at_end(panic_bb);
@@ -23547,10 +24113,10 @@ impl<'ctx> Codegen<'ctx> {
                         "Assertion failed: values are not equal!\\n",
                         "assert_eq_fail",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to build assert_eq panic message"))?;
                 self.builder
                     .build_call(printf, &[panic_msg.as_pointer_value().into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit printf for assert_eq()"))?;
                 let exit_fn = self.get_or_declare_exit();
                 self.builder
                     .build_call(
@@ -23558,8 +24124,10 @@ impl<'ctx> Codegen<'ctx> {
                         &[self.context.i32_type().const_int(1, false).into()],
                         "",
                     )
-                    .unwrap();
-                self.builder.build_unreachable().unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit exit for assert_eq()"))?;
+                self.builder
+                    .build_unreachable()
+                    .map_err(|_| CodegenError::new("failed to emit unreachable for assert_eq()"))?;
 
                 // OK block
                 self.builder.position_at_end(ok_bb);
@@ -23582,7 +24150,7 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_conditional_branch(not_equal, ok_bb, panic_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for assert_ne()"))?;
 
                 // Panic block
                 self.builder.position_at_end(panic_bb);
@@ -23593,10 +24161,10 @@ impl<'ctx> Codegen<'ctx> {
                         "Assertion failed: values should not be equal!\\n",
                         "assert_ne_fail",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to build assert_ne panic message"))?;
                 self.builder
                     .build_call(printf, &[panic_msg.as_pointer_value().into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit printf for assert_ne()"))?;
                 let exit_fn = self.get_or_declare_exit();
                 self.builder
                     .build_call(
@@ -23604,8 +24172,10 @@ impl<'ctx> Codegen<'ctx> {
                         &[self.context.i32_type().const_int(1, false).into()],
                         "",
                     )
-                    .unwrap();
-                self.builder.build_unreachable().unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit exit for assert_ne()"))?;
+                self.builder
+                    .build_unreachable()
+                    .map_err(|_| CodegenError::new("failed to emit unreachable for assert_ne()"))?;
 
                 // OK block
                 self.builder.position_at_end(ok_bb);
@@ -23628,7 +24198,7 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_conditional_branch(condition_bool, ok_bb, panic_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for assert_true()"))?;
 
                 // Panic block
                 self.builder.position_at_end(panic_bb);
@@ -23639,10 +24209,10 @@ impl<'ctx> Codegen<'ctx> {
                         "Assertion failed: expected true!\\n",
                         "assert_true_fail",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to build assert_true panic message"))?;
                 self.builder
                     .build_call(printf, &[panic_msg.as_pointer_value().into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit printf for assert_true()"))?;
                 let exit_fn = self.get_or_declare_exit();
                 self.builder
                     .build_call(
@@ -23650,8 +24220,10 @@ impl<'ctx> Codegen<'ctx> {
                         &[self.context.i32_type().const_int(1, false).into()],
                         "",
                     )
-                    .unwrap();
-                self.builder.build_unreachable().unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit exit for assert_true()"))?;
+                self.builder.build_unreachable().map_err(|_| {
+                    CodegenError::new("failed to emit unreachable for assert_true()")
+                })?;
 
                 // OK block
                 self.builder.position_at_end(ok_bb);
@@ -23674,7 +24246,7 @@ impl<'ctx> Codegen<'ctx> {
 
                 self.builder
                     .build_conditional_branch(condition_bool, panic_bb, ok_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for assert_false()"))?;
 
                 // Panic block
                 self.builder.position_at_end(panic_bb);
@@ -23685,10 +24257,10 @@ impl<'ctx> Codegen<'ctx> {
                         "Assertion failed: expected false!\\n",
                         "assert_false_fail",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to build assert_false panic message"))?;
                 self.builder
                     .build_call(printf, &[panic_msg.as_pointer_value().into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit printf for assert_false()"))?;
                 let exit_fn = self.get_or_declare_exit();
                 self.builder
                     .build_call(
@@ -23696,8 +24268,10 @@ impl<'ctx> Codegen<'ctx> {
                         &[self.context.i32_type().const_int(1, false).into()],
                         "",
                     )
-                    .unwrap();
-                self.builder.build_unreachable().unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit exit for assert_false()"))?;
+                self.builder.build_unreachable().map_err(|_| {
+                    CodegenError::new("failed to emit unreachable for assert_false()")
+                })?;
 
                 // OK block
                 self.builder.position_at_end(ok_bb);
@@ -23710,23 +24284,30 @@ impl<'ctx> Codegen<'ctx> {
                 let panic_msg = self
                     .builder
                     .build_global_string_ptr("Test failed: ", "fail_prefix")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to build fail() prefix string"))?;
                 self.builder
                     .build_call(printf, &[panic_msg.as_pointer_value().into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit printf for fail() prefix"))?;
 
                 if !args.is_empty() {
                     let msg = self.compile_string_argument_expr(
                         &args[0].node,
                         "fail() requires String message",
                     )?;
-                    self.builder.build_call(printf, &[msg.into()], "").unwrap();
+                    self.builder
+                        .build_call(printf, &[msg.into()], "")
+                        .map_err(|_| {
+                            CodegenError::new("failed to emit printf for fail() message")
+                        })?;
                 }
 
-                let newline = self.builder.build_global_string_ptr("\\n", "nl").unwrap();
+                let newline = self
+                    .builder
+                    .build_global_string_ptr("\\n", "nl")
+                    .map_err(|_| CodegenError::new("failed to build fail() newline string"))?;
                 self.builder
                     .build_call(printf, &[newline.as_pointer_value().into()], "")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit printf for fail() newline"))?;
 
                 let exit_fn = self.get_or_declare_exit();
                 self.builder
@@ -23735,8 +24316,10 @@ impl<'ctx> Codegen<'ctx> {
                         &[self.context.i32_type().const_int(1, false).into()],
                         "",
                     )
-                    .unwrap();
-                self.builder.build_unreachable().unwrap();
+                    .map_err(|_| CodegenError::new("failed to emit exit for fail()"))?;
+                self.builder
+                    .build_unreachable()
+                    .map_err(|_| CodegenError::new("failed to emit unreachable for fail()"))?;
 
                 Ok(Some(self.context.i64_type().const_int(0, false).into()))
             }

@@ -2142,14 +2142,13 @@ impl<'ctx> Codegen<'ctx> {
                     .get(&class_name)
                     .ok_or_else(|| CodegenError::new(format!("Unknown class: {}", class_name)))?;
 
-                let field_idx = *class_info.field_indices.get(field).ok_or_else(|| {
-                    Self::unknown_field_error(
-                        field,
-                        object_ty
-                            .as_ref()
-                            .expect("class-like type already validated"),
-                    )
+                let receiver_ty = object_ty.as_ref().ok_or_else(|| {
+                    CodegenError::new("class-like field receiver type missing after validation")
                 })?;
+                let field_idx = *class_info
+                    .field_indices
+                    .get(field)
+                    .ok_or_else(|| Self::unknown_field_error(field, receiver_ty))?;
 
                 let i32_type = self.context.i32_type();
                 let zero = i32_type.const_int(0, false);
