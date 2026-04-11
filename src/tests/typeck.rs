@@ -1,11 +1,12 @@
 use super::*;
 use crate::lexer::tokenize;
 use crate::parser::Parser;
+use crate::tests::{TestExpectErrExt, TestExpectExt};
 
 fn check_source(source: &str) -> Result<(), Vec<TypeError>> {
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let mut checker = TypeChecker::new();
     checker.check(&program)
 }
@@ -51,7 +52,7 @@ fn resolves_nested_namespace_aliased_function_type_source_inside_generic_contain
 
     let resolved = checker
         .resolve_type_source("List<(root.M.Api.Named) -> Integer>")
-        .expect("type source should parse");
+        .must("type source should parse");
 
     assert_eq!(
         resolved,
@@ -165,7 +166,7 @@ fn resolves_generic_exact_import_alias_nominal_reference_names() {
 
     let resolved = checker
         .resolve_nominal_reference_name("BaseAlias<PayloadAlias>")
-        .expect("generic alias name should resolve");
+        .must("generic alias name should resolve");
 
     assert_eq!(resolved, "lib__Base<lib__Payload>");
 }
@@ -184,7 +185,7 @@ fn supports_generic_exact_import_alias_base_classes_inside_modules() {
         }
     "#;
 
-    check_source(src).expect("module-scoped generic alias base class should type-check");
+    check_source(src).must("module-scoped generic alias base class should type-check");
 }
 
 #[test]
@@ -202,7 +203,7 @@ fn rejects_private_member_access_from_outside_class() {
             return x + y;
         }
     "#;
-    let errors = check_source(src).expect_err("visibility violation should fail");
+    let errors = check_source(src).must_err("visibility violation should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -222,7 +223,7 @@ fn rejects_private_class_construction_from_outside() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("private class use should fail");
+    let errors = check_source(src).must_err("private class use should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -238,7 +239,7 @@ fn rejects_private_class_in_function_signature() {
         function take(s: Secret): None { return None; }
         function main(): None { return None; }
     "#;
-    let errors = check_source(src).expect_err("private class in signature should fail");
+    let errors = check_source(src).must_err("private class in signature should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -254,7 +255,7 @@ fn rejects_extending_private_class_from_outside() {
         class Child extends Base { constructor() {} }
         function main(): None { return None; }
     "#;
-    let errors = check_source(src).expect_err("extending private base should fail");
+    let errors = check_source(src).must_err("extending private base should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -272,7 +273,7 @@ fn rejects_private_class_in_interface_signature() {
         }
         function main(): None { return None; }
     "#;
-    let errors = check_source(src).expect_err("private class in interface signature should fail");
+    let errors = check_source(src).must_err("private class in interface signature should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -295,7 +296,7 @@ fn supports_inherited_method_lookup() {
             return c.greet();
         }
     "#;
-    check_source(src).expect("inherited method should typecheck");
+    check_source(src).must("inherited method should typecheck");
 }
 
 #[test]
@@ -316,7 +317,7 @@ fn supports_extending_namespace_aliased_module_class() {
             return c.greet();
         }
     "#;
-    check_source(src).expect("aliased base class should typecheck");
+    check_source(src).must("aliased base class should typecheck");
 }
 
 #[test]
@@ -339,7 +340,7 @@ fn supports_extending_nested_namespace_aliased_module_class() {
             return c.greet();
         }
     "#;
-    check_source(src).expect("nested aliased base class should typecheck");
+    check_source(src).must("nested aliased base class should typecheck");
 }
 
 #[test]
@@ -360,7 +361,7 @@ fn supports_implementing_namespace_aliased_module_interface() {
             return b.print_me();
         }
     "#;
-    check_source(src).expect("aliased interface should typecheck");
+    check_source(src).must("aliased interface should typecheck");
 }
 
 #[test]
@@ -383,7 +384,7 @@ fn supports_implementing_nested_namespace_aliased_module_interface() {
             return b.print_me();
         }
     "#;
-    check_source(src).expect("nested aliased interface should typecheck");
+    check_source(src).must("nested aliased interface should typecheck");
 }
 
 #[test]
@@ -408,7 +409,7 @@ fn supports_implementing_multiple_namespace_aliased_interfaces() {
             return b.name() + b.print_me();
         }
     "#;
-    check_source(src).expect("multiple aliased interfaces should typecheck");
+    check_source(src).must("multiple aliased interfaces should typecheck");
 }
 
 #[test]
@@ -435,7 +436,7 @@ fn supports_implementing_multiple_nested_namespace_aliased_interfaces() {
             return b.name() + b.print_me();
         }
     "#;
-    check_source(src).expect("multiple nested aliased interfaces should typecheck");
+    check_source(src).must("multiple nested aliased interfaces should typecheck");
 }
 
 #[test]
@@ -460,7 +461,7 @@ fn supports_interface_extending_namespace_aliased_interface() {
             return r.name() + r.print_me();
         }
     "#;
-    check_source(src).expect("aliased parent interface should typecheck");
+    check_source(src).must("aliased parent interface should typecheck");
 }
 
 #[test]
@@ -487,7 +488,7 @@ fn supports_interface_extending_nested_namespace_aliased_interface() {
             return r.name() + r.print_me();
         }
     "#;
-    check_source(src).expect("nested aliased parent interface should typecheck");
+    check_source(src).must("nested aliased parent interface should typecheck");
 }
 
 #[test]
@@ -513,7 +514,7 @@ fn supports_interface_extending_multiple_namespace_aliased_interfaces() {
             return r.name() + r.print_me();
         }
     "#;
-    check_source(src).expect("multiple aliased parent interfaces should typecheck");
+    check_source(src).must("multiple aliased parent interfaces should typecheck");
 }
 
 #[test]
@@ -541,7 +542,7 @@ fn supports_interface_extending_multiple_nested_namespace_aliased_interfaces() {
             return r.name() + r.print_me();
         }
     "#;
-    check_source(src).expect("multiple nested aliased parent interfaces should typecheck");
+    check_source(src).must("multiple nested aliased parent interfaces should typecheck");
 }
 
 #[test]
@@ -556,7 +557,7 @@ fn enforces_interface_contracts() {
         }
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("missing interface method should fail");
+    let errors = check_source(src).must_err("missing interface method should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -582,7 +583,7 @@ fn supports_module_local_interface_implements() {
         }
         function main(): Integer { return 0; }
     "#;
-    check_source(src).expect("module-local interface implements should typecheck");
+    check_source(src).must("module-local interface implements should typecheck");
 }
 
 #[test]
@@ -601,7 +602,7 @@ fn supports_module_local_nested_interface_implements() {
         }
         function main(): Integer { return 0; }
     "#;
-    check_source(src).expect("module-local nested interface implements should typecheck");
+    check_source(src).must("module-local nested interface implements should typecheck");
 }
 
 #[test]
@@ -622,7 +623,7 @@ fn supports_module_local_interface_extends() {
         }
         function main(): Integer { return 0; }
     "#;
-    check_source(src).expect("module-local interface extends should typecheck");
+    check_source(src).must("module-local interface extends should typecheck");
 }
 
 #[test]
@@ -645,7 +646,7 @@ fn supports_module_local_nested_interface_extends() {
         }
         function main(): Integer { return 0; }
     "#;
-    check_source(src).expect("module-local nested interface extends should typecheck");
+    check_source(src).must("module-local nested interface extends should typecheck");
 }
 
 #[test]
@@ -656,7 +657,7 @@ fn rejects_unknown_function_generic_bound() {
         }
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("unknown generic bound should fail");
+    let errors = check_source(src).must_err("unknown generic bound should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -679,7 +680,7 @@ fn rejects_non_interface_function_generic_bound() {
         }
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("class generic bound should fail");
+    let errors = check_source(src).must_err("class generic bound should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -701,7 +702,7 @@ fn rejects_unknown_class_generic_bound() {
         }
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("unknown class generic bound should fail");
+    let errors = check_source(src).must_err("unknown class generic bound should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -722,7 +723,7 @@ fn rejects_unknown_enum_generic_bound() {
         }
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("unknown enum generic bound should fail");
+    let errors = check_source(src).must_err("unknown enum generic bound should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -742,7 +743,7 @@ fn rejects_unknown_interface_generic_bound() {
         }
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("unknown interface generic bound should fail");
+    let errors = check_source(src).must_err("unknown interface generic bound should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -768,7 +769,7 @@ fn rejects_explicit_function_type_arg_that_violates_interface_bound() {
             return render<Plain>(Plain());
         }
     "#;
-    let errors = check_source(src).expect_err("explicit generic arg violating bound should fail");
+    let errors = check_source(src).must_err("explicit generic arg violating bound should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -792,7 +793,7 @@ fn rejects_inferred_function_arg_that_violates_interface_bound() {
             return render(Plain());
         }
     "#;
-    let errors = check_source(src).expect_err("inferred generic arg violating bound should fail");
+    let errors = check_source(src).must_err("inferred generic arg violating bound should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -819,7 +820,7 @@ fn allows_method_calls_through_generic_interface_bound() {
             return read_name(Person());
         }
     "#;
-    check_source(src).expect("bounded generic interface method calls should typecheck");
+    check_source(src).must("bounded generic interface method calls should typecheck");
 }
 
 #[test]
@@ -833,7 +834,7 @@ fn rejects_ambiguous_bounded_generic_method_signatures() {
         function main(): Integer { return 0; }
     "#;
     let errors =
-        check_source(src).expect_err("conflicting bounded generic method signatures should fail");
+        check_source(src).must_err("conflicting bounded generic method signatures should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -854,7 +855,7 @@ fn rejects_interface_inheriting_conflicting_parent_method_signatures() {
         interface C extends A, B {}
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("conflicting parent interface methods should fail");
+    let errors = check_source(src).must_err("conflicting parent interface methods should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -877,7 +878,7 @@ fn rejects_interface_overriding_parent_method_with_incompatible_signature() {
         }
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("incompatible interface override should fail");
+    let errors = check_source(src).must_err("incompatible interface override should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -903,7 +904,7 @@ fn rejects_class_implementing_conflicting_interface_method_requirements() {
         function main(): Integer { return 0; }
     "#;
     let errors =
-        check_source(src).expect_err("conflicting implemented interface methods should fail");
+        check_source(src).must_err("conflicting implemented interface methods should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -930,7 +931,7 @@ fn rejects_interface_implementation_with_narrower_parameter_type() {
         function main(): Integer { return 0; }
     "#;
     let errors =
-        check_source(src).expect_err("narrower interface implementation parameter should fail");
+        check_source(src).must_err("narrower interface implementation parameter should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -956,8 +957,7 @@ fn rejects_constructor_type_arg_that_violates_interface_bound() {
             return bad.value;
         }
     "#;
-    let errors =
-        check_source(src).expect_err("constructor generic arg violating bound should fail");
+    let errors = check_source(src).must_err("constructor generic arg violating bound should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -984,7 +984,7 @@ fn rejects_annotation_only_generic_type_arg_that_violates_interface_bound() {
         }
     "#;
     let errors =
-        check_source(src).expect_err("annotation-only generic arg violating bound should fail");
+        check_source(src).must_err("annotation-only generic arg violating bound should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1016,7 +1016,7 @@ fn allows_interface_typed_parameters() {
             return 0;
         }
     "#;
-    check_source(src).expect("interface-typed calls should typecheck");
+    check_source(src).must("interface-typed calls should typecheck");
 }
 
 #[test]
@@ -1033,7 +1033,7 @@ fn rejects_protected_member_access_from_non_subclass() {
         }
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("protected visibility violation should fail");
+    let errors = check_source(src).must_err("protected visibility violation should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1057,7 +1057,7 @@ fn enforces_parent_interface_methods_when_implementing_child_interface() {
         }
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("missing parent-interface method should fail");
+    let errors = check_source(src).must_err("missing parent-interface method should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1077,7 +1077,7 @@ fn rejects_invalid_list_constructor_arguments() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("invalid List constructor should fail");
+    let errors = check_source(src).must_err("invalid List constructor should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1095,7 +1095,7 @@ fn rejects_invalid_map_set_constructor_arguments() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("invalid Map/Set constructors should fail");
+    let errors = check_source(src).must_err("invalid Map/Set constructors should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1120,7 +1120,7 @@ fn rejects_non_numeric_math_min_max_arguments() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("non-numeric Math.min/max should fail");
+    let errors = check_source(src).must_err("non-numeric Math.min/max should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1147,7 +1147,7 @@ fn rejects_non_numeric_math_function_value_signatures() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("non-numeric Math function values should fail");
+    let errors = check_source(src).must_err("non-numeric Math function values should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1176,7 +1176,7 @@ fn rejects_invalid_builtin_function_value_signatures_with_unknown_placeholders()
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("invalid builtin function values should fail");
+    let errors = check_source(src).must_err("invalid builtin function values should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1219,7 +1219,7 @@ fn accepts_valid_builtin_generic_constructors() {
             return None;
         }
     "#;
-    check_source(src).expect("valid built-in generic constructors should typecheck");
+    check_source(src).must("valid built-in generic constructors should typecheck");
 }
 
 #[test]
@@ -1232,7 +1232,7 @@ fn rejects_invalid_box_rc_arc_constructor_arguments() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("invalid Box/Rc/Arc constructors should fail");
+    let errors = check_source(src).must_err("invalid Box/Rc/Arc constructors should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1262,7 +1262,7 @@ fn rejects_ptr_task_range_constructor_calls() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("Ptr/Task/Range constructors should fail");
+    let errors = check_source(src).must_err("Ptr/Task/Range constructors should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1290,7 +1290,7 @@ fn rejects_negative_list_constructor_capacity() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("negative list capacity should fail");
+    let errors = check_source(src).must_err("negative list capacity should fail");
     let joined = errors
         .iter()
         .map(|error| error.message.as_str())
@@ -1313,7 +1313,7 @@ fn accepts_explicit_generic_function_values() {
             return None;
         }
     "#;
-    check_source(src).expect("explicit generic function value should typecheck");
+    check_source(src).must("explicit generic function value should typecheck");
 }
 
 #[test]
@@ -1333,7 +1333,7 @@ fn accepts_generic_interface_references_in_implements_clauses() {
             return None;
         }
     "#;
-    check_source(src).expect("generic interface implements clause should typecheck");
+    check_source(src).must("generic interface implements clause should typecheck");
 }
 
 #[test]
@@ -1357,7 +1357,7 @@ fn accepts_specialized_parent_interface_methods_via_child_interface() {
             return None;
         }
     "#;
-    check_source(src).expect("specialized parent interface methods should typecheck");
+    check_source(src).must("specialized parent interface methods should typecheck");
 }
 
 #[test]
@@ -1370,7 +1370,7 @@ fn accepts_map_indexing_with_non_integer_key_types() {
             return None;
         }
     "#;
-    check_source(src).expect("Map indexing should accept key-typed indices");
+    check_source(src).must("Map indexing should accept key-typed indices");
 }
 
 #[test]
@@ -1382,7 +1382,7 @@ fn rejects_map_indexing_with_wrong_key_type() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("wrong map key index type should fail");
+    let errors = check_source(src).must_err("wrong map key index type should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1408,7 +1408,7 @@ fn accepts_user_defined_generic_class_construction_and_methods() {
             return None;
         }
     "#;
-    check_source(src).expect("generic class construction and member use should typecheck");
+    check_source(src).must("generic class construction and member use should typecheck");
 }
 
 #[test]
@@ -1420,8 +1420,8 @@ fn rejects_explicit_type_args_on_non_generic_function() {
             return None;
         }
     "#;
-    let errors = check_source(src)
-        .expect_err("non-generic function call with explicit type args should fail");
+    let errors =
+        check_source(src).must_err("non-generic function call with explicit type args should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1439,7 +1439,7 @@ fn rejects_explicit_type_arg_arity_mismatch() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("generic arity mismatch should fail");
+    let errors = check_source(src).must_err("generic arity mismatch should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1457,7 +1457,7 @@ fn rejects_unknown_explicit_type_argument() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("unknown explicit type arg should fail");
+    let errors = check_source(src).must_err("unknown explicit type arg should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1479,7 +1479,7 @@ fn explicit_generic_method_call_typechecks() {
             return None;
         }
     "#;
-    check_source(src).expect("explicit generic method call should typecheck");
+    check_source(src).must("explicit generic method call should typecheck");
 }
 
 #[test]
@@ -1493,7 +1493,7 @@ fn explicit_generic_module_call_typechecks() {
             return None;
         }
     "#;
-    check_source(src).expect("explicit generic module call should typecheck");
+    check_source(src).must("explicit generic module call should typecheck");
 }
 
 #[test]
@@ -1512,7 +1512,7 @@ fn explicit_generic_nested_module_mangled_call_typechecks() {
             return None;
         }
     "#;
-    check_source(src).expect("explicit generic nested module mangled call should typecheck");
+    check_source(src).must("explicit generic nested module mangled call should typecheck");
 }
 
 #[test]
@@ -1528,7 +1528,7 @@ fn nested_module_dot_call_typechecks() {
             return None;
         }
     "#;
-    check_source(src).expect("nested module dot call should typecheck");
+    check_source(src).must("nested module dot call should typecheck");
 }
 
 #[test]
@@ -1547,7 +1547,7 @@ fn explicit_generic_nested_module_dot_call_typechecks() {
             return None;
         }
     "#;
-    check_source(src).expect("explicit generic nested module dot call should typecheck");
+    check_source(src).must("explicit generic nested module dot call should typecheck");
 }
 
 #[test]
@@ -1558,7 +1558,7 @@ fn list_of_function_types_typechecks() {
             return None;
         }
     "#;
-    check_source(src).expect("list of function types should typecheck");
+    check_source(src).must("list of function types should typecheck");
 }
 
 #[test]
@@ -1569,7 +1569,7 @@ fn option_some_static_constructor_typechecks() {
             return None;
         }
     "#;
-    check_source(src).expect("Option.some should typecheck");
+    check_source(src).must("Option.some should typecheck");
 }
 
 #[test]
@@ -1581,7 +1581,7 @@ fn option_of_function_type_typechecks() {
             return None;
         }
     "#;
-    check_source(src).expect("Option of function type should typecheck");
+    check_source(src).must("Option of function type should typecheck");
 }
 
 #[test]
@@ -1597,7 +1597,7 @@ fn function_valued_field_call_typechecks() {
             return None;
         }
     "#;
-    check_source(src).expect("function-valued field calls should typecheck");
+    check_source(src).must("function-valued field calls should typecheck");
 }
 
 #[test]
@@ -1614,7 +1614,7 @@ fn module_alias_function_values_typecheck() {
             return None;
         }
     "#;
-    check_source(src).expect("module alias-style function values should typecheck");
+    check_source(src).must("module alias-style function values should typecheck");
 }
 
 #[test]
@@ -1630,7 +1630,7 @@ fn rejects_field_assignment_through_immutable_owner() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("immutable owner field assignment should fail");
+    let errors = check_source(src).must_err("immutable owner field assignment should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1652,7 +1652,7 @@ fn rejects_index_assignment_through_immutable_owner() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("immutable owner index assignment should fail");
+    let errors = check_source(src).must_err("immutable owner index assignment should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1675,7 +1675,7 @@ fn local_io_variable_does_not_act_as_stdlib_alias() {
         }
     "#;
     let errors =
-        check_source(src).expect_err("local variable named io must not be treated as std.io alias");
+        check_source(src).must_err("local variable named io must not be treated as std.io alias");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1698,7 +1698,7 @@ fn specific_stdlib_alias_import_resolves_ident_call() {
             return None;
         }
     "#;
-    check_source(src).expect("specific stdlib alias import call should typecheck");
+    check_source(src).must("specific stdlib alias import call should typecheck");
 }
 
 #[test]
@@ -1709,7 +1709,7 @@ fn if_expression_branches_typecheck() {
             return None;
         }
     "#;
-    check_source(src).expect("if expression with matching branch types should typecheck");
+    check_source(src).must("if expression with matching branch types should typecheck");
 }
 
 #[test]
@@ -1746,7 +1746,7 @@ fn borrowed_read_accesses_typecheck() {
             return None;
         }
     "#;
-    check_source(src).expect("borrowed read accesses should typecheck");
+    check_source(src).must("borrowed read accesses should typecheck");
 }
 
 #[test]
@@ -1796,7 +1796,7 @@ fn borrowed_mutating_accesses_typecheck() {
             return None;
         }
     "#;
-    check_source(src).expect("borrowed mutating accesses should typecheck");
+    check_source(src).must("borrowed mutating accesses should typecheck");
 }
 
 #[test]
@@ -1830,7 +1830,7 @@ fn borrowed_mutating_index_assignments_typecheck() {
             return None;
         }
     "#;
-    check_source(src).expect("borrowed mutating index assignments should typecheck");
+    check_source(src).must("borrowed mutating index assignments should typecheck");
 }
 
 #[test]
@@ -1850,7 +1850,7 @@ fn immutable_reference_index_assignment_rejected() {
         }
     "#;
     let errors =
-        check_source(src).expect_err("immutable reference index assignments should be rejected");
+        check_source(src).must_err("immutable reference index assignments should be rejected");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1877,7 +1877,7 @@ fn immutable_reference_deref_assignment_rejected() {
         }
     "#;
     let errors =
-        check_source(src).expect_err("immutable reference deref assignment should be rejected");
+        check_source(src).must_err("immutable reference deref assignment should be rejected");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1905,7 +1905,7 @@ fn raw_ptr_deref_typechecks_for_non_integer_payloads() {
         }
     "#;
 
-    check_source(src).expect("raw Ptr<T> deref should typecheck for typed payloads");
+    check_source(src).must("raw Ptr<T> deref should typecheck for typed payloads");
 }
 
 #[test]
@@ -1916,7 +1916,7 @@ fn if_expression_branch_type_mismatch_fails() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("if expression branch mismatch should fail");
+    let errors = check_source(src).must_err("if expression branch mismatch should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1936,7 +1936,7 @@ fn if_expression_without_else_is_none_typed() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("if expression without else should be None-typed");
+    let errors = check_source(src).must_err("if expression without else should be None-typed");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1959,7 +1959,7 @@ fn match_expression_branch_type_mismatch_fails() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("match expression branch mismatch should fail");
+    let errors = check_source(src).must_err("match expression branch mismatch should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -1982,7 +1982,7 @@ fn match_expression_boolean_non_exhaustive_fails() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("non-exhaustive boolean match should fail");
+    let errors = check_source(src).must_err("non-exhaustive boolean match should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2004,7 +2004,7 @@ fn match_statement_boolean_non_exhaustive_fails() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("non-exhaustive boolean match stmt should fail");
+    let errors = check_source(src).must_err("non-exhaustive boolean match stmt should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2025,11 +2025,11 @@ fn empty_match_statement_fails() {
             return None;
         }
     "#;
-    let tokens = tokenize(src).expect("tokenize");
+    let tokens = tokenize(src).must("tokenize");
     let mut parser = Parser::new(tokens);
     let err = parser
         .parse_program()
-        .expect_err("empty match statement should now fail in parser");
+        .must_err("empty match statement should now fail in parser");
     assert!(
         err.message
             .contains("match statements must contain at least one arm"),
@@ -2048,7 +2048,7 @@ fn integer_match_expression_requires_catch_all() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("integer match expression without catch-all");
+    let errors = check_source(src).must_err("integer match expression without catch-all");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2069,11 +2069,11 @@ fn empty_match_expression_fails() {
             return None;
         }
     "#;
-    let tokens = tokenize(src).expect("tokenize");
+    let tokens = tokenize(src).must("tokenize");
     let mut parser = Parser::new(tokens);
     let err = parser
         .parse_program()
-        .expect_err("empty match expression should now fail in parser");
+        .must_err("empty match expression should now fail in parser");
     assert!(
         err.message
             .contains("match expressions must contain at least one arm"),
@@ -2090,7 +2090,7 @@ fn if_expression_reports_single_undefined_identifier_error() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("undefined variable should fail");
+    let errors = check_source(src).must_err("undefined variable should fail");
     let undef_count = errors
         .iter()
         .filter(|e| e.message.contains("Undefined variable: y"))
@@ -2109,7 +2109,7 @@ fn match_expression_reports_single_undefined_identifier_error() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("undefined variable should fail");
+    let errors = check_source(src).must_err("undefined variable should fail");
     let undef_count = errors
         .iter()
         .filter(|e| e.message.contains("Undefined variable: y"))
@@ -2135,7 +2135,7 @@ fn qualified_enum_patterns_typecheck_against_leaf_variant_names() {
             return None;
         }
     "#;
-    check_source(src).expect("qualified enum patterns should typecheck");
+    check_source(src).must("qualified enum patterns should typecheck");
 }
 
 #[test]
@@ -2156,7 +2156,7 @@ fn qualified_module_type_paths_typecheck_against_mangled_symbols() {
         }
     "#;
 
-    check_source(src).expect("qualified module type paths should resolve to mangled symbols");
+    check_source(src).must("qualified module type paths should resolve to mangled symbols");
 }
 
 #[test]
@@ -2177,7 +2177,7 @@ fn user_defined_generic_classes_named_like_builtins_typecheck() {
         }
     "#;
 
-    check_source(src).expect("user-defined generic classes named like built-ins should typecheck");
+    check_source(src).must("user-defined generic classes named like built-ins should typecheck");
 }
 
 #[test]
@@ -2196,7 +2196,7 @@ fn enum_match_expression_is_exhaustive_without_wildcard() {
             return None;
         }
     "#;
-    check_source(src).expect("single-variant enum match should be exhaustive");
+    check_source(src).must("single-variant enum match should be exhaustive");
 }
 
 #[test]
@@ -2209,7 +2209,7 @@ fn rejects_extern_function_values_during_typecheck() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("extern function value should fail during typecheck");
+    let errors = check_source(src).must_err("extern function value should fail during typecheck");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2250,7 +2250,7 @@ fn rejects_unsupported_enum_payload_types_during_typecheck() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("unsupported enum payload types should fail early");
+    let errors = check_source(src).must_err("unsupported enum payload types should fail early");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2274,7 +2274,7 @@ fn rejects_nested_enum_payload_types_during_typecheck() {
 
         function main(): Integer { return 0; }
     "#;
-    let errors = check_source(src).expect_err("nested enum payload types should fail early");
+    let errors = check_source(src).must_err("nested enum payload types should fail early");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2297,7 +2297,7 @@ fn supports_unit_enum_variant_values() {
             return None;
         }
     "#;
-    check_source(src).expect("unit enum variants should typecheck as values");
+    check_source(src).must("unit enum variants should typecheck as values");
 }
 
 #[test]
@@ -2315,7 +2315,7 @@ fn accepts_bound_generic_method_value_field_access() {
             return getter().length();
         }
     "#;
-    check_source(src).expect("bound generic method values should typecheck as functions");
+    check_source(src).must("bound generic method values should typecheck as functions");
 }
 
 #[test]
@@ -2336,7 +2336,7 @@ fn allows_interface_method_dispatch_during_typecheck() {
             return n.get().length();
         }
     "#;
-    check_source(src).expect("interface method dispatch should typecheck");
+    check_source(src).must("interface method dispatch should typecheck");
 }
 
 #[test]
@@ -2358,7 +2358,7 @@ fn allows_interface_bound_method_values_during_typecheck() {
             return getter().length();
         }
     "#;
-    check_source(src).expect("interface bound method values should typecheck");
+    check_source(src).must("interface bound method values should typecheck");
 }
 
 #[test]
@@ -2380,7 +2380,7 @@ fn accepts_forward_declared_generic_class_in_enum_payload_constructor() {
         }
     "#;
     check_source(src)
-        .expect("enum payload constructor should accept forward-declared generic classes");
+        .must("enum payload constructor should accept forward-declared generic classes");
 }
 
 #[test]
@@ -2406,7 +2406,7 @@ fn accepts_forward_declared_generic_class_in_match_expression_arms() {
         }
     "#;
     check_source(src)
-        .expect("match arms should join on forward-declared generic class payload types");
+        .must("match arms should join on forward-declared generic class payload types");
 }
 
 #[test]
@@ -2433,7 +2433,7 @@ fn accepts_forward_declared_generic_class_payload_block_receiver_chain() {
             }.get().length() == 2) { 0 } else { 1 };
         }
     "#;
-    check_source(src).expect(
+    check_source(src).must(
         "downstream method calls should work on forward-declared generic class match payloads",
     );
 }
@@ -2447,7 +2447,7 @@ fn accepts_async_block_tail_expression_type() {
             return None;
         }
     "#;
-    check_source(src).expect("async block tail expression should infer Task<Integer>");
+    check_source(src).must("async block tail expression should infer Task<Integer>");
 }
 
 #[test]
@@ -2461,7 +2461,7 @@ fn accepts_async_block_unary_tail_expression_type() {
             return None;
         }
     "#;
-    check_source(src).expect("async block unary tail expressions should infer correct Task<T>");
+    check_source(src).must("async block unary tail expressions should infer correct Task<T>");
 }
 
 #[test]
@@ -2475,7 +2475,7 @@ fn accepts_async_block_binary_tail_expression_type() {
             return None;
         }
     "#;
-    check_source(src).expect("async block binary tail expressions should infer correct Task<T>");
+    check_source(src).must("async block binary tail expressions should infer correct Task<T>");
 }
 
 #[test]
@@ -2491,7 +2491,7 @@ fn accepts_async_block_function_value_tail_expression_type() {
         }
     "#;
     check_source(src)
-        .expect("async block function-value tail expressions should infer correct Task<T>");
+        .must("async block function-value tail expressions should infer correct Task<T>");
 }
 
 #[test]
@@ -2505,7 +2505,7 @@ fn accepts_async_block_unit_enum_value_tail_expression_type() {
             return None;
         }
     "#;
-    check_source(src).expect("async block unit-enum tail expressions should infer correct Task<T>");
+    check_source(src).must("async block unit-enum tail expressions should infer correct Task<T>");
 }
 
 #[test]
@@ -2564,8 +2564,7 @@ fn accepts_builtin_and_reference_async_block_tail_expression_types() {
             return None;
         }
     "#;
-    check_source(src)
-        .expect("builtin and reference async block tails should infer correct Task<T>");
+    check_source(src).must("builtin and reference async block tails should infer correct Task<T>");
 }
 
 #[test]
@@ -2585,7 +2584,7 @@ fn accepts_function_types_inside_generic_class_arguments() {
             return None;
         }
     "#;
-    check_source(src).expect("generic classes should preserve function-type arguments");
+    check_source(src).must("generic classes should preserve function-type arguments");
 }
 
 #[test]
@@ -2600,8 +2599,7 @@ fn rejects_async_blocks_returning_borrowed_references() {
             return None;
         }
     "#;
-    let errors =
-        check_source(src).expect_err("async block returning borrowed reference should fail");
+    let errors = check_source(src).must_err("async block returning borrowed reference should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2620,7 +2618,7 @@ fn rejects_async_functions_returning_borrowed_references() {
         }
     "#;
     let errors =
-        check_source(src).expect_err("async function returning borrowed reference should fail");
+        check_source(src).must_err("async function returning borrowed reference should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2639,7 +2637,7 @@ fn rejects_async_functions_accepting_borrowed_reference_parameters() {
         }
     "#;
     let errors = check_source(src)
-        .expect_err("async function accepting borrowed reference parameter should fail");
+        .must_err("async function accepting borrowed reference parameter should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2662,8 +2660,8 @@ fn rejects_async_blocks_capturing_borrowed_reference_variables() {
             return None;
         }
     "#;
-    let errors = check_source(src)
-        .expect_err("async block capturing borrowed reference variable should fail");
+    let errors =
+        check_source(src).must_err("async block capturing borrowed reference variable should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2685,7 +2683,7 @@ fn rejects_undocumented_task_result_type_method() {
             return t.result_type();
         }
     "#;
-    let errors = check_source(src).expect_err("Task.result_type should fail during typecheck");
+    let errors = check_source(src).must_err("Task.result_type should fail during typecheck");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2702,7 +2700,7 @@ fn range_accepts_float_arguments() {
             return None;
         }
     "#;
-    check_source(src).expect("float range arguments should type check");
+    check_source(src).must("float range arguments should type check");
 }
 
 #[test]
@@ -2713,7 +2711,7 @@ fn range_rejects_mixed_numeric_arguments() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("mixed numeric range arguments should fail");
+    let errors = check_source(src).must_err("mixed numeric range arguments should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2733,7 +2731,7 @@ fn range_rejects_zero_literal_step() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("zero range step should fail");
+    let errors = check_source(src).must_err("zero range step should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2750,7 +2748,7 @@ fn range_rejects_zero_float_literal_step() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("zero float range step should fail");
+    let errors = check_source(src).must_err("zero float range step should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2767,7 +2765,7 @@ fn range_rejects_constant_integer_zero_step_expression() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("constant integer zero step should fail");
+    let errors = check_source(src).must_err("constant integer zero step should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2784,7 +2782,7 @@ fn range_rejects_constant_float_zero_step_expression() {
             return None;
         }
     "#;
-    let errors = check_source(src).expect_err("constant float zero step should fail");
+    let errors = check_source(src).must_err("constant float zero step should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2800,7 +2798,7 @@ fn integer_division_rejects_constant_zero_divisor() {
             return 6 / (2 - 2);
         }
     "#;
-    let errors = check_source(src).expect_err("constant integer zero divisor should fail");
+    let errors = check_source(src).must_err("constant integer zero divisor should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2816,7 +2814,7 @@ fn integer_modulo_rejects_constant_zero_divisor() {
             return 6 % (2 - 2);
         }
     "#;
-    let errors = check_source(src).expect_err("constant integer zero modulo divisor should fail");
+    let errors = check_source(src).must_err("constant integer zero modulo divisor should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2838,7 +2836,7 @@ fn await_timeout_rejects_negative_constant_literal() {
             return 0;
         }
     "#;
-    let errors = check_source(src).expect_err("negative await_timeout literal should fail");
+    let errors = check_source(src).must_err("negative await_timeout literal should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2863,7 +2861,7 @@ fn await_timeout_rejects_negative_constant_expression() {
             return 0;
         }
     "#;
-    let errors = check_source(src).expect_err("negative await_timeout expression should fail");
+    let errors = check_source(src).must_err("negative await_timeout expression should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2885,7 +2883,7 @@ fn time_sleep_rejects_negative_constant_literal() {
             return 0;
         }
     "#;
-    let errors = check_source(src).expect_err("negative Time.sleep literal should fail");
+    let errors = check_source(src).must_err("negative Time.sleep literal should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2907,7 +2905,7 @@ fn time_sleep_rejects_negative_constant_expression() {
             return 0;
         }
     "#;
-    let errors = check_source(src).expect_err("negative Time.sleep expression should fail");
+    let errors = check_source(src).must_err("negative Time.sleep expression should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2929,7 +2927,7 @@ fn args_get_rejects_negative_constant_literal() {
             return 0;
         }
     "#;
-    let errors = check_source(src).expect_err("negative Args.get literal should fail");
+    let errors = check_source(src).must_err("negative Args.get literal should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2951,7 +2949,7 @@ fn read_line_imported_from_std_io_typechecks() {
             return 0;
         }
     "#;
-    check_source(src).expect("read_line should typecheck from std.io wildcard import");
+    check_source(src).must("read_line should typecheck from std.io wildcard import");
 }
 
 #[test]
@@ -2963,7 +2961,7 @@ fn list_get_rejects_negative_constant_index() {
             return values.get(-1);
         }
     "#;
-    let errors = check_source(src).expect_err("negative list.get index should fail");
+    let errors = check_source(src).must_err("negative list.get index should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -2984,7 +2982,7 @@ fn list_index_rejects_negative_constant_index() {
             return values[-1];
         }
     "#;
-    let errors = check_source(src).expect_err("negative list index should fail");
+    let errors = check_source(src).must_err("negative list index should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3003,7 +3001,7 @@ fn list_set_rejects_negative_constant_index() {
             return 0;
         }
     "#;
-    let errors = check_source(src).expect_err("negative list.set index should fail");
+    let errors = check_source(src).must_err("negative list.set index should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3022,7 +3020,7 @@ fn string_index_rejects_negative_constant_index() {
             return "abc"[-1];
         }
     "#;
-    let errors = check_source(src).expect_err("negative string index should fail");
+    let errors = check_source(src).must_err("negative string index should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3046,7 +3044,7 @@ fn string_index_rejects_constant_out_of_bounds_literal_index() {
             return 0;
         }
     "#;
-    let errors = check_source(src).expect_err("constant out-of-bounds string index should fail");
+    let errors = check_source(src).must_err("constant out-of-bounds string index should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3068,7 +3066,7 @@ fn string_index_rejects_unicode_literal_index_past_char_len() {
         }
     "#;
     let errors =
-        check_source(src).expect_err("unicode string literal char index past len should fail");
+        check_source(src).must_err("unicode string literal char index past len should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3084,7 +3082,7 @@ fn main_rejects_non_integer_or_none_return_type() {
             return "oops";
         }
     "#;
-    let errors = check_source(src).expect_err("main string return type should fail");
+    let errors = check_source(src).must_err("main string return type should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3103,7 +3101,7 @@ fn main_rejects_parameters() {
             return x;
         }
     "#;
-    let errors = check_source(src).expect_err("main parameters should fail");
+    let errors = check_source(src).must_err("main parameters should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3122,7 +3120,7 @@ fn main_rejects_async_entrypoint() {
             return 1;
         }
     "#;
-    let errors = check_source(src).expect_err("async main should fail");
+    let errors = check_source(src).must_err("async main should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3147,7 +3145,7 @@ fn try_on_result_requires_result_return_context() {
         }
     "#;
     let errors =
-        check_source(src).expect_err("try on Result outside Result return context should fail");
+        check_source(src).must_err("try on Result outside Result return context should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3172,7 +3170,7 @@ fn try_on_option_requires_option_return_context() {
         }
     "#;
     let errors =
-        check_source(src).expect_err("try on Option inside Result-returning function should fail");
+        check_source(src).must_err("try on Option inside Result-returning function should fail");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3197,7 +3195,7 @@ fn try_inside_lambda_does_not_inherit_outer_result_context() {
         }
     "#;
     let errors = check_source(src)
-        .expect_err("try inside lambda should not inherit outer Result return context");
+        .must_err("try inside lambda should not inherit outer Result return context");
     let joined = errors
         .iter()
         .map(|e| e.message.as_str())
@@ -3231,15 +3229,15 @@ fn seeded_check_supports_interface_extending_namespace_aliased_interface() {
             return r.name() + r.print_me();
         }
     "#;
-    let tokens = tokenize(src).expect("tokenize seeded alias interface source");
+    let tokens = tokenize(src).must("tokenize seeded alias interface source");
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()
-        .expect("parse seeded alias interface source");
+        .must("parse seeded alias interface source");
     let mut type_checker = TypeChecker::new();
     type_checker
         .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
-        .expect("seeded check should support aliased parent interface");
+        .must("seeded check should support aliased parent interface");
 }
 
 #[test]
@@ -3266,15 +3264,15 @@ fn seeded_check_supports_interface_extending_nested_namespace_aliased_interface(
             return r.name() + r.print_me();
         }
     "#;
-    let tokens = tokenize(src).expect("tokenize seeded nested alias source");
+    let tokens = tokenize(src).must("tokenize seeded nested alias source");
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()
-        .expect("parse seeded nested alias source");
+        .must("parse seeded nested alias source");
     let mut type_checker = TypeChecker::new();
     type_checker
         .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
-        .expect("seeded check should support nested aliased parent interface");
+        .must("seeded check should support nested aliased parent interface");
 }
 
 #[test]
@@ -3300,15 +3298,15 @@ fn seeded_check_supports_interface_extending_multiple_namespace_aliased_interfac
             return r.name() + r.print_me();
         }
     "#;
-    let tokens = tokenize(src).expect("tokenize seeded multi alias interface source");
+    let tokens = tokenize(src).must("tokenize seeded multi alias interface source");
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()
-        .expect("parse seeded multi alias interface source");
+        .must("parse seeded multi alias interface source");
     let mut type_checker = TypeChecker::new();
     type_checker
         .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
-        .expect("seeded check should support multiple aliased parent interfaces");
+        .must("seeded check should support multiple aliased parent interfaces");
 }
 
 #[test]
@@ -3336,15 +3334,15 @@ fn seeded_check_supports_interface_extending_multiple_nested_namespace_aliased_i
             return r.name() + r.print_me();
         }
     "#;
-    let tokens = tokenize(src).expect("tokenize seeded multi nested alias interface source");
+    let tokens = tokenize(src).must("tokenize seeded multi nested alias interface source");
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()
-        .expect("parse seeded multi nested alias interface source");
+        .must("parse seeded multi nested alias interface source");
     let mut type_checker = TypeChecker::new();
     type_checker
         .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
-        .expect("seeded check should support multiple nested aliased parent interfaces");
+        .must("seeded check should support multiple nested aliased parent interfaces");
 }
 
 #[test]

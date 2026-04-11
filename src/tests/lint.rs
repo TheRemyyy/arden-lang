@@ -1,3 +1,4 @@
+use super::TestExpectExt;
 use crate::lint::lint_source;
 
 #[test]
@@ -11,7 +12,7 @@ println("ok");
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert_eq!(result.findings.len(), 2);
     assert!(result.findings.iter().any(|f| f.code == "L001"));
     assert!(result.findings.iter().any(|f| f.code == "L002"));
@@ -28,8 +29,8 @@ println("ok");
 return None;
 }
 "#;
-    let result = lint_source(source, true).expect("lint succeeds");
-    let fixed = result.fixed_source.expect("fixed source");
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
     assert!(fixed.starts_with("import std.io.*;\nimport std.string.*;"));
     assert_eq!(fixed.matches("import std.io.*;").count(), 1);
 }
@@ -44,7 +45,7 @@ println("ok");
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| f.code == "L003"));
 }
 
@@ -58,7 +59,7 @@ used = used + 1;
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     let unused_findings: Vec<_> = result
         .findings
         .iter()
@@ -81,7 +82,7 @@ if (true) {
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result
         .findings
         .iter()
@@ -99,7 +100,7 @@ io2.println("b");
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| f.code == "L001"));
 }
 
@@ -113,8 +114,8 @@ println(to_string(Str.len("abc")));
 return None;
 }
 "#;
-    let result = lint_source(source, true).expect("lint succeeds");
-    let fixed = result.fixed_source.expect("fixed source");
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
     assert!(fixed.contains("import std.string.*;"));
     assert!(fixed.contains("import std.io.*;"));
 }
@@ -129,8 +130,8 @@ println(to_string(Str.len("abc")));
 return None;
 }
 "#;
-    let result = lint_source(source, true).expect("lint succeeds");
-    let fixed = result.fixed_source.expect("fixed source");
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
     assert!(fixed.contains("import std.string.*;"));
     assert!(fixed.contains("import std.io.*;"));
 }
@@ -142,8 +143,8 @@ import std.string.*;
 import std.io.*;
 function main(): None { return None; }
 "#;
-    let result = lint_source(source, true).expect("lint succeeds");
-    let fixed = result.fixed_source.expect("fixed source");
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
     assert!(fixed.starts_with("#!/usr/bin/env arden\n"));
 }
 
@@ -157,7 +158,7 @@ println("ok");
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -172,7 +173,7 @@ x: Integer = 1;
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result
         .findings
         .iter()
@@ -189,7 +190,7 @@ for (i in range(0, 3)) {
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result
         .findings
         .iter()
@@ -205,7 +206,7 @@ for (i in range(0, 3)) {
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| f.code == "L004"
         && f.message
             .contains("Variable 'i' is declared but never used")));
@@ -222,7 +223,7 @@ println(to_string(x));
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     let unused = result
         .findings
         .iter()
@@ -240,7 +241,7 @@ println(to_string(value));
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(
         result.findings.iter().any(|f| {
             f.code == "L004"
@@ -261,7 +262,7 @@ x: Float = abs_fn(-1.0);
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -278,7 +279,7 @@ println("ok");
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -296,7 +297,7 @@ return None;
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -315,7 +316,7 @@ return None;
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result
         .findings
         .iter()
@@ -333,8 +334,8 @@ function main(): None {
 return None;
 }
 "#;
-    let result = lint_source(source, true).expect("lint succeeds");
-    let fixed = result.fixed_source.expect("fixed source");
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
     assert!(fixed.contains("/*\nimport evil.pkg;\n*/"), "{fixed}");
     assert_eq!(fixed.matches("import std.io.*;").count(), 1, "{fixed}");
 }
@@ -354,8 +355,8 @@ return None;
 }
 }
 "#;
-    let result = lint_source(source, true).expect("lint succeeds");
-    let fixed = result.fixed_source.expect("fixed source");
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
     assert!(
         fixed.starts_with(
             "package demo;\n\nimport std.io.*;\nimport std.string.*;\n\nmodule Inner {"
@@ -381,8 +382,8 @@ println("ok");
 return None;
 }
 "#;
-    let result = lint_source(source, true).expect("lint succeeds");
-    let fixed = result.fixed_source.expect("fixed source");
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
     assert!(
         fixed.starts_with(
             "// generated file\npackage demo;\n\nimport std.io.*;\nimport std.string.*;"
@@ -405,8 +406,8 @@ println("ok");
 return None;
 }
 "#;
-    let result = lint_source(source, true).expect("lint succeeds");
-    let fixed = result.fixed_source.expect("fixed source");
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
     assert!(
         fixed.starts_with(
             "/*\n * generated file\n */\npackage demo;\n\nimport std.io.*;\nimport std.string.*;"
@@ -427,8 +428,8 @@ println("ok");
 return None;
 }
 "#;
-    let result = lint_source(source, true).expect("lint succeeds");
-    let fixed = result.fixed_source.expect("fixed source");
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
     assert!(
         fixed.starts_with(
             "package demo;\n\n// stdlib imports\nimport std.io.*;\nimport std.string.*;"
@@ -449,8 +450,8 @@ println("ok");
 return None;
 }
 "#;
-    let result = lint_source(source, true).expect("lint succeeds");
-    let fixed = result.fixed_source.expect("fixed source");
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
     assert!(
         fixed.starts_with(
             "#!/usr/bin/env arden\n// generated file\nimport std.io.*;\nimport std.string.*;"
@@ -468,7 +469,7 @@ List<Boxed>();
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -485,7 +486,7 @@ List<u.Box>();
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -501,7 +502,7 @@ List<Boxed>();
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -518,7 +519,7 @@ List<u.M.Box>();
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -534,7 +535,7 @@ List<Res>();
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -551,7 +552,7 @@ u.Box(1);
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -567,7 +568,7 @@ u.M.Box(1);
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -583,7 +584,7 @@ List<u.Box>();
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -599,7 +600,7 @@ List<u.M.Box>();
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -615,7 +616,7 @@ List<Boxed>();
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -633,7 +634,7 @@ function run(): Integer {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003" && f.message.contains("import 'util.helper' appears unused")
     }));
@@ -650,7 +651,7 @@ function run(): None {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003" && f.message.contains("import 'std.io as io' appears unused")
     }));
@@ -664,7 +665,7 @@ function main(value: u.Box): None {
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -682,7 +683,7 @@ match (value) {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -700,7 +701,7 @@ return match (value) {
 };
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -718,7 +719,7 @@ match (value) {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -736,7 +737,7 @@ return match (value) {
 };
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -754,7 +755,7 @@ match (value) {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -772,7 +773,7 @@ return match (value) {
 };
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -790,7 +791,7 @@ match (value) {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -808,7 +809,7 @@ return match (value) {
 };
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -826,7 +827,7 @@ match (value) {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -844,7 +845,7 @@ return match (value) {
 };
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -862,7 +863,7 @@ println(to_string(await task));
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L004"
             && f.message
@@ -884,7 +885,7 @@ println(to_string(value));
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L004"
             && f.message
@@ -910,7 +911,7 @@ println(to_string(result));
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L004"
             && f.message
@@ -930,7 +931,7 @@ match (value) {
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L004"
             && f.message
@@ -946,7 +947,7 @@ println(to_string(f(2)));
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| f.code == "L004"
         && f.message
             .contains("Variable 'x' is declared but never used")));
@@ -964,7 +965,7 @@ println(to_string(await task));
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| f.code == "L005"
         && f.message
             .contains("Variable 'value' shadows an outer variable")));
@@ -984,7 +985,7 @@ println(to_string(result));
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| f.code == "L005"
         && f.message
             .contains("Variable 'value' shadows an outer variable")));
@@ -1003,7 +1004,7 @@ match (value) {
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| f.code == "L005"
         && f.message
             .contains("Variable 'inner' shadows an outer variable")));
@@ -1023,7 +1024,7 @@ println(to_string(result));
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| f.code == "L005"
         && f.message
             .contains("Variable 'inner' shadows an outer variable")));
@@ -1038,7 +1039,7 @@ println(to_string(f(2)));
 return None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result
         .findings
         .iter()
@@ -1054,7 +1055,7 @@ function run(): Integer {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L004"
             && f.message
@@ -1073,7 +1074,7 @@ function run(): None {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L004"
             && f.message
@@ -1090,7 +1091,7 @@ function run(): Integer {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L004"
             && f.message
@@ -1112,7 +1113,7 @@ function run(value: Maybe): None {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L004"
             && f.message
@@ -1134,7 +1135,7 @@ function run(value: Maybe): Integer {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L004"
             && f.message
@@ -1151,7 +1152,7 @@ function run(value: Integer): Integer {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L005"
             && f.message
@@ -1171,7 +1172,7 @@ function run(): None {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L005"
             && f.message
@@ -1189,7 +1190,7 @@ function run(): Integer {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L005" && f.message.contains("Variable 'x' shadows an outer variable")
     }));
@@ -1210,7 +1211,7 @@ function run(value: Maybe): None {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L005"
             && f.message
@@ -1233,7 +1234,7 @@ function run(value: Maybe): Integer {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L005"
             && f.message
@@ -1249,7 +1250,7 @@ function sort<T extends Cmp>(value: T): T {
 return value;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -1265,7 +1266,7 @@ function sort<T extends Comparable>(value: T): T {
 return value;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -1281,7 +1282,7 @@ class Box<T extends Cmp> {
 value: T;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -1297,7 +1298,7 @@ class Box<T extends Comparable> {
 value: T;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -1315,7 +1316,7 @@ function sort<T extends Cmp>(value: T): T {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -1333,7 +1334,7 @@ function sort<T extends Comparable>(value: T): T {
 }
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -1350,7 +1351,7 @@ Some(T),
 Empty
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -1367,7 +1368,7 @@ Some(T),
 Empty
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -1383,7 +1384,7 @@ interface Sorter<T extends Cmp> {
 function sort(value: T): T;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -1399,7 +1400,7 @@ interface Sorter<T extends Comparable> {
 function sort(value: T): T;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result.findings.iter().any(|f| {
         f.code == "L003"
             && f.message
@@ -1415,7 +1416,7 @@ class Child extends u.Base {
 value: Integer;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -1430,7 +1431,7 @@ class Child extends u.Models.Base {
 value: Integer;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -1445,7 +1446,7 @@ class Child implements u.Serializable {
 value: Integer;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -1460,7 +1461,7 @@ class Child implements u.Api.Serializable {
 value: Integer;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -1475,7 +1476,7 @@ class Child implements u.Serializable, u.Named {
 value: Integer;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -1490,7 +1491,7 @@ class Child implements u.Api.Serializable, u.Api.Named {
 value: Integer;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -1505,7 +1506,7 @@ interface Child extends u.Base {
 function run(): None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -1520,7 +1521,7 @@ interface Child extends u.Api.Base {
 function run(): None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -1535,7 +1536,7 @@ interface Child extends u.Base, u.Named {
 function run(): None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()
@@ -1550,7 +1551,7 @@ interface Child extends u.Api.Base, u.Api.Named {
 function run(): None;
 }
 "#;
-    let result = lint_source(source, false).expect("lint succeeds");
+    let result = lint_source(source, false).must("lint succeeds");
     assert!(!result
         .findings
         .iter()

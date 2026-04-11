@@ -1,3 +1,4 @@
+use super::TestExpectExt;
 use crate::ast::Decl;
 use crate::diagnostics::span_to_location;
 use crate::import_check::{
@@ -10,9 +11,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 fn check_import_errors(source: &str) -> Vec<ImportError> {
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let namespace = program
         .package
         .clone()
@@ -533,9 +534,9 @@ Enum.A(1);
 return None;
 }
 "#;
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let imports = program
         .declarations
         .iter()
@@ -690,9 +691,9 @@ module MathEx {
 function addOne(x: Integer): Integer { return x + 1; }
 }
 "#;
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let map = extract_function_namespaces(&program, "demo");
     assert!(map.contains_key("MathEx__addOne"));
     assert!(!map.contains_key("addOne"));
@@ -707,9 +708,9 @@ module Inner {
 }
 }
 "#;
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let map = extract_function_namespaces(&program, "demo");
     assert!(map.contains_key("Outer__Inner__ping"));
     assert!(!map.contains_key("Inner__ping"));
@@ -858,9 +859,9 @@ return inc(1);
         "util.math".to_string(),
     )]));
     let known_namespace_paths = Arc::new(HashSet::from(["util.math".to_string()]));
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let imports = program
         .declarations
         .iter()

@@ -1,3 +1,4 @@
+use super::TestExpectExt;
 use crate::formatter::format_source;
 use crate::lexer::tokenize;
 use crate::parser::Parser;
@@ -8,7 +9,7 @@ fn formats_basic_program() {
 import std.io.*;
 function main(): None {mut value: Integer=1+2*3;println("hi {value}");return None;}"#;
 
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
 
     assert_eq!(
         formatted,
@@ -29,7 +30,7 @@ function main(): None {mut value: Integer=1+2*3;println("hi {value}");return Non
 #[test]
 fn formats_extern_and_generics() {
     let source = r#"extern(c,"puts") function c_puts(msg:String): Integer;function id<T>(value:T): T {return value;}"#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
 
     assert!(formatted.contains("extern(c, \"puts\") function c_puts(msg: String): Integer;"));
     assert!(formatted.contains("public function id<T>(value: T): T {"));
@@ -38,7 +39,7 @@ fn formats_extern_and_generics() {
 #[test]
 fn keeps_comments_in_output() {
     let source = "// note\nfunction main(): None { return None; }";
-    let formatted = format_source(source).expect("comments should be preserved");
+    let formatted = format_source(source).must("comments should be preserved");
     assert!(formatted.contains("// note"));
 }
 
@@ -49,7 +50,7 @@ package demo;
 
 function main(): None { return; }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.starts_with("// banner\npackage demo;\n"),
         "{formatted}"
@@ -64,13 +65,13 @@ s: String = "\{literal\}";
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("\"\\{literal\\}\""), "{formatted}");
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
     parser
         .parse_program()
-        .expect("formatted output should preserve literal braces");
+        .must("formatted output should preserve literal braces");
 }
 
 #[test]
@@ -80,13 +81,13 @@ fn preserves_literal_braces_in_ignore_reasons() {
 @Ignore("\{skip\}")
 function skipped(): None { return None; }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("@Ignore(\"\\{skip\\}\")"), "{formatted}");
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
     parser
         .parse_program()
-        .expect("formatted output should preserve ignore reason braces");
+        .must("formatted output should preserve ignore reason braces");
 }
 
 #[test]
@@ -100,16 +101,14 @@ x: Integer = match (1) {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("match (2) { 2 => 3, _ => 4 }"),
         "{formatted}"
     );
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -121,13 +120,11 @@ x: Integer = 0;
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("(if (true)"));
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -135,7 +132,7 @@ fn preserves_shebang_line() {
     let source = r#"#!/usr/bin/env arden
 function main(): None { return None; }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.starts_with("#!/usr/bin/env arden\n"));
 }
 
@@ -146,7 +143,7 @@ function main(): None {
 if (true) { return None; } else { if (false) { return None; } else { return None; } }
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("} else if (false) {"), "{formatted}");
 }
 
@@ -158,7 +155,7 @@ x: Integer = if (true) { 1; } else if (false) { 2; } else { 3; };
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("else if (false)"), "{formatted}");
 }
 
@@ -170,16 +167,14 @@ y: Integer = ((x: Integer) => x + 1)(2);
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("((x: Integer) => x + 1)(2)"),
         "{formatted}"
     );
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -190,13 +185,11 @@ y: Integer = (if (true) { foo; } else { bar; })(2);
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("(if (true)"), "{formatted}");
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -207,13 +200,11 @@ y: Integer = (match (1) { 1 => { foo; }, _ => { bar; } })(2);
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("(match (1)"), "{formatted}");
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -224,13 +215,11 @@ y: Integer = (*f)(2);
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("(*f)(2)"), "{formatted}");
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -241,13 +230,11 @@ y: Integer = (choose()?)(2);
 return Result.ok(None);
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("(choose()?)(2)"), "{formatted}");
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -257,16 +244,16 @@ function f(borrow mut value: String): None {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("borrow mut value: String"),
         "{formatted}"
     );
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
     parser
         .parse_program()
-        .expect("formatted borrow-mut params should parse");
+        .must("formatted borrow-mut params should parse");
 }
 
 #[test]
@@ -276,13 +263,13 @@ function f<T extends A, B>(value: T): None {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("T extends A, B"), "{formatted}");
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
     parser
         .parse_program()
-        .expect("formatted generic bounds should parse");
+        .must("formatted generic bounds should parse");
 }
 
 #[test]
@@ -296,7 +283,7 @@ task: Task<Integer> = async {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("async {\n        // keep me\n        return 1;\n    }"),
         "{formatted}"
@@ -313,7 +300,7 @@ task: Task<Integer> = async {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("async {\n        1\n    }"),
         "{formatted}"
@@ -322,11 +309,11 @@ return None;
         !formatted.contains("async {\n        1;\n    }"),
         "{formatted}"
     );
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
     parser
         .parse_program()
-        .expect("formatted async tail expression should parse");
+        .must("formatted async tail expression should parse");
 }
 
 #[test]
@@ -342,16 +329,14 @@ value: Integer = if (true) {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("if (true) {\n        // keep me\n        1\n    }"),
         "{formatted}"
     );
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -366,7 +351,7 @@ value: Integer = if (true) {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("if (true) {\n        1\n    } else {\n        2\n    }"),
         "{formatted}"
@@ -375,11 +360,11 @@ return None;
         !formatted.contains("if (true) {\n        1;\n    } else {\n        2;\n    }"),
         "{formatted}"
     );
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
     parser
         .parse_program()
-        .expect("formatted if-expression tail should parse");
+        .must("formatted if-expression tail should parse");
 }
 
 #[test]
@@ -398,13 +383,11 @@ value: Integer = match (1) {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("// keep me"), "{formatted}");
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -418,7 +401,7 @@ task: Task<Integer> = async {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("return 1;\n        // trailing keep me\n    }"),
         "{formatted}"
@@ -438,16 +421,14 @@ value: Integer = if (true) {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("1\n        // trailing keep me\n    } else {"),
         "{formatted}"
     );
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -466,13 +447,11 @@ value: Integer = match (1) {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("// trailing keep me"), "{formatted}");
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -486,7 +465,7 @@ task: Task<Integer> = async {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("async {\n        /* keep me */\n        return 1;\n    }"),
         "{formatted}"
@@ -506,16 +485,14 @@ value: Integer = if (true) {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("1\n        /* trailing keep me */\n    } else {"),
         "{formatted}"
     );
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -528,7 +505,7 @@ task: Task<None> = async {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("async {\n        // keep me\n    }"),
         "{formatted}"
@@ -547,16 +524,14 @@ value: Integer = if (true) {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(
         formatted.contains("if (true) {\n        // keep me\n    } else {"),
         "{formatted}"
     );
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }
 
 #[test]
@@ -574,11 +549,9 @@ value: Integer = match (1) {
 return None;
 }
 "#;
-    let formatted = format_source(source).expect("format succeeds");
+    let formatted = format_source(source).must("format succeeds");
     assert!(formatted.contains("// keep me"), "{formatted}");
-    let tokens = tokenize(&formatted).expect("formatted output should lex");
+    let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .expect("formatted output should parse");
+    parser.parse_program().must("formatted output should parse");
 }

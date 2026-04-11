@@ -24,7 +24,7 @@ fn project_build_supports_shadowed_alias_in_helper_return_path_survives_runtime(
         src_dir.join("lib.arden"),
         "package util;\nmodule M { function add1(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         r#"
@@ -48,17 +48,17 @@ function main(): Integer {
 }
 "#,
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support shadowed alias in helper return path");
+            .must("project build should support shadowed alias in helper return path");
     });
 
     let output_path = temp_root.join("smoke");
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled shadowed-alias-helper-return binary");
+        .must("run compiled shadowed-alias-helper-return binary");
     assert_eq!(
         output.status.code(),
         Some(12),
@@ -84,7 +84,7 @@ fn project_build_incorrectly_filters_class_dependency_under_shadowed_alias_in_de
             src_dir.join("lib.arden"),
             "package util;\nclass Box { value: Integer; constructor(v: Integer) { this.value = v; } }\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         r#"
@@ -103,17 +103,17 @@ function main(): Integer {
 }
 "#,
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should handle shadowed alias in dependency closure");
+            .must("project build should handle shadowed alias in dependency closure");
     });
 
     let output_path = temp_root.join("smoke");
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled shadowed-alias-dependency-filtering binary");
+        .must("run compiled shadowed-alias-dependency-filtering binary");
     assert_eq!(
         output.status.code(),
         Some(12),
@@ -139,21 +139,21 @@ fn project_build_runs_split_file_module_named_main_in_entry_namespace_runtime() 
         src_dir.join("main.arden"),
         "package core;\nfunction main(): Integer { return main.ping(); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         src_dir.join("module.arden"),
         "package core;\nmodule main { function ping(): Integer { return 22; } }\n",
     )
-    .expect("write module");
+    .must("write module");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support split-file module named main");
+            .must("project build should support split-file module named main");
     });
 
     let output = std::process::Command::new(temp_root.join("smoke"))
         .output()
-        .expect("run compiled split-file module named main binary");
+        .must("run compiled split-file module named main binary");
     assert_eq!(
         output.status.code(),
         Some(22),
@@ -185,7 +185,7 @@ function main(): Integer {
 }
 "#,
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         src_dir.join("model.arden"),
         r#"
@@ -197,16 +197,16 @@ class main {
 }
 "#,
     )
-    .expect("write model");
+    .must("write model");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support split-file class named main");
+            .must("project build should support split-file class named main");
     });
 
     let output = std::process::Command::new(temp_root.join("smoke"))
         .output()
-        .expect("run compiled split-file class named main binary");
+        .must("run compiled split-file class named main binary");
     assert_eq!(
         output.status.code(),
         Some(22),
@@ -239,7 +239,7 @@ function main(): Integer {
 }
 "#,
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         src_dir.join("enum.arden"),
         r#"
@@ -249,16 +249,16 @@ enum main {
 }
 "#,
     )
-    .expect("write enum");
+    .must("write enum");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support split-file enum named main");
+            .must("project build should support split-file enum named main");
     });
 
     let output = std::process::Command::new(temp_root.join("smoke"))
         .output()
-        .expect("run compiled split-file enum named main binary");
+        .must("run compiled split-file enum named main binary");
     assert_eq!(
         output.status.code(),
         Some(22),
@@ -281,15 +281,15 @@ fn project_parse_cache_reuses_only_unchanged_files() {
             &main_file,
             "package app;\nimport lib.math;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main file");
+        .must("write main file");
     fs::write(
         &lib_file,
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write lib file");
+    .must("write lib file");
 
-    let first_main = parse_project_unit(&temp_root, &main_file).expect("first main parse");
-    let first_lib = parse_project_unit(&temp_root, &lib_file).expect("first lib parse");
+    let first_main = parse_project_unit(&temp_root, &main_file).must("first main parse");
+    let first_lib = parse_project_unit(&temp_root, &lib_file).must("first lib parse");
     assert!(!first_main.from_parse_cache);
     assert!(!first_lib.from_parse_cache);
 
@@ -298,10 +298,10 @@ fn project_parse_cache_reuses_only_unchanged_files() {
         &lib_file,
         "package lib;\nfunction add(x: Integer): Integer { return x + 2; }\n",
     )
-    .expect("rewrite lib file");
+    .must("rewrite lib file");
 
-    let second_main = parse_project_unit(&temp_root, &main_file).expect("second main parse");
-    let second_lib = parse_project_unit(&temp_root, &lib_file).expect("second lib parse");
+    let second_main = parse_project_unit(&temp_root, &main_file).must("second main parse");
+    let second_lib = parse_project_unit(&temp_root, &lib_file).must("second lib parse");
 
     assert!(second_main.from_parse_cache);
     assert!(!second_lib.from_parse_cache);
@@ -328,16 +328,16 @@ fn project_multi_file_import_graph_tracks_real_parsed_owner_file() {
             &main_file,
             "package app;\nimport lib.math;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main file");
+        .must("write main file");
     fs::write(
         &math_file,
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write math file");
+    .must("write math file");
 
     let parsed_files = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main"),
-        parse_project_unit(&temp_root, &math_file).expect("parse math"),
+        parse_project_unit(&temp_root, &main_file).must("parse main"),
+        parse_project_unit(&temp_root, &math_file).must("parse math"),
     ];
 
     let mut namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
@@ -440,12 +440,12 @@ fn project_multi_file_dependency_graph_tracks_same_namespace_enum_reference_owne
             &main_file,
             "package core;\nfunction main(): Integer { return match (main.Ok(22)) { Ok(value) => value, }; }\n",
         )
-        .expect("write main file");
-    fs::write(&enum_file, "package core;\nenum main { Ok(Integer) }\n").expect("write enum file");
+        .must("write main file");
+    fs::write(&enum_file, "package core;\nenum main { Ok(Integer) }\n").must("write enum file");
 
     let parsed_files = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main"),
-        parse_project_unit(&temp_root, &enum_file).expect("parse enum"),
+        parse_project_unit(&temp_root, &main_file).must("parse main"),
+        parse_project_unit(&temp_root, &enum_file).must("parse enum"),
     ];
 
     let mut namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
@@ -562,15 +562,15 @@ fn project_check_supports_cross_file_function_value_references() {
         src_dir.join("lib.arden"),
         "package app;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nfunction main(): None { o: Option<(Integer) -> Integer> = Option.some(add1); r: Result<(Integer) -> Integer, String> = Result.ok(add1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect("project check should support function value refs");
+        check_command(None, false).must("project check should support function value refs");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -590,16 +590,16 @@ fn project_build_supports_imported_function_value_alias_references() {
         src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util.add1 as inc;\nfunction main(): None { f: (Integer) -> Integer = inc; o: Option<(Integer) -> Integer> = Option.some(inc); x: Integer = f(2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support imported function value aliases");
+            .must("project build should support imported function value aliases");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -619,16 +619,16 @@ fn project_build_supports_namespace_alias_function_values() {
             src_dir.join("lib.arden"),
             "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\nfunction twice(f: (Integer) -> Integer, x: Integer): Integer { return f(f(x)); }\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): None { f: (Integer) -> Integer = u.add1; x: Integer = u.twice(f, 1); y: Integer = u.add1(2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support namespace alias function values");
+            .must("project build should support namespace alias function values");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -648,16 +648,16 @@ fn project_build_supports_nested_namespace_alias_function_values() {
         src_dir.join("lib.arden"),
         "package util;\nmodule M { function add1(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): None { f: (Integer) -> Integer = u.M.add1; x: Integer = u.M.add1(1); y: Integer = f(2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support nested namespace alias function values");
+            .must("project build should support nested namespace alias function values");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -677,15 +677,15 @@ fn project_build_supports_exact_import_alias_explicit_generic_function_values() 
         src_dir.join("util.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.U.id as ident;\nfunction main(): Integer { f: (Integer) -> Integer = ident<Integer>; return if (f(7) == 7) { 0 } else { 1 }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support exact-import alias explicit generic function values",
         );
     });
@@ -693,7 +693,7 @@ fn project_build_supports_exact_import_alias_explicit_generic_function_values() 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled exact-import alias explicit generic function value binary");
+        .must("run compiled exact-import alias explicit generic function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -713,15 +713,15 @@ fn project_build_supports_root_namespace_alias_explicit_generic_function_values(
         src_dir.join("util.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer { f: (Integer) -> Integer = root.U.id<Integer>; return if (f(7) == 7) { 0 } else { 1 }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support root namespace alias explicit generic function values",
         );
     });
@@ -729,7 +729,7 @@ fn project_build_supports_root_namespace_alias_explicit_generic_function_values(
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled root namespace alias explicit generic function value binary");
+        .must("run compiled root namespace alias explicit generic function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -749,15 +749,15 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_constructor()
         src_dir.join("main.arden"),
         "package app;\nimport app as root;\nfunction main(): Integer { value: Option<Integer> = root.Option.None(); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nfunction helper(): Integer { return 0; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support root namespace alias builtin Option.None constructor",
         );
     });
@@ -765,7 +765,7 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_constructor()
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled root alias builtin Option.None constructor binary");
+        .must("run compiled root alias builtin Option.None constructor binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -786,15 +786,15 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_method_receiv
         src_dir.join("main.arden"),
         "package app;\nimport app as root;\nfunction main(): Integer { return if (root.Option.None.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nfunction helper(): Integer { return 0; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support root namespace alias builtin Option.None method receivers",
         );
     });
@@ -802,7 +802,7 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_method_receiv
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled root alias builtin Option.None method receiver binary");
+        .must("run compiled root alias builtin Option.None method receiver binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -822,15 +822,15 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_function_valu
         src_dir.join("main.arden"),
         "package app;\nimport app as root;\nfunction main(): Integer { empty: () -> Option<Integer> = root.Option.None; value: Option<Integer> = empty(); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nfunction helper(): Integer { return 0; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support root namespace alias builtin Option.None function values",
         );
     });
@@ -838,7 +838,7 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_function_valu
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled root alias builtin Option.None function value binary");
+        .must("run compiled root alias builtin Option.None function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -858,22 +858,22 @@ fn project_build_supports_root_namespace_alias_builtin_patterns() {
         src_dir.join("main.arden"),
         "package app;\nimport app as root;\nfunction classify(flag: Boolean): Integer { return match (if (flag) { root.Option.None() } else { root.Option.Some(7) }) { root.Option.None => 0, root.Option.Some(_) => 1, }; }\nfunction fail(flag: Boolean): Integer { return match (if (flag) { root.Result.Error(\"boom\") } else { root.Result.Ok(7) }) { root.Result.Error(_) => 0, root.Result.Ok(_) => 1, }; }\nfunction main(): Integer { return classify(true) + fail(true); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nfunction helper(): Integer { return 0; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support root namespace alias builtin patterns");
+            .must("project build should support root namespace alias builtin patterns");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled root alias builtin pattern binary");
+        .must("run compiled root alias builtin pattern binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -888,10 +888,10 @@ fn project_build_supports_builtin_option_none_alias_zero_arg_lambda_tail_values(
         src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction main(): Integer { empty: () -> Option<Integer> = () => Empty; return if (empty().is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support builtin Option.None alias zero-arg lambda tail values",
         );
     });
@@ -899,7 +899,7 @@ fn project_build_supports_builtin_option_none_alias_zero_arg_lambda_tail_values(
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Option.None alias lambda tail binary");
+        .must("run compiled builtin Option.None alias lambda tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -919,15 +919,15 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_zero_arg_lamb
         src_dir.join("main.arden"),
         "package app;\nimport app as root;\nfunction main(): Integer { empty: () -> Option<Integer> = () => root.Option.None; return if (empty().is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nfunction helper(): Integer { return 0; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support root namespace alias builtin Option.None zero-arg lambda tail values",
         );
     });
@@ -935,7 +935,7 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_zero_arg_lamb
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled root alias builtin Option.None lambda tail binary");
+        .must("run compiled root alias builtin Option.None lambda tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -950,18 +950,17 @@ fn project_build_supports_builtin_option_none_alias_match_scrutinee_values() {
         src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction main(): Integer { return match (Empty) { None => 0, Some(_) => 1, }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support builtin Option.None alias match scrutinee values",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support builtin Option.None alias match scrutinee values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Option.None alias match scrutinee binary");
+        .must("run compiled builtin Option.None alias match scrutinee binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -982,15 +981,15 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_match_scrutin
         src_dir.join("main.arden"),
         "package app;\nimport app as root;\nfunction main(): Integer { return match (root.Option.None) { None => 0, Some(_) => 1, }; }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nfunction helper(): Integer { return 0; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support root namespace alias builtin Option.None match scrutinee values",
         );
     });
@@ -998,7 +997,7 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_match_scrutin
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled root alias builtin Option.None match scrutinee binary");
+        .must("run compiled root alias builtin Option.None match scrutinee binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1013,10 +1012,10 @@ fn project_build_supports_module_local_builtin_option_none_alias_zero_arg_lambda
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { empty: () -> Option<Integer> = () => Empty; return if (empty().is_none()) { 0 } else { 1 }; } }\nfunction main(): Integer { return Inner.keep(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local builtin Option.None alias zero-arg lambda tail values",
         );
     });
@@ -1024,7 +1023,7 @@ fn project_build_supports_module_local_builtin_option_none_alias_zero_arg_lambda
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local builtin Option.None lambda tail binary");
+        .must("run compiled module-local builtin Option.None lambda tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1041,10 +1040,10 @@ fn project_build_supports_module_local_root_alias_builtin_option_none_zero_arg_l
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import app as root; function keep(): Integer { empty: () -> Option<Integer> = () => root.Option.None; return if (empty().is_none()) { 0 } else { 1 }; } }\nfunction main(): Integer { return Inner.keep(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local root alias builtin Option.None zero-arg lambda tail values",
         );
     });
@@ -1052,7 +1051,7 @@ fn project_build_supports_module_local_root_alias_builtin_option_none_zero_arg_l
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local root alias builtin Option.None lambda tail binary");
+        .must("run compiled module-local root alias builtin Option.None lambda tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1067,10 +1066,10 @@ fn project_build_supports_module_local_builtin_option_none_async_tail_values() {
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(): Task<Option<Integer>> { return async { Empty }; } }\nfunction main(): Integer { value: Option<Integer> = await(Inner.keep()); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local builtin Option.None async tail values",
         );
     });
@@ -1078,7 +1077,7 @@ fn project_build_supports_module_local_builtin_option_none_async_tail_values() {
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local builtin Option.None async tail binary");
+        .must("run compiled module-local builtin Option.None async tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1094,10 +1093,10 @@ fn project_build_supports_module_local_root_alias_builtin_option_none_async_tail
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import app as root; function keep(): Task<Option<Integer>> { return async { root.Option.None }; } }\nfunction main(): Integer { value: Option<Integer> = await(Inner.keep()); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local root alias builtin Option.None async tail values",
         );
     });
@@ -1105,7 +1104,7 @@ fn project_build_supports_module_local_root_alias_builtin_option_none_async_tail
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local root alias builtin Option.None async tail binary");
+        .must("run compiled module-local root alias builtin Option.None async tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1120,17 +1119,17 @@ fn project_build_supports_builtin_option_none_async_if_tail_values() {
         src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction wrap(flag: Boolean): Option<Integer> { return await(async { if (flag) { Empty } else { Empty } }); }\nfunction main(): Integer { return if (wrap(true).is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Option.None async if-tail values");
+            .must("project build should support builtin Option.None async if-tail values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Option.None async if-tail binary");
+        .must("run compiled builtin Option.None async if-tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1150,15 +1149,15 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_async_if_tail
         src_dir.join("main.arden"),
         "package app;\nimport app as root;\nfunction wrap(flag: Boolean): Option<Integer> { return await(async { if (flag) { root.Option.None } else { root.Option.None } }); }\nfunction main(): Integer { return if (wrap(true).is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nfunction helper(): Integer { return 0; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support root namespace alias builtin Option.None async if-tail values",
         );
     });
@@ -1166,7 +1165,7 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_async_if_tail
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled root alias builtin Option.None async if-tail binary");
+        .must("run compiled root alias builtin Option.None async if-tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1182,10 +1181,10 @@ fn project_build_supports_module_local_builtin_option_none_async_if_tail_values(
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function wrap(flag: Boolean): Task<Option<Integer>> { return async { if (flag) { Empty } else { Empty } }; } }\nfunction main(): Integer { value: Option<Integer> = await(Inner.wrap(true)); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local builtin Option.None async if-tail values",
         );
     });
@@ -1193,7 +1192,7 @@ fn project_build_supports_module_local_builtin_option_none_async_if_tail_values(
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local builtin Option.None async if-tail binary");
+        .must("run compiled module-local builtin Option.None async if-tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1209,10 +1208,10 @@ fn project_build_supports_module_local_root_alias_builtin_option_none_async_if_t
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import app as root; function wrap(flag: Boolean): Task<Option<Integer>> { return async { if (flag) { root.Option.None } else { root.Option.None } }; } }\nfunction main(): Integer { value: Option<Integer> = await(Inner.wrap(true)); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local root alias builtin Option.None async if-tail values",
         );
     });
@@ -1220,7 +1219,7 @@ fn project_build_supports_module_local_root_alias_builtin_option_none_async_if_t
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local root alias builtin Option.None async if-tail binary");
+        .must("run compiled module-local root alias builtin Option.None async if-tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1236,10 +1235,10 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_async_tail_v
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(): Task<Integer> { return async { Empty: Integer = 7; Empty }; } }\nfunction main(): Integer { return await(Inner.keep()) - 7; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local shadowed builtin Option.None async tail values",
         );
     });
@@ -1247,7 +1246,7 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_async_tail_v
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local shadowed builtin Option.None async tail binary");
+        .must("run compiled module-local shadowed builtin Option.None async tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1263,10 +1262,10 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_zero_arg_lam
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { Empty: Integer = 7; f: () -> Integer = () => Empty; return f(); } }\nfunction main(): Integer { return Inner.keep() - 7; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local shadowed builtin Option.None zero-arg lambda values",
         );
     });
@@ -1274,7 +1273,7 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_zero_arg_lam
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local shadowed builtin Option.None lambda binary");
+        .must("run compiled module-local shadowed builtin Option.None lambda binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1290,10 +1289,10 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_return_value
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(): Option<Integer> { Empty: Option<Integer> = Option.Some(7); return Empty; } }\nfunction main(): Integer { return match (Inner.keep()) { Some(v) => v - 7, None => 1, }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local shadowed builtin Option.None return values",
         );
     });
@@ -1301,7 +1300,7 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_return_value
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local shadowed builtin Option.None return binary");
+        .must("run compiled module-local shadowed builtin Option.None return binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1317,10 +1316,10 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_param_return
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(Empty: Option<Integer>): Option<Integer> { return Empty; } }\nfunction main(): Integer { return match (Inner.keep(Option.Some(7))) { Some(v) => v - 7, None => 1, }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local shadowed builtin Option.None parameter return values",
         );
     });
@@ -1328,7 +1327,7 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_param_return
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local shadowed builtin Option.None parameter return binary");
+        .must("run compiled module-local shadowed builtin Option.None parameter return binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1344,10 +1343,10 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_param_zero_a
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(Empty: Integer): Integer { f: () -> Integer = () => Empty; return f(); } }\nfunction main(): Integer { return Inner.keep(7) - 7; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local shadowed builtin Option.None parameter zero-arg lambda values",
         );
     });
@@ -1355,7 +1354,7 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_param_zero_a
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local shadowed builtin Option.None parameter lambda binary");
+        .must("run compiled module-local shadowed builtin Option.None parameter lambda binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1371,10 +1370,10 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_for_zero_arg
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { for (Empty in 7..8) { f: () -> Integer = () => Empty; return f() - 7; } return 1; } }\nfunction main(): Integer { return Inner.keep(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local shadowed builtin Option.None for-loop zero-arg lambda values",
         );
     });
@@ -1382,7 +1381,7 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_for_zero_arg
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local shadowed builtin Option.None for-loop lambda binary");
+        .must("run compiled module-local shadowed builtin Option.None for-loop lambda binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1398,10 +1397,10 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_match_zero_a
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(value: Option<Integer>): Integer { return match (value) { Some(Empty) => { f: () -> Integer = () => Empty; f() - 7 }, None => 1, }; } }\nfunction main(): Integer { return Inner.keep(Option.Some(7)); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module-local shadowed builtin Option.None match-arm zero-arg lambda values",
         );
     });
@@ -1409,7 +1408,7 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_match_zero_a
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local shadowed builtin Option.None match-arm lambda binary");
+        .must("run compiled module-local shadowed builtin Option.None match-arm lambda binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1429,22 +1428,22 @@ fn project_build_supports_module_wildcard_import_calls() {
         src_dir.join("util.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport app.U.*;\nfunction main(): Integer { return id(7); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support module wildcard import calls");
+            .must("project build should support module wildcard import calls");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module wildcard import call binary");
+        .must("run compiled module wildcard import call binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1464,15 +1463,15 @@ fn project_build_supports_module_wildcard_import_explicit_generic_function_value
         src_dir.join("util.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.U.*;\nfunction main(): Integer { f: (Integer) -> Integer = id<Integer>; return if (f(7) == 7) { 0 } else { 1 }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support module wildcard import explicit generic function values",
         );
     });
@@ -1480,7 +1479,7 @@ fn project_build_supports_module_wildcard_import_explicit_generic_function_value
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module wildcard import explicit generic function value binary");
+        .must("run compiled module wildcard import explicit generic function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1500,22 +1499,22 @@ fn project_build_supports_module_wildcard_import_integer_to_float_calls() {
         src_dir.join("util.arden"),
         "package app;\nmodule U { function scale(value: Float): Float { return value * 2.0; } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport app.U.*;\nfunction main(): Integer { value: Float = scale(3); return if (value == 6.0) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support wildcard imported int-to-float calls");
+            .must("project build should support wildcard imported int-to-float calls");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled wildcard-import int-to-float call binary");
+        .must("run compiled wildcard-import int-to-float call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1536,15 +1535,15 @@ fn project_build_supports_wildcard_imported_nested_module_integer_to_float_calls
         src_dir.join("util.arden"),
         "package app;\nmodule U { module Math { function scale(value: Float): Float { return value * 2.0; } } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport app.U.*;\nfunction main(): Integer { value: Float = Math.scale(3); return if (value == 6.0) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support wildcard imported nested-module int-to-float calls",
         );
     });
@@ -1552,7 +1551,7 @@ fn project_build_supports_wildcard_imported_nested_module_integer_to_float_calls
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled wildcard-import nested-module int-to-float call binary");
+        .must("run compiled wildcard-import nested-module int-to-float call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1567,17 +1566,17 @@ fn project_build_supports_stdlib_wildcard_import_calls() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.*;\nfunction main(): Integer { return if (abs(-7) == 7) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support stdlib wildcard import calls");
+            .must("project build should support stdlib wildcard import calls");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled stdlib wildcard import call binary");
+        .must("run compiled stdlib wildcard import call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1592,17 +1591,17 @@ fn project_build_supports_stdlib_wildcard_import_function_values() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.*;\nfunction main(): Integer { f: (Integer) -> Float = abs; return if (f(-7) == 7.0) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support stdlib wildcard import function values");
+            .must("project build should support stdlib wildcard import function values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled stdlib wildcard import function value binary");
+        .must("run compiled stdlib wildcard import function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1617,17 +1616,17 @@ fn project_build_supports_stdlib_exact_import_calls() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.abs as absolute;\nfunction main(): Integer { return if (absolute(-7) == 7) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support stdlib exact import calls");
+            .must("project build should support stdlib exact import calls");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled stdlib exact import call binary");
+        .must("run compiled stdlib exact import call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1642,17 +1641,17 @@ fn project_build_supports_stdlib_exact_import_function_values() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.abs as absolute;\nfunction main(): Integer { f: (Integer) -> Float = absolute; return if (f(-7) == 7.0) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support stdlib exact import function values");
+            .must("project build should support stdlib exact import function values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled stdlib exact import function value binary");
+        .must("run compiled stdlib exact import function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1667,17 +1666,17 @@ fn project_build_supports_stdlib_zero_arg_exact_import_values() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Float = Pi; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg stdlib exact import values");
+            .must("project build should support zero-arg stdlib exact import values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg stdlib exact import value binary");
+        .must("run compiled zero-arg stdlib exact import value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1692,17 +1691,17 @@ fn project_build_supports_stdlib_zero_arg_string_exact_import_values() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { value: String = CurrentDir; return if (value.length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg stdlib string exact import values");
+            .must("project build should support zero-arg stdlib string exact import values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg stdlib string exact import value binary");
+        .must("run compiled zero-arg stdlib string exact import value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1717,17 +1716,17 @@ fn project_build_supports_stdlib_zero_arg_integer_exact_import_values() {
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { value: Integer = ArgCount; return if (value >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg stdlib integer exact import values");
+            .must("project build should support zero-arg stdlib integer exact import values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg stdlib integer exact import value binary");
+        .must("run compiled zero-arg stdlib integer exact import value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1742,17 +1741,17 @@ fn project_build_supports_stdlib_zero_arg_exact_import_if_expressions() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Float = if (true) { Pi } else { 0.0 }; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg stdlib exact import if expressions");
+            .must("project build should support zero-arg stdlib exact import if expressions");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg stdlib exact import if expression binary");
+        .must("run compiled zero-arg stdlib exact import if expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1767,17 +1766,17 @@ fn project_build_supports_stdlib_zero_arg_exact_import_match_expressions() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Float = match (true) { true => Pi, false => 0.0, }; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg stdlib exact import match expressions");
+            .must("project build should support zero-arg stdlib exact import match expressions");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg stdlib exact import match expression binary");
+        .must("run compiled zero-arg stdlib exact import match expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1792,17 +1791,17 @@ fn project_build_supports_stdlib_zero_arg_exact_import_match_scrutinees() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return match (CurrentDir) { \"\" => 1, _ => 0, }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg stdlib exact import match scrutinees");
+            .must("project build should support zero-arg stdlib exact import match scrutinees");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg stdlib exact import match scrutinee binary");
+        .must("run compiled zero-arg stdlib exact import match scrutinee binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1817,17 +1816,17 @@ fn project_build_supports_stdlib_zero_arg_exact_import_match_statements() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { mut result: Integer = 1; match (CurrentDir) { \"\" => { result = 1; } _ => { result = 0; } } return result; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg stdlib exact import match statements");
+            .must("project build should support zero-arg stdlib exact import match statements");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg stdlib exact import match statement binary");
+        .must("run compiled zero-arg stdlib exact import match statement binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1843,18 +1842,17 @@ fn project_build_supports_module_local_stdlib_zero_arg_exact_import_values() {
         src_dir.join("main.arden"),
         "package app;\nmodule Inner {\n    import std.system.cwd as CurrentDir;\n    function read(): String { value: String = CurrentDir; return value; }\n}\nfunction main(): Integer { value: String = Inner.read(); return if (value.length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support module-local zero-arg stdlib exact import values",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support module-local zero-arg stdlib exact import values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local zero-arg stdlib exact import value binary");
+        .must("run compiled module-local zero-arg stdlib exact import value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1869,17 +1867,17 @@ fn project_build_supports_stdlib_zero_arg_exact_import_return_values() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction read(): String { return CurrentDir; }\nfunction main(): Integer { value: String = read(); return if (value.length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg stdlib exact import return values");
+            .must("project build should support zero-arg stdlib exact import return values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg stdlib exact import return value binary");
+        .must("run compiled zero-arg stdlib exact import return value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1894,17 +1892,17 @@ fn project_build_supports_stdlib_zero_arg_wildcard_values() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.*;\nfunction main(): Integer { value: Float = pi; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg stdlib wildcard values");
+            .must("project build should support zero-arg stdlib wildcard values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg stdlib wildcard value binary");
+        .must("run compiled zero-arg stdlib wildcard value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1919,17 +1917,17 @@ fn project_build_supports_stdlib_namespace_zero_arg_values() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math as math;\nfunction main(): Integer { value: Float = math.pi; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support stdlib namespace zero-arg values");
+            .must("project build should support stdlib namespace zero-arg values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled stdlib namespace zero-arg value binary");
+        .must("run compiled stdlib namespace zero-arg value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1944,17 +1942,17 @@ fn project_build_supports_stdlib_zero_arg_wildcard_string_values() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.*;\nfunction main(): Integer { value: String = cwd; return if (value.length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support stdlib zero-arg wildcard string values");
+            .must("project build should support stdlib zero-arg wildcard string values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled stdlib zero-arg wildcard string value binary");
+        .must("run compiled stdlib zero-arg wildcard string value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1969,17 +1967,17 @@ fn project_build_supports_if_expression_builtin_function_values() {
         src_dir.join("main.arden"),
         "package app;\nfunction choose(flag: Boolean): (Integer) -> Float { return if (flag) { to_float } else { to_float }; }\nfunction main(): Integer { return if (choose(true)(1) == 1.0) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support if-expression builtin function values");
+            .must("project build should support if-expression builtin function values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled if-expression builtin function value binary");
+        .must("run compiled if-expression builtin function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1994,17 +1992,17 @@ fn project_build_supports_match_expression_builtin_function_values() {
         src_dir.join("main.arden"),
         "package app;\nenum Mode { A, B }\nfunction choose(mode: Mode): (Integer) -> Float { return match (mode) { Mode.A => { to_float } Mode.B => { to_float } }; }\nfunction main(): Integer { return if (choose(Mode.A)(1) == 1.0) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support match-expression builtin function values");
+            .must("project build should support match-expression builtin function values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled match-expression builtin function value binary");
+        .must("run compiled match-expression builtin function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2019,17 +2017,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_typed_lists() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { values: List<Float> = List<Float>(); values.push(Pi); return if (values[0] > 3.14 && values[0] < 3.15) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in typed lists");
+            .must("project build should support zero-arg exact import values in typed lists");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import typed list binary");
+        .must("run compiled zero-arg exact import typed list binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2044,17 +2042,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_builtin_calls() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { text: String = to_string(Pi); return if (text.length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in builtin calls");
+            .must("project build should support zero-arg exact import values in builtin calls");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import builtin call binary");
+        .must("run compiled zero-arg exact import builtin call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2069,17 +2067,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_string_builtins() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nimport std.string.*;\nfunction main(): Integer { return if (Str.len(CurrentDir) >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in string builtins");
+            .must("project build should support zero-arg exact import values in string builtins");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import string builtin binary");
+        .must("run compiled zero-arg exact import string builtin binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2094,17 +2092,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_time_builtin_calls() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nimport std.time.*;\nfunction main(): Integer { formatted: String = Time.now(CurrentDir); return if (formatted.length() >= 0) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in time builtins");
+            .must("project build should support zero-arg exact import values in time builtins");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import time builtin binary");
+        .must("run compiled zero-arg exact import time builtin binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2119,10 +2117,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_list_index_methods() {
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { values: List<Integer> = List<Integer>(); values.push(10); values.push(20); return values.get(ArgCount) - 20; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in list index methods",
         );
     });
@@ -2130,7 +2128,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_list_index_methods() {
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import list index binary");
+        .must("run compiled zero-arg exact import list index binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2145,10 +2143,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_list_constructor_capac
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { values: List<Integer> = List<Integer>(ArgCount); values.push(7); return values.get(0) - 7; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in list constructor capacity",
         );
     });
@@ -2156,7 +2154,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_list_constructor_capac
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import list capacity binary");
+        .must("run compiled zero-arg exact import list capacity binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2171,18 +2169,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_index_expressions() {
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { values: List<Integer> = List<Integer>(); values.push(10); values.push(20); return values[ArgCount] - 20; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support zero-arg exact import values in index expressions",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support zero-arg exact import values in index expressions");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import index expression binary");
+        .must("run compiled zero-arg exact import index expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2198,10 +2195,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_string_index_expressio
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { text: String = \"ab\"; letter: Char = text[ArgCount]; return if (letter == 'b') { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in string index expressions",
         );
     });
@@ -2209,7 +2206,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_string_index_expressio
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import string index binary");
+        .must("run compiled zero-arg exact import string index binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2228,17 +2225,17 @@ fn project_build_supports_zero_arg_exact_import_values_as_indexed_objects() {
             "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { letter: Char = CurrentDir[0]; return if (letter == '/') { 0 } else { 1 }; }\n".to_string()
         },
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values as indexed objects");
+            .must("project build should support zero-arg exact import values as indexed objects");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import indexed object binary");
+        .must("run compiled zero-arg exact import indexed object binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2253,17 +2250,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_for_iterables() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { mut count: Integer = 0; for (ch in CurrentDir) { count += 1; } return if (count >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in for iterables");
+            .must("project build should support zero-arg exact import values in for iterables");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import for iterable binary");
+        .must("run compiled zero-arg exact import for iterable binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2278,17 +2275,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_async_returns() {
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { task: Task<Integer> = async { return ArgCount; }; return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in async returns");
+            .must("project build should support zero-arg exact import values in async returns");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import async return binary");
+        .must("run compiled zero-arg exact import async return binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2303,10 +2300,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_async_tail_expressions
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { return if (await(async { ArgCount }) == 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in async tail expressions",
         );
     });
@@ -2314,7 +2311,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_async_tail_expressions
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import async tail binary");
+        .must("run compiled zero-arg exact import async tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2329,17 +2326,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_range_syntax() {
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { value: Range<Integer> = ArgCount..(ArgCount + 1); return if (value.has_next()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in range syntax");
+            .must("project build should support zero-arg exact import values in range syntax");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import range syntax binary");
+        .must("run compiled zero-arg exact import range syntax binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2354,10 +2351,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_range_syntax_for_loops
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { mut total: Integer = 0; for (value in ArgCount..(ArgCount + 1)) { total += value; } return if (total == 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in range syntax for loops",
         );
     });
@@ -2365,7 +2362,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_range_syntax_for_loops
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import range for-loop binary");
+        .must("run compiled zero-arg exact import range for-loop binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2380,10 +2377,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_task_await_timeout() {
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nimport std.time.*;\nfunction work(): Task<Integer> { return async { Time.sleep(50); return 7; }; }\nfunction main(): Integer { value: Option<Integer> = work().await_timeout(ArgCount); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in Task.await_timeout",
         );
     });
@@ -2391,7 +2388,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_task_await_timeout() {
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import await_timeout binary");
+        .must("run compiled zero-arg exact import await_timeout binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2406,17 +2403,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_option_some() {
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { value: Option<Integer> = Option.some(ArgCount); return if (value.unwrap() == 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in Option.some");
+            .must("project build should support zero-arg exact import values in Option.some");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import Option.some binary");
+        .must("run compiled zero-arg exact import Option.some binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2431,17 +2428,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_result_ok() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Result<Float, String> = Result.ok(Pi); return if (value.unwrap() > 3.14 && value.unwrap() < 3.15) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in Result.ok");
+            .must("project build should support zero-arg exact import values in Result.ok");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import Result.ok binary");
+        .must("run compiled zero-arg exact import Result.ok binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2456,10 +2453,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_direct_result_ok_recei
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { return if (Result.ok(Pi).unwrap() > 3.14) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in direct Result.ok receivers",
         );
     });
@@ -2467,7 +2464,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_direct_result_ok_recei
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import direct Result.ok receiver binary");
+        .must("run compiled zero-arg exact import direct Result.ok receiver binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2482,18 +2479,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_require_messages() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { require(true, CurrentDir); return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support zero-arg exact import values in require messages",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support zero-arg exact import values in require messages");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import require message binary");
+        .must("run compiled zero-arg exact import require message binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2508,17 +2504,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_borrows() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { text: &String = &CurrentDir; return if ((*text).length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in borrows");
+            .must("project build should support zero-arg exact import values in borrows");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import borrow binary");
+        .must("run compiled zero-arg exact import borrow binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2533,10 +2529,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_direct_borrow_derefere
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if ((*(&CurrentDir)).length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in direct borrow dereferences",
         );
     });
@@ -2544,7 +2540,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_direct_borrow_derefere
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import direct deref binary");
+        .must("run compiled zero-arg exact import direct deref binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2559,17 +2555,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_try_expressions() {
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction run(): Option<Integer> { value: Integer = Option.some(ArgCount)?; return Option.some(value); }\nfunction main(): Integer { return if (run().unwrap() == 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in try expressions");
+            .must("project build should support zero-arg exact import values in try expressions");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import try binary");
+        .must("run compiled zero-arg exact import try binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2584,18 +2580,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_zero_arg_lambdas() {
         src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { f: () -> Integer = () => ArgCount; return if (f() == 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support zero-arg exact import values in zero-arg lambdas",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support zero-arg exact import values in zero-arg lambdas");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import lambda binary");
+        .must("run compiled zero-arg exact import lambda binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2610,10 +2605,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_immediate_zero_arg_lam
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if (((() => CurrentDir))().length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in immediate zero-arg lambdas",
         );
     });
@@ -2621,7 +2616,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_immediate_zero_arg_lam
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import immediate lambda binary");
+        .must("run compiled zero-arg exact import immediate lambda binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2636,17 +2631,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_println_calls() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nimport std.io.println;\nfunction main(): Integer { println(Pi); return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support zero-arg exact import values in println calls");
+            .must("project build should support zero-arg exact import values in println calls");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import println binary");
+        .must("run compiled zero-arg exact import println binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2661,10 +2656,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_string_interpolation()
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: String = \"{Pi}\"; return if (value.length() >= 4) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in string interpolation",
         );
     });
@@ -2672,7 +2667,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_string_interpolation()
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import string interpolation binary");
+        .must("run compiled zero-arg exact import string interpolation binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2687,10 +2682,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_variadic_ffi_calls() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nextern(system, \"printf\") function sys_printf(fmt: String, ...): Integer;\nfunction main(): Integer { sys_printf(\"%f\\n\", Pi); return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in variadic FFI calls",
         );
     });
@@ -2698,7 +2693,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_variadic_ffi_calls() {
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import variadic FFI binary");
+        .must("run compiled zero-arg exact import variadic FFI binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2713,10 +2708,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_binary_expressions() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { return if (Pi > 3.14 && Pi < 3.15) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in binary expressions",
         );
     });
@@ -2724,7 +2719,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_binary_expressions() {
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import binary expression binary");
+        .must("run compiled zero-arg exact import binary expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2739,18 +2734,17 @@ fn project_build_supports_zero_arg_exact_import_values_in_unary_expressions() {
         src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Float = -Pi; return if (value < -3.14 && value > -3.15) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support zero-arg exact import values in unary expressions",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support zero-arg exact import values in unary expressions");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import unary expression binary");
+        .must("run compiled zero-arg exact import unary expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2765,18 +2759,17 @@ fn project_build_supports_zero_arg_exact_import_values_as_method_receivers() {
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if (CurrentDir.length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support zero-arg exact import values as method receivers",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support zero-arg exact import values as method receivers");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import method receiver binary");
+        .must("run compiled zero-arg exact import method receiver binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2791,10 +2784,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_compound_assignments()
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { mut value: String = \"\"; value += CurrentDir; return if (value.length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in compound assignments",
         );
     });
@@ -2802,7 +2795,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_compound_assignments()
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import compound assignment binary");
+        .must("run compiled zero-arg exact import compound assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2817,17 +2810,17 @@ fn project_build_supports_builtin_option_none_alias_as_method_receiver() {
         src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction main(): Integer { return if (Empty.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Option.None alias method receivers");
+            .must("project build should support builtin Option.None alias method receivers");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Option.None alias method receiver binary");
+        .must("run compiled builtin Option.None alias method receiver binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2842,10 +2835,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_if_expr_method_receive
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if ((if (true) { CurrentDir } else { CurrentDir }).length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in if-expression method receivers",
         );
     });
@@ -2853,7 +2846,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_if_expr_method_receive
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import if-expression method receiver binary");
+        .must("run compiled zero-arg exact import if-expression method receiver binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2868,10 +2861,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_block_expr_method_rece
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if (({ CurrentDir }).length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in block-expression method receivers",
         );
     });
@@ -2879,7 +2872,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_block_expr_method_rece
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import block-expression method receiver binary");
+        .must("run compiled zero-arg exact import block-expression method receiver binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2894,10 +2887,10 @@ fn project_build_supports_zero_arg_exact_import_values_in_match_expr_method_rece
         src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if ((match (true) { true => CurrentDir, false => CurrentDir, }).length() >= 1) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support zero-arg exact import values in match-expression method receivers",
         );
     });
@@ -2905,7 +2898,7 @@ fn project_build_supports_zero_arg_exact_import_values_in_match_expr_method_rece
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import match-expression method receiver binary");
+        .must("run compiled zero-arg exact import match-expression method receiver binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2920,17 +2913,17 @@ fn project_build_supports_builtin_option_some_alias_calls() {
         src_dir.join("main.arden"),
         "package app;\nimport Option.Some as Present;\nfunction main(): Integer { value: Option<Integer> = Present(7); return if (value.unwrap() == 7) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Option.Some aliases");
+            .must("project build should support builtin Option.Some aliases");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Option.Some alias binary");
+        .must("run compiled builtin Option.Some alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2945,17 +2938,17 @@ fn project_build_supports_builtin_result_ok_alias_function_values() {
         src_dir.join("main.arden"),
         "package app;\nimport Result.Ok as Success;\nfunction main(): Integer { f: (Integer) -> Result<Integer, String> = Success; value: Result<Integer, String> = f(7); return if (value.unwrap() == 7) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Result.Ok alias function values");
+            .must("project build should support builtin Result.Ok alias function values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Result.Ok alias function value binary");
+        .must("run compiled builtin Result.Ok alias function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2970,17 +2963,17 @@ fn project_build_supports_builtin_result_error_alias_function_values() {
         src_dir.join("main.arden"),
         "package app;\nimport Result.Error as Failure;\nfunction main(): Integer { f: (String) -> Result<Integer, String> = Failure; value: Result<Integer, String> = f(\"boom\"); return if (value.is_error()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Result.Error alias function values");
+            .must("project build should support builtin Result.Error alias function values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Result.Error alias function value binary");
+        .must("run compiled builtin Result.Error alias function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2995,17 +2988,17 @@ fn project_build_supports_builtin_option_alias_patterns() {
         src_dir.join("main.arden"),
         "package app;\nimport Option.Some as Present;\nimport Option.None as Empty;\nfunction main(): Integer { value: Option<Integer> = Present(7); return match (value) { Present(inner) => if (inner == 7) { 0 } else { 1 }, Empty => 2, }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Option alias patterns");
+            .must("project build should support builtin Option alias patterns");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Option alias pattern binary");
+        .must("run compiled builtin Option alias pattern binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3020,17 +3013,17 @@ fn project_build_supports_builtin_result_alias_patterns() {
         src_dir.join("main.arden"),
         "package app;\nimport Result.Ok as Success;\nimport Result.Error as Failure;\nfunction main(): Integer { value: Result<Integer, String> = Success(7); return match (value) { Success(inner) => if (inner == 7) { 0 } else { 1 }, Failure(err) => 2, }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Result alias patterns");
+            .must("project build should support builtin Result alias patterns");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Result alias pattern binary");
+        .must("run compiled builtin Result alias pattern binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3045,17 +3038,17 @@ fn project_build_supports_builtin_option_none_alias_values() {
         src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction main(): Integer { value: Option<Integer> = Empty; return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Option.None aliases");
+            .must("project build should support builtin Option.None aliases");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Option.None alias binary");
+        .must("run compiled builtin Option.None alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3070,17 +3063,17 @@ fn project_build_supports_module_local_builtin_option_none_alias_values() {
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { value: Option<Integer> = Empty; return if (value.is_none()) { 0 } else { 1 }; } }\nfunction main(): Integer { return Inner.keep(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support module-local builtin Option.None aliases");
+            .must("project build should support module-local builtin Option.None aliases");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local builtin Option.None alias binary");
+        .must("run compiled module-local builtin Option.None alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3095,17 +3088,17 @@ fn project_build_supports_builtin_option_none_alias_function_values() {
         src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction main(): Integer { f: () -> Option<Integer> = Empty; value: Option<Integer> = f(); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Option.None alias function values");
+            .must("project build should support builtin Option.None alias function values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Option.None alias function value binary");
+        .must("run compiled builtin Option.None alias function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3120,17 +3113,17 @@ fn project_build_supports_builtin_option_none_alias_return_values() {
         src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction make(): Option<Integer> { return Empty; }\nfunction main(): Integer { value: Option<Integer> = make(); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Option.None alias return values");
+            .must("project build should support builtin Option.None alias return values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Option.None alias return value binary");
+        .must("run compiled builtin Option.None alias return value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3145,17 +3138,17 @@ fn project_build_supports_builtin_option_none_alias_argument_values() {
         src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction take(value: Option<Integer>): Integer { return if (value.is_none()) { 0 } else { 1 }; }\nfunction main(): Integer { return take(Empty); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support builtin Option.None alias argument values");
+            .must("project build should support builtin Option.None alias argument values");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin Option.None alias argument value binary");
+        .must("run compiled builtin Option.None alias argument value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3175,22 +3168,22 @@ fn project_build_preserves_default_extern_link_names() {
         src_dir.join("lib.arden"),
         "package util;\nextern(c) function abs(value: Integer): Integer;\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport util.abs;\nfunction main(): Integer { return abs(-7); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should preserve default extern link names");
+            .must("project build should preserve default extern link names");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled project extern default-link-name binary");
+        .must("run compiled project extern default-link-name binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3210,22 +3203,22 @@ fn project_build_preserves_default_extern_link_names_through_exact_import_aliase
         src_dir.join("lib.arden"),
         "package util;\nextern(c) function abs(value: Integer): Integer;\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport util.abs as absolute;\nfunction main(): Integer { return absolute(-7); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should preserve extern link names through exact import aliases");
+            .must("project build should preserve extern link names through exact import aliases");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled project extern default-link-name alias binary");
+        .must("run compiled project extern default-link-name alias binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3245,15 +3238,15 @@ fn project_build_preserves_module_extern_link_names_through_exact_import_aliases
         src_dir.join("lib.arden"),
         "package util;\nmodule C { extern(c) function abs(value: Integer): Integer; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport util.C.abs as absolute;\nfunction main(): Integer { return absolute(-7); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should preserve module extern link names through exact import aliases",
         );
     });
@@ -3261,7 +3254,7 @@ fn project_build_preserves_module_extern_link_names_through_exact_import_aliases
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled project module extern default-link-name alias binary");
+        .must("run compiled project module extern default-link-name alias binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3281,22 +3274,22 @@ fn project_build_prefers_shadowed_local_over_namespace_alias_for_nested_field_ch
         src_dir.join("lib.arden"),
         "package util;\nmodule M { function add1(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nclass Holder { function add1(x: Integer): Integer { return x + 5; } }\nfunction main(): Integer { u: Holder = Holder(); return u.add1(1); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should prefer shadowed local over namespace alias");
+            .must("project build should prefer shadowed local over namespace alias");
     });
 
     let output_path = temp_root.join("smoke");
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled shadowed-local-over-namespace-alias binary");
+        .must("run compiled shadowed-local-over-namespace-alias binary");
     assert_eq!(
         output.status.code(),
         Some(6),
@@ -3322,22 +3315,22 @@ fn project_build_supports_shadowed_local_nested_method_calls_without_alias_leaka
             src_dir.join("lib.arden"),
             "package util;\nmodule M { class Box { value: Integer; constructor(v: Integer) { this.value = v; } function get(): Integer { return this.value; } } }\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nclass Holder { inner: u.M.Box; constructor(v: Integer) { this.inner = u.M.Box(v); } function get(): Integer { return this.inner.get() + 10; } }\nfunction main(): Integer { u: Holder = Holder(2); return u.get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should keep shadowed local nested method calls local");
+            .must("project build should keep shadowed local nested method calls local");
     });
 
     let output_path = temp_root.join("smoke");
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled shadowed-local-nested-method binary");
+        .must("run compiled shadowed-local-nested-method binary");
     assert_eq!(
         output.status.code(),
         Some(12),
@@ -3363,16 +3356,16 @@ fn project_build_supports_namespace_alias_class_constructors() {
             src_dir.join("lib.arden"),
             "package util;\nclass Box { value: Integer; constructor(v: Integer) { this.value = v; } }\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport util as u;\nfunction main(): None { u.Box(2); return None; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support namespace alias class constructors");
+            .must("project build should support namespace alias class constructors");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3393,17 +3386,16 @@ fn project_build_supports_namespace_alias_nested_module_class_constructors() {
             src_dir.join("lib.arden"),
             "package util;\nmodule Api {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n    }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport util as u;\nfunction main(): None { u.Api.Box(2); return None; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support namespace alias nested-module class constructors",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support namespace alias nested-module class constructors");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3423,17 +3415,16 @@ fn project_build_supports_nested_module_namespace_aliases_without_functions() {
         src_dir.join("lib.arden"),
         "package util;\nmodule Api {\n    class Box {\n        constructor() {}\n    }\n}\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport util.Api as u;\nfunction main(): None { u.Box(); return None; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support nested module namespace aliases without functions",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support nested module namespace aliases without functions");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3453,15 +3444,15 @@ fn project_build_supports_deep_nested_module_namespace_aliases_without_functions
             src_dir.join("lib.arden"),
             "package util;\nmodule Api {\n    module V1 {\n        class Box {\n            constructor() {}\n        }\n    }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport util.Api.V1 as u;\nfunction main(): None { u.Box(); return None; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support deep nested module namespace aliases without functions",
         );
     });
@@ -3483,16 +3474,16 @@ fn project_build_supports_deep_nested_module_interface_aliases() {
             src_dir.join("lib.arden"),
             "package util;\nmodule Api {\n    module V1 {\n        interface Named { function name(): Integer; }\n    }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util.Api.V1 as u;\ninterface Printable extends u.Named { function print_me(): Integer; }\nclass Report implements Printable {\n    constructor() {}\n    function name(): Integer { return 1; }\n    function print_me(): Integer { return 2; }\n}\nfunction main(): None { return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support deep nested module interface aliases");
+            .must("project build should support deep nested module interface aliases");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3512,16 +3503,16 @@ fn project_build_supports_deep_nested_module_enum_alias_patterns() {
             src_dir.join("lib.arden"),
             "package util;\nmodule Api {\n    module V1 {\n        enum Value { Ok(Integer) Error(Integer) }\n    }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util.Api.V1 as u;\nfunction main(): None { value: u.Value = u.Value.Ok(2); match (value) { u.Value.Ok(v) => { require(v == 2); } u.Value.Error(err) => { require(false); } } return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support deep nested module enum alias patterns");
+            .must("project build should support deep nested module enum alias patterns");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3536,11 +3527,11 @@ fn project_build_supports_if_expression_function_value_callees() {
             src_dir.join("main.arden"),
             "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction dec(x: Integer): Integer { return x - 1; }\nfunction main(): None { x: Integer = (if (true) { inc; } else { dec; })(1); require(x == 2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support if-expression function-value callees");
+            .must("project build should support if-expression function-value callees");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3555,11 +3546,11 @@ fn project_build_supports_unit_enum_variant_values() {
             src_dir.join("main.arden"),
             "package app;\nenum E { A, B }\nfunction main(): None { e: E = E.A; match (e) { E.A => { } E.B => { } } return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support unit enum variant values");
+            .must("project build should support unit enum variant values");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3579,16 +3570,16 @@ fn project_build_supports_exact_imported_enum_variant_aliases() {
         src_dir.join("util.arden"),
         "package app;\nenum E { A(Integer) B(Integer) }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.E.B as Variant;\nfunction main(): None { e: E = Variant(2); match (e) { E.A(v) => { require(false); } E.B(v) => { require(v == 2); } } return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support exact imported enum variant aliases");
+            .must("project build should support exact imported enum variant aliases");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3608,15 +3599,15 @@ fn project_build_supports_imported_payload_enum_variant_function_value_aliases()
         src_dir.join("util.arden"),
         "package app;\nenum E { Wrap(Integer) }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.E.Wrap as WrapCtor;\nfunction main(): Integer { f: (Integer) -> E = WrapCtor; value: E = f(7); return match (value) { E.Wrap(v) => { if (v == 7) { 0 } else { 1 } } }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support imported payload enum variant function value aliases",
         );
     });
@@ -3624,7 +3615,7 @@ fn project_build_supports_imported_payload_enum_variant_function_value_aliases()
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run imported payload enum variant function value alias binary");
+        .must("run imported payload enum variant function value alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3644,23 +3635,22 @@ fn project_build_adapts_enum_variant_function_values_to_expected_signature() {
         src_dir.join("util.arden"),
         "package app;\ninterface Named { function value(): Integer; }\nclass Box implements Named { inner: Integer; constructor(inner: Integer) { this.inner = inner; } function value(): Integer { return this.inner; } }\nenum E { Wrap(Named) }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nfunction main(): Integer { ctor: (Box) -> E = E.Wrap; value: E = ctor(Box(7)); return match (value) { E.Wrap(named) => named.value() - 7, }; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should adapt enum variant function values to expected signatures",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should adapt enum variant function values to expected signatures");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run adapted enum variant function value binary");
+        .must("run adapted enum variant function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3680,23 +3670,22 @@ fn project_build_supports_imported_unit_enum_variant_function_value_aliases() {
         src_dir.join("util.arden"),
         "package app;\nenum Mode { A, B }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.Mode.A as Pick;\nfunction main(): Integer { f: () -> Mode = Pick; return if (f() == Mode.A) { 0 } else { 1 }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support imported unit enum variant function value aliases",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support imported unit enum variant function value aliases");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run imported unit enum variant function value alias binary");
+        .must("run imported unit enum variant function value alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3708,8 +3697,8 @@ fn project_build_rejects_colliding_top_level_enum_names_across_namespaces() {
     let src_dir = temp_root.join("src");
     let left_dir = src_dir.join("left");
     let right_dir = src_dir.join("right");
-    fs::create_dir_all(&left_dir).expect("create left namespace dir");
-    fs::create_dir_all(&right_dir).expect("create right namespace dir");
+    fs::create_dir_all(&left_dir).must("create left namespace dir");
+    fs::create_dir_all(&right_dir).must("create right namespace dir");
     write_test_project_config(
         &temp_root,
         &[
@@ -3724,21 +3713,21 @@ fn project_build_rejects_colliding_top_level_enum_names_across_namespaces() {
         left_dir.join("util.arden"),
         "package left;\nenum Shared { A }\n",
     )
-    .expect("write left enum");
+    .must("write left enum");
     fs::write(
         right_dir.join("util.arden"),
         "package right;\nenum Shared { B }\n",
     )
-    .expect("write right enum");
+    .must("write right enum");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nfunction main(): None { return None; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build should reject colliding enum names");
+            .must_err("project build should reject colliding enum names");
         assert!(
             err.contains("colliding top-level enum names"),
             "unexpected error: {err}"
@@ -3762,16 +3751,16 @@ fn project_build_supports_exact_imported_enum_variant_alias_patterns() {
         src_dir.join("util.arden"),
         "package app;\nenum E { A(Integer) B(Integer) }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.E.B as Variant;\nfunction main(): None { e: E = Variant(2); match (e) { Variant(v) => { require(v == 2); } E.A(v) => { require(false); } } return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support exact imported enum variant alias patterns");
+            .must("project build should support exact imported enum variant alias patterns");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3791,16 +3780,16 @@ fn project_build_supports_namespace_alias_nested_enum_variant_patterns() {
         src_dir.join("util.arden"),
         "package util;\nmodule Result {\n    enum Value { Ok(Integer) Error(Integer) }\n}\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): None { value: u.Result.Value = u.Result.Value.Ok(2); match (value) { u.Result.Value.Ok(v) => { require(v == 2); } u.Result.Value.Error(err) => { require(false); } } return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support namespace alias nested enum variant patterns");
+            .must("project build should support namespace alias nested enum variant patterns");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3820,16 +3809,16 @@ fn project_build_supports_exact_imported_nested_enum_aliases() {
         src_dir.join("util.arden"),
         "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.M.E as Enum;\nfunction main(): None { e: Enum = Enum.B(2); match (e) { Enum.B(v) => { require(v == 2); } Enum.A(v) => { require(false); } } return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support exact imported nested enum aliases");
+            .must("project build should support exact imported nested enum aliases");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3849,16 +3838,16 @@ fn project_build_supports_exact_imported_nested_enum_variant_aliases() {
         src_dir.join("util.arden"),
         "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.M.E.B as Variant;\nfunction main(): None { e: M.E = Variant(2); match (e) { Variant(v) => { require(v == 2); } M.E.A(v) => { require(false); } } return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support exact imported nested enum variant aliases");
+            .must("project build should support exact imported nested enum variant aliases");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3878,16 +3867,16 @@ fn project_build_supports_namespace_alias_nested_enums() {
         src_dir.join("util.arden"),
         "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app as u;\nfunction main(): None { e: u.M.E = u.M.E.B(2); match (e) { u.M.E.B(v) => { require(v == 2); } u.M.E.A(v) => { require(false); } } return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support namespace alias nested enums");
+            .must("project build should support namespace alias nested enums");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3907,15 +3896,15 @@ fn project_build_supports_exact_imported_nested_function_aliases_returning_class
             src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n    function mk(value: Integer): Box { return Box(value); }\n}\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.M.mk as mk;\nfunction main(): None { value: Integer = mk(2).get(); require(value == 2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support exact imported nested function aliases returning classes",
         );
     });
@@ -3937,16 +3926,16 @@ fn project_build_supports_exact_imported_nested_class_aliases() {
             src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n}\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.M.Box as Boxed;\nfunction main(): None { value: Integer = Boxed(2).get(); require(value == 2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support exact imported nested class aliases");
+            .must("project build should support exact imported nested class aliases");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3961,11 +3950,11 @@ fn project_build_supports_local_qualified_nested_class_paths() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n}\nfunction main(): None { b: M.Box = M.Box(2); require(b.get() == 2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support local qualified nested class paths");
+            .must("project build should support local qualified nested class paths");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3980,11 +3969,11 @@ fn project_build_supports_local_qualified_nested_generic_class_paths() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n}\nfunction main(): None { b: M.Box<Integer> = M.Box<Integer>(2); require(b.get() == 2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support local qualified nested generic class paths");
+            .must("project build should support local qualified nested generic class paths");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4004,16 +3993,16 @@ fn project_build_supports_exact_imported_nested_generic_class_aliases() {
             src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n}\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.M.Box as Boxed;\nfunction main(): None { b: Boxed<Integer> = Boxed<Integer>(2); require(b.get() == 2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support exact imported nested generic class aliases");
+            .must("project build should support exact imported nested generic class aliases");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4033,15 +4022,15 @@ fn project_build_supports_exact_imported_nested_generic_function_aliases_returni
             src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n    function mk<T>(value: T): Box<T> { return Box<T>(value); }\n}\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.M.mk as mk;\nfunction main(): None { value: Integer = mk<Integer>(2).get(); require(value == 2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
                 "project build should support exact imported nested generic function aliases returning classes",
             );
     });
@@ -4058,16 +4047,16 @@ fn project_run_supports_local_nested_generic_functions_returning_classes() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n    function mk<T>(value: T): Box<T> { return Box<T>(value); }\n}\nfunction main(): Integer { return M.mk<Integer>(2).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support local nested generic function returns");
+            .must("project build should support local nested generic function returns");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled local nested generic function binary");
+        .must("run compiled local nested generic function binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4088,22 +4077,22 @@ fn project_run_supports_exact_imported_nested_generic_function_aliases_returning
             src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n    function mk<T>(value: T): Box<T> { return Box<T>(value); }\n}\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.M.mk as mk;\nfunction main(): Integer { return mk<Integer>(2).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
                 "project build should support exact imported nested generic function aliases at runtime",
             );
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled imported nested generic function binary");
+        .must("run compiled imported nested generic function binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4123,21 +4112,21 @@ fn project_run_supports_specialized_parent_interface_methods() {
             src_dir.join("lib.arden"),
             "package app;\ninterface Reader<T> { function read(): T; }\ninterface StringReader extends Reader<String> {}\nclass FileReader implements StringReader { function read(): String { return \"ok\"; } }\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.StringReader;\nimport app.FileReader;\nfunction main(): Integer { reader: StringReader = FileReader(); f: () -> String = reader.read; return if (reader.read().length() == 2 && f().length() == 2) { 0 } else { 1 }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support specialized parent interface methods");
+            .must("project build should support specialized parent interface methods");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled specialized parent interface project binary");
+        .must("run compiled specialized parent interface project binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4157,21 +4146,21 @@ fn project_run_supports_generic_namespace_alias_parent_interfaces() {
         src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.Api as api;\ninterface StringReader extends api.Reader<String> {}\nclass FileReader implements StringReader { function read(): String { return \"ok\"; } }\nfunction main(): Integer { reader: StringReader = FileReader(); return if (reader.read().length() == 2) { 0 } else { 1 }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support generic namespace-alias parent interfaces");
+            .must("project build should support generic namespace-alias parent interfaces");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled generic namespace-alias parent interface binary");
+        .must("run compiled generic namespace-alias parent interface binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4191,16 +4180,16 @@ fn project_build_supports_generic_exact_import_alias_parent_interfaces() {
         src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.Api.Reader as ReaderAlias;\ninterface StringReader extends ReaderAlias<String> {}\nclass FileReader implements StringReader { function read(): String { return \"ok\"; } }\nfunction main(): None { reader: StringReader = FileReader(); require(reader.read().length() == 2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support generic exact-import alias parent interfaces");
+            .must("project build should support generic exact-import alias parent interfaces");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4220,21 +4209,21 @@ fn project_run_supports_generic_namespace_alias_interface_annotations() {
         src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.Api as api;\nclass FileReader implements api.Reader<String> { function read(): String { return \"ok\"; } }\nfunction main(): Integer { reader: api.Reader<String> = FileReader(); return if (reader.read().length() == 2) { 0 } else { 1 }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support generic namespace-alias interface annotations");
+            .must("project build should support generic namespace-alias interface annotations");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled generic namespace-alias interface annotation binary");
+        .must("run compiled generic namespace-alias interface annotation binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4254,22 +4243,21 @@ fn project_run_supports_generic_exact_import_alias_interface_annotations() {
         src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.Api.Reader as ReaderAlias;\nclass FileReader implements ReaderAlias<String> { function read(): String { return \"ok\"; } }\nfunction main(): Integer { reader: ReaderAlias<String> = FileReader(); return if (reader.read().length() == 2) { 0 } else { 1 }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support generic exact-import alias interface annotations",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support generic exact-import alias interface annotations");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled generic exact-import alias interface annotation binary");
+        .must("run compiled generic exact-import alias interface annotation binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4289,21 +4277,21 @@ fn project_run_supports_generic_namespace_alias_interface_parameters() {
         src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.Api as api;\nclass FileReader implements api.Reader<String> { function read(): String { return \"ok\"; } }\nfunction use_reader(reader: api.Reader<String>): Integer { return reader.read().length(); }\nfunction main(): Integer { return use_reader(FileReader()); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support generic namespace-alias interface parameters");
+            .must("project build should support generic namespace-alias interface parameters");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled generic namespace-alias interface parameter binary");
+        .must("run compiled generic namespace-alias interface parameter binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4323,21 +4311,21 @@ fn project_run_supports_generic_exact_import_alias_interface_returns() {
         src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.Api.Reader as ReaderAlias;\nclass FileReader implements ReaderAlias<String> { function read(): String { return \"ok\"; } }\nfunction make_reader(): ReaderAlias<String> { return FileReader(); }\nfunction main(): Integer { return make_reader().read().length(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support generic exact-import alias interface returns");
+            .must("project build should support generic exact-import alias interface returns");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled generic exact-import alias interface return binary");
+        .must("run compiled generic exact-import alias interface return binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4357,22 +4345,22 @@ fn project_run_supports_module_local_generic_namespace_alias_interface_parameter
         src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.Api as api;\nclass FileReader implements api.Reader<String> { function read(): String { return \"ok\"; } }\nmodule Helpers {\n    function use_reader(reader: api.Reader<String>): Integer { return reader.read().length(); }\n}\nfunction main(): Integer { return Helpers.use_reader(FileReader()); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
                 "project build should support module-local generic namespace-alias interface parameters",
             );
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled module-local generic namespace-alias interface parameter binary");
+        .must("run compiled module-local generic namespace-alias interface parameter binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4392,22 +4380,22 @@ fn project_run_supports_generic_namespace_alias_interface_lambda_parameters() {
         src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.Api as api;\nclass FileReader implements api.Reader<String> { function read(): String { return \"ok\"; } }\nfunction main(): Integer {\n    use_reader: (api.Reader<String>) -> Integer = (reader: api.Reader<String>) => reader.read().length();\n    return use_reader(FileReader());\n}\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support generic namespace-alias interface lambda parameters",
         );
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled generic namespace-alias interface lambda parameter binary");
+        .must("run compiled generic namespace-alias interface lambda parameter binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4422,17 +4410,16 @@ fn project_run_supports_nested_generic_methods_on_nested_generic_classes() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { b: M.Box<Integer> = M.Box<Integer>(2); return b.map<Integer>(inc).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support nested generic methods on nested generic classes",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support nested generic methods on nested generic classes");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled nested generic method binary");
+        .must("run compiled nested generic method binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4452,21 +4439,21 @@ fn project_run_supports_nested_generic_method_alias_paths() {
             src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.M.Box as Boxed;\nimport app.inc as inc;\nfunction main(): Integer { b: Boxed<Integer> = Boxed<Integer>(2); return b.map<Integer>(inc).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support nested generic method alias paths");
+            .must("project build should support nested generic method alias paths");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled nested generic alias method binary");
+        .must("run compiled nested generic alias method binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4486,15 +4473,15 @@ fn project_build_supports_namespace_alias_nested_generic_class_specializations()
             src_dir.join("util.arden"),
             "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function get(): T { return this.value; }\n        }\n        function mk(value: Integer): Box<Integer> { return Box<Integer>(value); }\n        async function mk_async(value: Integer): Task<Box<Integer>> { return Box<Integer>(value); }\n    }\n}\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nimport util.M.N.Box as B;\nfunction main(): Integer { return u.M.N.Box<Integer>(41).value + B<Integer>(1).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support namespace alias nested generic class specializations",
         );
     });
@@ -4516,15 +4503,15 @@ fn project_build_supports_namespace_alias_nested_generic_method_specializations(
             src_dir.join("util.arden"),
             "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n            function get(): T { return this.value; }\n        }\n        function mk(value: Integer): Box<Integer> { return Box<Integer>(value); }\n    }\n}\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { return u.M.N.mk(46).map<Integer>(inc).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support namespace alias nested generic method specializations",
         );
     });
@@ -4546,22 +4533,22 @@ fn project_build_emits_nested_generic_specialization_symbols_in_one_object_file(
             src_dir.join("util.arden"),
             "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n            function get(): T { return this.value; }\n        }\n        function mk(value: Integer): Box<Integer> { return Box<Integer>(value); }\n        async function mk_async(value: Integer): Task<Box<Integer>> { return Box<Integer>(value); }\n    }\n}\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nimport util.M.N.Box as B;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { return u.M.N.mk(46).map<Integer>(inc).get() + u.M.N.Box<Integer>(41).value + B<Integer>(1).get() + await(u.M.N.mk_async(43)).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should emit nested generic specialization bodies in a single object",
         );
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled mixed nested generic specialization binary");
+        .must("run compiled mixed nested generic specialization binary");
     assert_eq!(status.code(), Some(132));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4582,22 +4569,22 @@ fn project_run_supports_cross_package_nested_generic_function_returns_via_namesp
             src_dir.join("util.arden"),
             "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function get(): T { return this.value; }\n        }\n        function mk(value: Integer): Box<Integer> { return Box<Integer>(value); }\n    }\n}\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): Integer { return u.M.N.mk(42).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support cross-package nested generic returns via namespace alias",
         );
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run cross-package nested generic return project binary");
+        .must("run cross-package nested generic return project binary");
     assert_eq!(status.code(), Some(42));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4618,22 +4605,22 @@ fn project_run_supports_cross_package_nested_generic_async_returns_via_namespace
             src_dir.join("util.arden"),
             "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function get(): T { return this.value; }\n        }\n        async function mk_async(value: Integer): Task<Box<Integer>> { return Box<Integer>(value); }\n    }\n}\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): Integer { return await(u.M.N.mk_async(43)).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
                 "project build should support cross-package nested generic async returns via namespace alias",
             );
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run cross-package nested generic async return project binary");
+        .must("run cross-package nested generic async return project binary");
     assert_eq!(status.code(), Some(43));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4648,16 +4635,16 @@ fn project_run_supports_qualified_module_type_paths() {
             src_dir.join("main.arden"),
             "package app;\nmodule util {\n    class Item {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n    function mk(): Item { return Item(7); }\n}\nfunction main(): Integer {\n    item: util.Item = util.mk();\n    return item.get();\n}\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support qualified module type paths end-to-end");
+            .must("project build should support qualified module type paths end-to-end");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled qualified module type path binary");
+        .must("run compiled qualified module type path binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4672,17 +4659,17 @@ fn project_run_supports_user_defined_generic_classes_named_like_builtins() {
             src_dir.join("main.arden"),
             "package app;\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function get(): T { return this.value; }\n}\nfunction mk(value: Integer): Box<Integer> {\n    return Box<Integer>(value);\n}\nfunction main(): Integer {\n    return mk(42).get();\n}\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
                 "project build should prefer user-defined generic classes over built-in container names",
             );
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled user-defined builtin-named generic class binary");
+        .must("run compiled user-defined builtin-named generic class binary");
     assert_eq!(status.code(), Some(42));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4697,16 +4684,16 @@ fn project_run_supports_nested_generic_methods_on_expression_receivers() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n    function make<T>(value: T): Box<T> { return Box<T>(value); }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { return M.make<Integer>(2).map<Integer>(inc).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support nested generic methods on expression receivers");
+            .must("project build should support nested generic methods on expression receivers");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled nested generic expression receiver binary");
+        .must("run compiled nested generic expression receiver binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4722,17 +4709,17 @@ fn project_run_supports_builtin_function_values_in_user_defined_builtin_named_ge
             src_dir.join("main.arden"),
             "package app;\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n    function get(): T { return this.value; }\n}\nfunction main(): Integer { mapped: Box<Float> = Box<Integer>(1).map<Float>(to_float); return if (mapped.get() == 1.0) { 0 } else { 1 }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
                 "project build should support builtin function values in user-defined builtin-named generic methods",
             );
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled builtin function value generic method project binary");
+        .must("run compiled builtin function value generic method project binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4752,22 +4739,22 @@ fn project_run_supports_nested_generic_method_imported_expression_receivers() {
             src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n    function make<T>(value: T): Box<T> { return Box<T>(value); }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\n",
         )
-        .expect("write util");
+        .must("write util");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport app.M.make as make;\nimport app.inc as inc;\nfunction main(): Integer { return make<Integer>(2).map<Integer>(inc).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support imported expression receivers for nested generic methods",
         );
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled imported nested generic expression receiver binary");
+        .must("run compiled imported nested generic expression receiver binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4787,16 +4774,16 @@ fn project_build_supports_async_block_import_alias_calls() {
         src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util.add1 as inc;\nfunction main(): None { task: Task<Integer> = async { return inc(1); }; value: Integer = await(task); require(value == 2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support async-block import alias calls");
+            .must("project build should support async-block import alias calls");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4816,16 +4803,16 @@ fn project_build_reports_demangled_generic_bound_errors() {
             src_dir.join("lib.arden"),
             "package lib;\ninterface Named { function name(): Integer; }\nclass Plain { constructor() {} }\nclass Box<T extends Named> {\n    value: Integer;\n    constructor() { this.value = 1; }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction main(): Integer {\n    bad: u.Box<u.Plain> = u.Box<u.Plain>();\n    return bad.value;\n}\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with invalid bound should fail");
+            .must_err("project build with invalid bound should fail");
         assert!(err.contains("lib.Plain"), "{err}");
         assert!(err.contains("lib.Named"), "{err}");
         assert!(!err.contains("lib__Plain"), "{err}");
@@ -4849,16 +4836,16 @@ fn project_build_reports_demangled_if_branch_type_mismatch() {
             src_dir.join("lib.arden"),
             "package lib;\nclass A { constructor() {} }\nclass B { constructor() {} }\nfunction pick(flag: Boolean): Integer {\n    value: Integer = if (flag) { A() } else { B() };\n    return value;\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport lib.pick as pick;\nfunction main(): Integer { return pick(true); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with if branch mismatch should fail");
+            .must_err("project build with if branch mismatch should fail");
         assert!(err.contains("then is lib.A, else is lib.B"), "{err}");
         assert!(!err.contains("lib__A"), "{err}");
         assert!(!err.contains("lib__B"), "{err}");
@@ -4881,16 +4868,16 @@ fn project_build_reports_demangled_assignment_type_mismatch() {
         src_dir.join("lib.arden"),
         "package lib;\nclass Named { constructor() {} }\nclass Plain { constructor() {} }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction main(): Integer {\n    value: u.Named = u.Plain();\n    return 0;\n}\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with assignment mismatch should fail");
+            .must_err("project build with assignment mismatch should fail");
         assert!(
             err.contains("cannot assign lib.Plain to variable of type lib.Named"),
             "{err}"
@@ -4916,16 +4903,16 @@ fn project_build_reports_demangled_unknown_field_class_name() {
             src_dir.join("lib.arden"),
             "package lib;\nclass Named { constructor() {} }\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction main(): Integer {\n    return u.Box<u.Named>(u.Named()).missing;\n}\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with unknown field should fail");
+            .must_err("project build with unknown field should fail");
         assert!(
             err.contains("Unknown field 'missing' on class 'lib.Box<lib.Named>'"),
             "{err}"
@@ -4951,16 +4938,16 @@ fn project_build_reports_demangled_non_function_call_type() {
             src_dir.join("lib.arden"),
             "package lib;\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction main(): Integer {\n    value: u.Box<Integer> = u.Box<Integer>(1);\n    return value(2);\n}\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with non-function call should fail");
+            .must_err("project build with non-function call should fail");
         assert!(
             err.contains("Cannot call non-function type lib.Box<Integer>"),
             "{err}"
@@ -4985,16 +4972,16 @@ fn project_build_reports_demangled_if_condition_type_mismatch() {
             src_dir.join("lib.arden"),
             "package lib;\nclass Flag { constructor() {} }\nfunction bad(): Integer {\n    if (Flag()) { return 1; }\n    return 0;\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with non-boolean if condition should fail");
+            .must_err("project build with non-boolean if condition should fail");
         assert!(
             err.contains("Condition must be Boolean, found lib.Flag"),
             "{err}"
@@ -5019,16 +5006,16 @@ fn project_build_reports_demangled_index_type_mismatch() {
             src_dir.join("lib.arden"),
             "package lib;\nclass Key { constructor() {} }\nfunction bad(): Integer {\n    xs: List<Integer> = List<Integer>();\n    xs.push(1);\n    return xs[Key()];\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with bad index type should fail");
+            .must_err("project build with bad index type should fail");
         assert!(
             err.contains("Index must be Integer, found lib.Key"),
             "{err}"
@@ -5053,16 +5040,16 @@ fn project_build_reports_demangled_await_operand_type_mismatch() {
             src_dir.join("lib.arden"),
             "package lib;\nclass Job { constructor() {} }\nfunction bad(): Integer {\n    return await(Job());\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with non-task await operand should fail");
+            .must_err("project build with non-task await operand should fail");
         assert!(
             err.contains("'await' can only be used on Task types, got lib.Job"),
             "{err}"
@@ -5087,16 +5074,16 @@ fn project_build_reports_demangled_match_arm_type_mismatch() {
             src_dir.join("lib.arden"),
             "package lib;\nclass Left { constructor() {} }\nclass Right { constructor() {} }\nfunction bad(flag: Boolean): Integer {\n    value: Integer = match (flag) {\n        true => Left(),\n        false => Right(),\n    };\n    return value;\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(true); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with match arm mismatch should fail");
+            .must_err("project build with match arm mismatch should fail");
         assert!(
             err.contains("Match expression arm type mismatch: expected lib.Left, got lib.Right"),
             "{err}"
@@ -5122,16 +5109,16 @@ fn project_build_reports_demangled_pattern_type_mismatch() {
             src_dir.join("lib.arden"),
             "package lib;\nclass Token { constructor() {} }\nfunction bad(value: Token): Integer {\n    return match (value) {\n        1 => 0,\n        _ => 1,\n    };\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib.bad as bad;\nimport lib.Token as Token;\nfunction main(): Integer { return bad(Token()); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with pattern type mismatch should fail");
+            .must_err("project build with pattern type mismatch should fail");
         assert!(
             err.contains("Pattern type mismatch: expected lib.Token, found Integer"),
             "{err}"
@@ -5156,16 +5143,16 @@ fn project_build_reports_demangled_option_some_argument_mismatch() {
             src_dir.join("lib.arden"),
             "package lib;\nclass Token { constructor() {} }\nfunction wrap(flag: Boolean): Option<Token> {\n    if (flag) {\n        return Option.some(1);\n    }\n    return Option.none();\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib.wrap as wrap;\nfunction main(): Integer { return if (wrap(true).is_some()) { 1 } else { 0 }; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with Option.some argument mismatch should fail");
+            .must_err("project build with Option.some argument mismatch should fail");
         assert!(
             err.contains("Return type mismatch: expected Option<lib.Token>, found Option<Integer>"),
             "{err}"
@@ -5190,16 +5177,16 @@ fn project_build_reports_demangled_unknown_type_name() {
         src_dir.join("lib.arden"),
         "package lib;\nmodule Api {\n    class Token { constructor() {} }\n}\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction read(value: u.Api.Missing): Integer {\n    return 0;\n}\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with unknown type should fail");
+            .must_err("project build with unknown type should fail");
         assert!(err.contains("Unknown type: u.Api.Missing"), "{err}");
         assert!(!err.contains("lib__Api__Missing"), "{err}");
     });
@@ -5222,16 +5209,16 @@ fn project_build_reports_import_error_for_invalid_nested_namespace_aliased_exter
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nextern(c) function host(value: root.M.Api.Named): root.M.Api.Named;\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("write helper");
+        .must("write helper");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail for invalid namespace aliased extern signature");
+            .must_err("build should fail for invalid namespace aliased extern signature");
         assert!(
             err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
             "{err}"
@@ -5266,16 +5253,16 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_lambda_
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer {\n    f: (root.M.Api.Named) -> Integer = (value: root.M.Api.Named) => 0;\n    return 0;\n}\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial namespace aliased lambda signature build should succeed");
+            .must("initial namespace aliased lambda signature build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -5283,10 +5270,10 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_lambda_
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without namespace aliased lambda signature interface");
+        .must("rewrite helper without namespace aliased lambda signature interface");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
             "build should fail after namespace aliased lambda signature interface removal",
         );
         assert!(
@@ -5315,16 +5302,16 @@ fn project_build_reports_import_error_for_invalid_nested_namespace_aliased_const
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer {\n    root.M.Box<root.M.Api.Named>();\n    return 0;\n}\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
             src_dir.join("helper.arden"),
             "package app;\nmodule M {\n    module Api { interface Labelled { function name(): Integer; } }\n    class Box<T> { constructor() {} }\n}\n",
         )
-        .expect("write helper");
+        .must("write helper");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail for invalid namespace aliased constructor type arg");
+            .must_err("build should fail for invalid namespace aliased constructor type arg");
         assert!(
             err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
             "{err}"
@@ -5353,16 +5340,16 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_functio
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer {\n    f: (root.M.Api.Named) -> Integer = (value: root.M.Api.Named) => 0;\n    return 0;\n}\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial namespace aliased function-type let annotation build should succeed");
+            .must("initial namespace aliased function-type let annotation build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -5370,10 +5357,10 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_functio
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without namespace aliased function-type let annotation interface");
+        .must("rewrite helper without namespace aliased function-type let annotation interface");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
                 "build should fail after namespace aliased function-type let annotation interface removal",
             );
         assert!(
@@ -5403,15 +5390,15 @@ fn project_build_accepts_nested_namespace_aliased_function_type_inside_generic_c
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer {\n    values: List<(root.M.Api.Named) -> Integer> = List<(root.M.Api.Named) -> Integer>();\n    return 0;\n}\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
                 "project build should accept nested namespace aliased function types in generic constructors",
             );
     });
@@ -5430,10 +5417,10 @@ fn project_build_accepts_nested_module_local_function_type_inside_generic_constr
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    interface Named { function name(): Integer; }\n    function make(): Integer {\n        values: List<(Named) -> Integer> = List<(Named) -> Integer>();\n        return 0;\n    }\n}\nfunction main(): Integer { return M.make(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
                 "project build should accept nested module-local function types in generic constructors",
             );
     });
@@ -5455,16 +5442,16 @@ fn project_build_accepts_local_module_function_call_type_args() {
             src_dir.join("main.arden"),
             "package app;\nimport util.*;\nmodule M {\n    class Box { constructor() {} }\n    function make<T>(): None { }\n}\nfunction main(): None {\n    M.make<M.Box>();\n}\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
             src_dir.join("helper.arden"),
             "package util;\nmodule N {\n    module M {\n        class Box { constructor() {} }\n    }\n}\n",
         )
-        .expect("write helper");
+        .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should accept local module function call type args");
+            .must("project build should accept local module function call type args");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5479,11 +5466,11 @@ fn project_build_accepts_module_local_generic_interface_references() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Payload { constructor() {} }\n    interface Named<T> { }\n    interface Child extends Named<Payload> { }\n    class Book implements Named<Payload> { constructor() {} }\n}\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should accept module-local generic interface references");
+            .must("project build should accept module-local generic interface references");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5499,10 +5486,10 @@ fn project_build_accepts_module_local_generic_function_values_with_local_type_ar
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n    }\n    function id<T>(value: T): T { return value; }\n    function run(): Integer {\n        f: (Box) -> Box = id<Box>;\n        return f(Box(7)).value;\n    }\n}\nfunction main(): Integer { return M.run(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should accept module-local generic function values with local type args",
         );
     });
@@ -5510,7 +5497,7 @@ fn project_build_accepts_module_local_generic_function_values_with_local_type_ar
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local generic function value binary");
+        .must("run compiled module-local generic function value binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5525,17 +5512,17 @@ fn project_build_accepts_module_local_lambda_parameter_types() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    interface Named { function value(): Integer; }\n    class Box implements Named {\n        inner: Integer;\n        constructor(inner: Integer) { this.inner = inner; }\n        function value(): Integer { return this.inner; }\n    }\n    function run(): Integer {\n        f: (Named) -> Integer = (value: Named) => value.value();\n        return f(Box(21));\n    }\n}\nfunction main(): Integer { return M.run(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should accept module-local lambda parameter types");
+            .must("project build should accept module-local lambda parameter types");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local lambda parameter binary");
+        .must("run compiled module-local lambda parameter binary");
     assert_eq!(status.code(), Some(21));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5550,17 +5537,17 @@ fn project_build_accepts_contextual_lambda_parameter_inference() {
         src_dir.join("main.arden"),
         "package app;\nfunction keep(): Integer { f: (Integer) -> Integer = (x: Integer) => x; return f(7) - 7; }\nfunction main(): Integer { return keep(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should accept contextual lambda parameter inference");
+            .must("project build should accept contextual lambda parameter inference");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled contextual lambda parameter inference binary");
+        .must("run compiled contextual lambda parameter inference binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5576,10 +5563,10 @@ fn project_build_accepts_contextual_lambda_parameter_inference_with_exact_import
         src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction keep(): Integer { f: (Integer) -> Integer = (Empty: Integer) => Empty; return f(7) - 7; }\nfunction main(): Integer { return keep(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should accept contextual lambda parameter inference with exact import shadowing",
         );
     });
@@ -5587,7 +5574,7 @@ fn project_build_accepts_contextual_lambda_parameter_inference_with_exact_import
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled contextual lambda parameter inference exact import shadowing binary");
+        .must("run compiled contextual lambda parameter inference exact import shadowing binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5605,10 +5592,10 @@ fn project_build_accepts_module_local_contextual_lambda_parameter_inference_with
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { f: (Integer) -> Integer = (Empty: Integer) => Empty; return f(7) - 7; } }\nfunction main(): Integer { return Inner.keep(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should accept module-local contextual lambda parameter inference with exact import shadowing",
         );
     });
@@ -5616,7 +5603,7 @@ fn project_build_accepts_module_local_contextual_lambda_parameter_inference_with
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect(
+        .must(
             "run compiled module-local contextual lambda parameter inference exact import shadowing binary",
         );
     assert_eq!(status.code(), Some(0));
@@ -5633,10 +5620,10 @@ fn project_build_accepts_contextual_lambda_parameter_inference_in_if_expression(
         src_dir.join("main.arden"),
         "package app;\nfunction choose(flag: Boolean): (Integer) -> Integer { return if (flag) { (x: Integer) => x } else { (x: Integer) => x + 1 }; }\nfunction main(): Integer { return choose(false)(6) - 7; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should accept contextual lambda parameter inference in if expressions",
         );
     });
@@ -5644,7 +5631,7 @@ fn project_build_accepts_contextual_lambda_parameter_inference_in_if_expression(
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled contextual lambda parameter inference if-expression binary");
+        .must("run compiled contextual lambda parameter inference if-expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5660,10 +5647,10 @@ fn project_build_accepts_contextual_lambda_parameter_inference_in_match_expressi
         src_dir.join("main.arden"),
         "package app;\nfunction choose(flag: Boolean): (Integer) -> Integer { return match (flag) { true => { (x: Integer) => x }, false => { (x: Integer) => x + 1 }, }; }\nfunction main(): Integer { return choose(false)(6) - 7; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should accept contextual lambda parameter inference in match expressions",
         );
     });
@@ -5671,7 +5658,7 @@ fn project_build_accepts_contextual_lambda_parameter_inference_in_match_expressi
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled contextual lambda parameter inference match-expression binary");
+        .must("run compiled contextual lambda parameter inference match-expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5686,10 +5673,10 @@ fn project_build_accepts_contextual_lambda_parameter_inference_in_async_tail() {
         src_dir.join("main.arden"),
         "package app;\nfunction make(): Task<(Integer) -> Integer> { return async { (x: Integer) => x + 1 }; }\nfunction main(): Integer { return (await(make()))(6) - 7; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should accept contextual lambda parameter inference in async tail expressions",
         );
     });
@@ -5697,7 +5684,7 @@ fn project_build_accepts_contextual_lambda_parameter_inference_in_async_tail() {
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled contextual lambda parameter inference async-tail binary");
+        .must("run compiled contextual lambda parameter inference async-tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5717,15 +5704,15 @@ fn project_build_accepts_imported_generic_constructor_function_values_in_async_i
         src_dir.join("util.arden"),
         "package app;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport app.Box as BoxCtor;\nfunction choose(flag: Boolean): Task<(Integer) -> Box<Integer>> { return async { if (flag) { BoxCtor<Integer> } else { BoxCtor<Integer> } }; }\nfunction main(): Integer { return (await(choose(true)))(7).value - 7; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should accept imported generic constructor function values in async if tails",
         );
     });
@@ -5733,7 +5720,7 @@ fn project_build_accepts_imported_generic_constructor_function_values_in_async_i
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported generic constructor async-if binary");
+        .must("run compiled imported generic constructor async-if binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5753,15 +5740,15 @@ fn project_build_accepts_exact_import_alias_generic_constructor_function_values(
         src_dir.join("util.arden"),
         "package app;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } }\n",
     )
-    .expect("write util");
+    .must("write util");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport app.Box as BoxCtor;\nfunction main(): Integer { ctor: (Integer) -> Box<Integer> = BoxCtor<Integer>; return ctor(7).value - 7; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should accept exact-import alias generic constructor function values",
         );
     });
@@ -5769,7 +5756,7 @@ fn project_build_accepts_exact_import_alias_generic_constructor_function_values(
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled exact-import generic constructor function value binary");
+        .must("run compiled exact-import generic constructor function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5784,17 +5771,17 @@ fn project_build_accepts_module_local_nested_enum_variant_patterns() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    module N {\n        enum E { A(Integer), B(Integer) }\n    }\n    function run(): Integer {\n        value: N.E = N.E.A(44);\n        return match (value) {\n            N.E.A(v) => v,\n            N.E.B(v) => v,\n        };\n    }\n}\nfunction main(): Integer { return M.run(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should accept module-local nested enum variant patterns");
+            .must("project build should accept module-local nested enum variant patterns");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local nested enum variant pattern binary");
+        .must("run compiled module-local nested enum variant pattern binary");
     assert_eq!(status.code(), Some(44));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5814,16 +5801,16 @@ fn project_build_avoids_cascading_errors_for_stale_nested_namespace_aliased_inte
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { value: root.M.Api.Named = Book(); return value.name(); }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial nested namespace aliased interface build should succeed");
+            .must("initial nested namespace aliased interface build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -5831,11 +5818,11 @@ fn project_build_avoids_cascading_errors_for_stale_nested_namespace_aliased_inte
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without nested namespace aliased interface");
+        .must("rewrite helper without nested namespace aliased interface");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after nested namespace aliased interface removal");
+            .must_err("build should fail after nested namespace aliased interface removal");
         assert!(
             err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
             "{err}"
@@ -5868,16 +5855,16 @@ fn project_build_reports_import_error_for_stale_exact_imported_interface_alias_i
             src_dir.join("main.arden"),
             "package app;\nimport app.M.Api.Named as Named;\nclass Book implements Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial exact imported interface implements build should succeed");
+            .must("initial exact imported interface implements build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -5885,11 +5872,11 @@ fn project_build_reports_import_error_for_stale_exact_imported_interface_alias_i
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without exact imported implemented interface");
+        .must("rewrite helper without exact imported implemented interface");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after exact imported implemented interface removal");
+            .must_err("build should fail after exact imported implemented interface removal");
         assert!(
             err.contains("Imported alias 'Named' no longer resolves"),
             "{err}"
@@ -5919,16 +5906,16 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial namespace aliased implements build should succeed");
+            .must("initial namespace aliased implements build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -5936,11 +5923,11 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without namespace aliased implemented interface");
+        .must("rewrite helper without namespace aliased implemented interface");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after namespace aliased implemented interface removal");
+            .must_err("build should fail after namespace aliased implemented interface removal");
         assert!(
             err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
             "{err}"
@@ -5970,20 +5957,20 @@ fn project_build_avoids_cascading_errors_for_stale_for_loop_namespace_aliased_in
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction books(): List<Book> { values: List<Book> = List<Book>(); values.push(Book()); return values; }\nfunction main(): Integer { for (value: root.M.Api.Named in books()) { return value.name(); } return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial for-loop namespace aliased interface build should succeed");
+            .must("initial for-loop namespace aliased interface build should succeed");
     });
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled for-loop namespace aliased interface binary");
+        .must("run compiled for-loop namespace aliased interface binary");
     assert_eq!(status.code(), Some(1));
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -5991,11 +5978,11 @@ fn project_build_avoids_cascading_errors_for_stale_for_loop_namespace_aliased_in
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without for-loop namespace aliased interface");
+        .must("rewrite helper without for-loop namespace aliased interface");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after for-loop namespace aliased interface removal");
+            .must_err("build should fail after for-loop namespace aliased interface removal");
         assert!(
             err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
             "{err}"
@@ -6026,16 +6013,16 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book { value: root.M.Api.Named; constructor() {} }\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial namespace aliased class field build should succeed");
+            .must("initial namespace aliased class field build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -6043,11 +6030,11 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without namespace aliased class field interface");
+        .must("rewrite helper without namespace aliased class field interface");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after namespace aliased class field interface removal");
+            .must_err("build should fail after namespace aliased class field interface removal");
         assert!(
             err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
             "{err}"
@@ -6075,16 +6062,16 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nenum Wrap { Named(root.M.Api.Named) }\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial namespace aliased enum payload build should succeed");
+            .must("initial namespace aliased enum payload build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -6092,11 +6079,11 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without namespace aliased enum payload interface");
+        .must("rewrite helper without namespace aliased enum payload interface");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after namespace aliased enum payload interface removal");
+            .must_err("build should fail after namespace aliased enum payload interface removal");
         assert!(
             err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
             "{err}"
@@ -6125,16 +6112,16 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book { constructor() {} function take(value: root.M.Api.Named): Integer { return 0; } }\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial namespace aliased method signature build should succeed");
+            .must("initial namespace aliased method signature build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -6142,10 +6129,10 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without namespace aliased method signature interface");
+        .must("rewrite helper without namespace aliased method signature interface");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
             "build should fail after namespace aliased method signature interface removal",
         );
         assert!(
@@ -6176,16 +6163,16 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book { constructor(value: root.M.Api.Named) {} }\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial namespace aliased constructor signature build should succeed");
+            .must("initial namespace aliased constructor signature build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -6193,10 +6180,10 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without namespace aliased constructor signature interface");
+        .must("rewrite helper without namespace aliased constructor signature interface");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
             "build should fail after namespace aliased constructor signature interface removal",
         );
         assert!(
@@ -6227,16 +6214,16 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\ninterface NamedConsumer { function take(value: root.M.Api.Named): Integer; }\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial namespace aliased interface signature build should succeed");
+            .must("initial namespace aliased interface signature build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -6244,10 +6231,10 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without namespace aliased interface signature interface");
+        .must("rewrite helper without namespace aliased interface signature interface");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
             "build should fail after namespace aliased interface signature interface removal",
         );
         assert!(
@@ -6278,16 +6265,16 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("main.arden"),
             "package app;\nimport app as root;\ninterface NamedFactory { function make(): root.M.Api.Named; }\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial namespace aliased interface return signature build should succeed");
+            .must("initial namespace aliased interface return signature build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -6295,10 +6282,10 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
             src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("rewrite helper without namespace aliased interface return signature interface");
+        .must("rewrite helper without namespace aliased interface return signature interface");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
                 "build should fail after namespace aliased interface return signature interface removal",
             );
         assert!(
@@ -6326,16 +6313,16 @@ fn project_build_reports_demangled_list_constructor_capacity_type_mismatch() {
         src_dir.join("lib.arden"),
         "package lib;\nclass Token { constructor() {} }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib.Token as Token;\nfunction main(): Integer {\n    xs: List<Integer> = List<Integer>(Token());\n    return xs.length();\n}\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with non-integer list capacity should fail");
+            .must_err("project build with non-integer list capacity should fail");
         assert!(
             err.contains(
                 "Constructor List<Integer> expects optional Integer capacity, got lib.Token"
@@ -6362,16 +6349,16 @@ fn project_build_rejects_unknown_interface_signature_types() {
         src_dir.join("lib.arden"),
         "package lib;\ninterface Api {\n    function decode(value: Missing): Missing;\n}\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nfunction main(): Integer { return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with unknown interface signature types should fail");
+            .must_err("project build with unknown interface signature types should fail");
         assert!(err.contains("Unknown type: Missing"), "{err}");
     });
 
@@ -6387,11 +6374,11 @@ fn project_build_rejects_unknown_extern_signature_types() {
             src_dir.join("main.arden"),
             "package app;\nextern(c) function host(value: Missing): Missing;\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with unknown extern signature types should fail");
+            .must_err("project build with unknown extern signature types should fail");
         assert!(err.contains("Unknown type: Missing"), "{err}");
     });
 
@@ -6412,16 +6399,16 @@ fn project_build_rejects_unknown_enum_payload_types() {
         src_dir.join("lib.arden"),
         "package lib;\nenum Message { Value(Missing) }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nfunction main(): Integer { return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with unknown enum payload type should fail");
+            .must_err("project build with unknown enum payload type should fail");
         assert!(err.contains("Unknown type: Missing"), "{err}");
     });
 
@@ -6442,16 +6429,16 @@ fn project_build_reports_demangled_unknown_implemented_interface() {
             src_dir.join("lib.arden"),
             "package lib;\nmodule Api {\n    class Report implements Missing {\n        constructor() {}\n    }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nfunction main(): Integer { return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with unknown implemented interface should fail");
+            .must_err("project build with unknown implemented interface should fail");
         assert!(
             err.contains("Class 'lib.Api.Report' implements unknown interface 'Missing'"),
             "{err}"
@@ -6476,16 +6463,16 @@ fn project_build_reports_demangled_unknown_variant_enum_name() {
             src_dir.join("lib.arden"),
             "package lib;\nenum Choice { Left, Right }\nfunction read(): Integer {\n    return match (Choice.Left) {\n        Choice.Missing => 0,\n        _ => 1,\n    };\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport lib.read as read;\nfunction main(): Integer { return read(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("project build with unknown variant should fail");
+            .must_err("project build with unknown variant should fail");
         assert!(
             err.contains("Unknown variant 'Choice.Missing' for enum 'lib.Choice'"),
             "{err}"
@@ -6510,21 +6497,21 @@ fn project_build_supports_async_block_namespace_alias_unit_enum_tail_runtime() {
         src_dir.join("lib.arden"),
         "package util;\nenum E { A, B }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): Integer { task: Task<u.E> = async { u.E.A }; value: u.E = await(task); match (value) { u.E.A => { return 0; } u.E.B => { return 1; } } }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support async-block namespace-alias unit-enum tails");
+            .must("project build should support async-block namespace-alias unit-enum tails");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled async-block namespace-alias unit-enum tail binary");
+        .must("run compiled async-block namespace-alias unit-enum tail binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6544,21 +6531,21 @@ fn project_build_supports_async_block_import_alias_function_value_tail_runtime()
         src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util.add1 as inc;\nfunction main(): Integer { task: Task<(Integer) -> Integer> = async { inc }; f: (Integer) -> Integer = await(task); return f(1); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support async-block import-alias function-value tails");
+            .must("project build should support async-block import-alias function-value tails");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled async-block import-alias function-value tail binary");
+        .must("run compiled async-block import-alias function-value tail binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6578,21 +6565,21 @@ fn project_build_supports_async_block_import_alias_tail_expression_runtime() {
         src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util.add1 as inc;\nfunction main(): Integer { task: Task<Integer> = async { inc(1) }; return await(task); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support async-block import-alias tail expressions");
+            .must("project build should support async-block import-alias tail expressions");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled async-block import-alias tail-expression binary");
+        .must("run compiled async-block import-alias tail-expression binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6612,16 +6599,16 @@ fn project_build_supports_namespace_alias_unit_enum_values() {
         src_dir.join("lib.arden"),
         "package util;\nenum E { A, B }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): None { e: u.E = u.E.A; match (e) { u.E.A => { } u.E.B => { } } return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support namespace alias unit enum values");
+            .must("project build should support namespace alias unit enum values");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6636,11 +6623,11 @@ fn project_build_supports_try_expression_function_value_callees() {
             src_dir.join("main.arden"),
             "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction choose(): Result<(Integer) -> Integer, String> { return Result.ok(inc); }\nfunction compute(): Result<Integer, String> { value: Integer = (choose()?)(1); return Result.ok(value); }\nfunction main(): Integer { value: Integer = compute().unwrap(); require(value == 2); return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support try-expression function-value callees");
+            .must("project build should support try-expression function-value callees");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6660,16 +6647,16 @@ fn project_build_supports_imported_explicit_generic_free_calls() {
         src_dir.join("lib.arden"),
         "package util;\nfunction id<T>(x: T): T { return x; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util.id;\nfunction main(): None { value: Integer = id<Integer>(1); require(value == 1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support imported explicit generic free calls");
+            .must("project build should support imported explicit generic free calls");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6689,16 +6676,16 @@ fn project_build_supports_imported_generic_class_instance_methods() {
             src_dir.join("lib.arden"),
             "package util;\nclass Boxed<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function get(): T { return this.value; }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util.Boxed;\nfunction main(): None { value: Integer = Boxed<Integer>(7).get(); require(value == 7); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support imported generic class instance methods");
+            .must("project build should support imported generic class instance methods");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6718,21 +6705,21 @@ fn project_run_supports_top_level_destructor_alias_rewrite() {
         src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util.add1 as inc;\nclass Boxed {\n    value: Integer;\n    constructor(value: Integer) { this.value = value; }\n    destructor() { require(inc(this.value) == 2); }\n}\nfunction main(): Integer { box: Boxed = Boxed(1); return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should rewrite top-level destructor alias calls");
+            .must("project build should rewrite top-level destructor alias calls");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled destructor alias rewrite binary");
+        .must("run compiled destructor alias rewrite binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6747,16 +6734,16 @@ fn project_run_supports_module_local_destructor_function_rewrite() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    function score(x: Integer): Integer { return x + 1; }\n    class Boxed {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        destructor() { require(score(this.value) == 2); }\n    }\n    function make(): Boxed { return Boxed(1); }\n}\nfunction main(): Integer { box: M.Boxed = M.make(); return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should rewrite module-local destructor calls");
+            .must("project build should rewrite module-local destructor calls");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled module destructor rewrite binary");
+        .must("run compiled module destructor rewrite binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6771,11 +6758,11 @@ fn project_build_supports_method_calls_on_function_returned_objects() {
             src_dir.join("main.arden"),
             "package app;\nclass Boxed<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function get(): T { return this.value; }\n}\nfunction make_box(): Boxed<Integer> { return Boxed<Integer>(9); }\nfunction main(): None { value: Integer = make_box().get(); require(value == 9); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support method calls on function-returned objects");
+            .must("project build should support method calls on function-returned objects");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6795,15 +6782,15 @@ fn project_check_supports_namespace_alias_nested_module_generic_class_constructo
             src_dir.join("lib.arden"),
             "package util;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n    }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): None { b: u.M.Box<Integer> = u.M.Box<Integer>(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect(
+        check_command(None, false).must(
             "project check should support namespace alias nested-module generic class constructors",
         );
     });
@@ -6820,11 +6807,11 @@ fn project_build_supports_module_local_interface_implements() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    interface Named { function name(): Integer; }\n    class Book implements Named {\n        constructor() {}\n        function name(): Integer { return 1; }\n    }\n}\nfunction main(): None { return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support module-local interface implements");
+            .must("project build should support module-local interface implements");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6839,11 +6826,11 @@ fn project_build_supports_module_local_nested_interface_implements() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    module Api { interface Named { function name(): Integer; } }\n    class Book implements Api.Named {\n        constructor() {}\n        function name(): Integer { return 1; }\n    }\n}\nfunction main(): None { return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support module-local nested interface implements");
+            .must("project build should support module-local nested interface implements");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6858,11 +6845,11 @@ fn project_build_supports_module_local_interface_extends() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    interface Named { function name(): Integer; }\n    interface Printable extends Named { function print_me(): Integer; }\n    class Report implements Printable {\n        constructor() {}\n        function name(): Integer { return 1; }\n        function print_me(): Integer { return 2; }\n    }\n}\nfunction main(): None { return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support module-local interface extends");
+            .must("project build should support module-local interface extends");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6877,11 +6864,11 @@ fn project_build_supports_module_local_nested_interface_extends() {
             src_dir.join("main.arden"),
             "package app;\nmodule M {\n    module Api { interface Named { function name(): Integer; } }\n    interface Printable extends Api.Named { function print_me(): Integer; }\n    class Report implements Printable {\n        constructor() {}\n        function name(): Integer { return 1; }\n        function print_me(): Integer { return 2; }\n    }\n}\nfunction main(): None { return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support module-local nested interface extends");
+            .must("project build should support module-local nested interface extends");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6901,16 +6888,16 @@ fn project_build_supports_namespace_alias_interface_extends_on_seeded_semantic_p
         src_dir.join("lib.arden"),
         "package lib;\ninterface Named { function name(): Integer; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib as u;\ninterface Printable extends u.Named { function print_me(): Integer; }\nclass Report implements Printable {\n    constructor() {}\n    function name(): Integer { return 1; }\n    function print_me(): Integer { return 2; }\n}\nfunction main(): None { return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support aliased interface extends on seeded path");
+            .must("project build should support aliased interface extends on seeded path");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6930,16 +6917,16 @@ fn project_build_supports_nested_namespace_alias_interface_extends_on_seeded_sem
             src_dir.join("lib.arden"),
             "package lib;\nmodule Api {\n    interface Named { function name(): Integer; }\n    interface Printable { function print_me(): Integer; }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib as u;\ninterface Reportable extends u.Api.Named, u.Api.Printable {}\nclass Report implements Reportable {\n    constructor() {}\n    function name(): Integer { return 1; }\n    function print_me(): Integer { return 2; }\n}\nfunction main(): None { return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support nested aliased interface extends on seeded path");
+            .must("project build should support nested aliased interface extends on seeded path");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6959,16 +6946,16 @@ fn project_build_supports_namespace_alias_generic_bounds() {
             src_dir.join("lib.arden"),
             "package lib;\ninterface Named { function name(): Integer; }\nclass Person implements Named {\n    constructor() {}\n    function name(): Integer { return 1; }\n}\n",
         )
-        .expect("write lib");
+        .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction read_name<T extends u.Named>(value: T): Integer { return value.name(); }\nfunction main(): None { person: u.Person = u.Person(); require(read_name(person) == 1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support namespace alias generic bounds");
+            .must("project build should support namespace alias generic bounds");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6989,15 +6976,15 @@ fn project_build_no_check_rejects_namespace_alias_generic_bound_method_signature
         src_dir.join("lib.arden"),
         "package lib;\ninterface Named { function name(): Integer; }\nclass Person implements Named {\n    constructor() {}\n    function name(): Integer { return 1; }\n}\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport lib as u;\nfunction read_name<T extends u.Named>(value: T): Integer { f: (Integer) -> Integer = value.name; return f(1); }\nfunction main(): None { person: u.Person = u.Person(); require(read_name(person) == 1); return None; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, false, false, false).expect_err(
+        let err = build_project(false, false, false, false, false).must_err(
             "unchecked project build should reject generic bound method signature mismatch",
         );
         assert!(
@@ -7018,11 +7005,11 @@ fn project_build_supports_dereferenced_function_value_callees() {
             src_dir.join("main.arden"),
             "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): None { f: &(Integer) -> Integer = &inc; value: Integer = (*f)(1); require(value == 2); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support dereferenced function-value callees");
+            .must("project build should support dereferenced function-value callees");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7037,11 +7024,11 @@ fn project_check_rejects_async_borrowed_reference_results() {
             src_dir.join("main.arden"),
             "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): None { task: Task<&(Integer) -> Integer> = async { return &inc; }; return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = check_command(None, false)
-            .expect_err("project check should reject async borrowed reference results");
+            .must_err("project check should reject async borrowed reference results");
         assert!(
             err.contains("Async block cannot return a value containing borrowed references"),
             "{err}"
@@ -7060,10 +7047,10 @@ fn project_check_rejects_async_borrowed_reference_params_and_captures() {
             src_dir.join("main.arden"),
             "package app;\nasync function read_ref(r: &Integer): Task<Integer> { return *r; }\nfunction main(): None { x: Integer = 1; alias: &Integer = &x; task: Task<Integer> = async { return *alias; }; return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
-        let err = check_command(None, false).expect_err(
+        let err = check_command(None, false).must_err(
             "project check should reject async borrowed reference parameters and captures",
         );
         assert!(
@@ -7108,7 +7095,7 @@ module Api {
 }
 "#,
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         r#"
@@ -7123,17 +7110,17 @@ function main(): Integer {
 }
 "#,
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support aliased async float interpolation");
+            .must("project build should support aliased async float interpolation");
     });
 
     let output_path = temp_root.join("smoke");
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled aliased async float interpolation binary");
+        .must("run compiled aliased async float interpolation binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -7171,7 +7158,7 @@ module Api {
 }
 "#,
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         r#"
@@ -7186,17 +7173,17 @@ function main(): Integer {
 }
 "#,
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should preserve dotted-package async Float await values");
+            .must("project build should preserve dotted-package async Float await values");
     });
 
     let output_path = temp_root.join("smoke");
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled dotted-package async float await binary");
+        .must("run compiled dotted-package async float await binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -7237,7 +7224,7 @@ module Api {
 }
 "#,
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         r#"
@@ -7253,17 +7240,17 @@ function main(): Integer {
 }
 "#,
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support dotted-package async function values");
+            .must("project build should support dotted-package async function values");
     });
 
     let output_path = temp_root.join("smoke");
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled dotted-package async function value binary");
+        .must("run compiled dotted-package async function value binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -7290,21 +7277,21 @@ fn project_run_supports_namespace_alias_unit_enum_match_expressions() {
         src_dir.join("lib.arden"),
         "package util;\nenum E { A, B }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
             src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): Integer { value: Integer = match (u.E.A) { u.E.A => { 1 } u.E.B => { 2 } }; require(value == 1); return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("namespace alias unit enum match expression should build");
+            .must("namespace alias unit enum match expression should build");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled namespace alias unit enum match expression binary");
+        .must("run compiled namespace alias unit enum match expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7319,17 +7306,17 @@ fn project_run_supports_direct_constructor_method_calls() {
             src_dir.join("main.arden"),
             "package app;\nclass Boxed { value: Integer; constructor(value: Integer) { this.value = value; } function get(): Integer { return this.value; } }\nfunction main(): Integer { return Boxed(23).get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, false, false, false)
-            .expect("project build should support direct constructor method calls");
+            .must("project build should support direct constructor method calls");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run direct constructor method project binary");
+        .must("run direct constructor method project binary");
     assert_eq!(status.code(), Some(23));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7344,11 +7331,11 @@ fn project_run_no_check_rejects_main_with_string_return_type_cleanly() {
         src_dir.join("main.arden"),
         "package app;\nfunction main(): String { return \"oops\"; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, false, false, false)
-            .expect_err("unchecked project build should reject invalid main signature");
+            .must_err("unchecked project build should reject invalid main signature");
         assert!(err.contains("main() must return None or Integer"), "{err}");
         assert!(!err.contains("Clang failed"), "{err}");
     });
@@ -7364,16 +7351,15 @@ fn project_run_rejects_non_binary_output_kind() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\noutput = \"smoke\"\noutput_kind = \"static\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
         src_dir.join("main.arden"),
         "function main(): None { return None; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        let err =
-            run_project(&[], false, true, false).expect_err("run should reject library output");
+        let err = run_project(&[], false, true, false).must_err("run should reject library output");
         assert!(err.contains("requires `output_kind = \"bin\"`"), "{err}");
     });
     assert!(
@@ -7393,17 +7379,17 @@ fn project_run_supports_local_qualified_nested_enum_match_expressions() {
             src_dir.join("main.arden"),
             "package app;\nmodule M { enum E { A(Integer), B(Integer) } class Box { value: Integer; constructor(value: Integer) { this.value = value; } } }\nfunction main(): Integer { return (match (M.E.A(42)) { M.E.A(v) => M.Box(v), M.E.B(v) => M.Box(v) }).value; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, false, false, false)
-            .expect("project build should support local qualified nested enum match expressions");
+            .must("project build should support local qualified nested enum match expressions");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run local nested enum match project binary");
+        .must("run local nested enum match project binary");
     assert_eq!(status.code(), Some(42));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7418,17 +7404,17 @@ fn project_run_supports_module_local_qualified_async_function_paths() {
             src_dir.join("main.arden"),
             "package app;\nmodule M { class Box { value: Integer; constructor(value: Integer) { this.value = value; } } async function mk(): M.Box { return M.Box(43); } }\nfunction main(): Integer { return await(M.mk()).value; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, false, false, false)
-            .expect("project build should support module-local qualified async function paths");
+            .must("project build should support module-local qualified async function paths");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run module-local qualified async project binary");
+        .must("run module-local qualified async project binary");
     assert_eq!(status.code(), Some(43));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7443,17 +7429,17 @@ fn project_run_supports_deeper_local_nested_module_function_paths() {
             src_dir.join("main.arden"),
             "package app;\nmodule M { module N { class Box { value: Integer; constructor(value: Integer) { this.value = value; } function get(): Integer { return this.value; } } function mk(): Box { return Box(51); } } }\nfunction main(): Integer { return M.N.mk().get(); }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, false, false, false)
-            .expect("project build should support deeper local nested module function paths");
+            .must("project build should support deeper local nested module function paths");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run deeper local nested module function project binary");
+        .must("run deeper local nested module function project binary");
     assert_eq!(status.code(), Some(51));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7468,17 +7454,17 @@ fn project_run_supports_deeper_local_nested_module_async_paths() {
             src_dir.join("main.arden"),
             "package app;\nmodule M { module N { class Box { value: Integer; constructor(value: Integer) { this.value = value; } } async function mk(): Box { return Box(53); } } }\nfunction main(): Integer { return await(M.N.mk()).value; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, false, false, false)
-            .expect("project build should support deeper local nested module async paths");
+            .must("project build should support deeper local nested module async paths");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run deeper local nested module async project binary");
+        .must("run deeper local nested module async project binary");
     assert_eq!(status.code(), Some(53));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7498,23 +7484,22 @@ fn project_run_supports_nested_module_destructors_with_import_alias_calls() {
         src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport util.add1 as inc;\nmodule M { module N { class Box { constructor() {} destructor() { require(inc(1) == 2); } } } }\nfunction main(): Integer { b: M.N.Box = M.N.Box(); return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should support nested-module destructors with import alias calls",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should support nested-module destructors with import alias calls");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run nested-module destructor import-alias binary");
+        .must("run nested-module destructor import-alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7534,15 +7519,15 @@ fn project_build_supports_nested_module_generic_bounds_through_file_scope_aliase
         src_dir.join("lib.arden"),
         "package app;\ninterface Named { function name(): Integer; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport app.Named as NamedAlias;\nmodule M { module N { class Box<T extends NamedAlias> { value: T; constructor(value: T) { this.value = value; } function get(): Integer { return this.value.name(); } } } }\nclass Item implements NamedAlias { function name(): Integer { return 7; } }\nfunction main(): Integer { return M.N.Box<Item>(Item()).get(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support nested-module generic bounds through file-scope aliases",
         );
     });
@@ -7550,7 +7535,7 @@ fn project_build_supports_nested_module_generic_bounds_through_file_scope_aliase
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run nested-module generic bound alias binary");
+        .must("run nested-module generic bound alias binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7570,15 +7555,15 @@ fn project_build_supports_nested_module_interface_generic_bounds_through_file_sc
         src_dir.join("lib.arden"),
         "package app;\ninterface Named { function name(): Integer; }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport app.Named as NamedAlias;\nmodule M { module N { interface Reader<T extends NamedAlias> { function read(value: T): Integer; } class Box implements Reader<Item> { constructor() {} function read(value: Item): Integer { return value.name(); } } } }\nclass Item implements NamedAlias { function name(): Integer { return 7; } }\nfunction main(): Integer { reader: M.N.Reader<Item> = M.N.Box(); return reader.read(Item()); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
+        build_project(false, false, true, false, false).must(
             "project build should support nested-module interface generic bounds through file-scope aliases",
         );
     });
@@ -7586,7 +7571,7 @@ fn project_build_supports_nested_module_interface_generic_bounds_through_file_sc
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run nested-module interface generic bound alias binary");
+        .must("run nested-module interface generic bound alias binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7601,17 +7586,17 @@ fn project_build_supports_nested_module_generic_base_classes() {
         src_dir.join("main.arden"),
         "package app;\nmodule M { module N { class Payload { constructor() {} } class Base<T> { constructor() {} } class Child extends Base<Payload> { constructor() {} } } }\nfunction main(): Integer { value: M.N.Child = M.N.Child(); return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support nested-module generic base classes");
+            .must("project build should support nested-module generic base classes");
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run nested-module generic base class binary");
+        .must("run nested-module generic base class binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7631,21 +7616,21 @@ fn project_build_supports_generic_exact_import_alias_base_classes() {
         src_dir.join("lib.arden"),
         "package lib;\nclass Payload { constructor() {} }\nclass Base<T> { constructor() {} }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport lib.Base as BaseAlias;\nimport lib.Payload as PayloadAlias;\nclass Child extends BaseAlias<PayloadAlias> { constructor() {} }\nfunction main(): Integer { value: Child = Child(); return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support generic exact-import alias base classes");
+            .must("project build should support generic exact-import alias base classes");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled generic exact-import alias base class binary");
+        .must("run compiled generic exact-import alias base class binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7665,21 +7650,21 @@ fn project_build_supports_generic_namespace_alias_base_classes() {
         src_dir.join("lib.arden"),
         "package lib;\nclass Payload { constructor() {} }\nclass Base<T> { constructor() {} }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nimport lib as u;\nclass Child extends u.Base<u.Payload> { constructor() {} }\nfunction main(): Integer { value: Child = Child(); return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support generic namespace alias base classes");
+            .must("project build should support generic namespace alias base classes");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled generic namespace alias base class binary");
+        .must("run compiled generic namespace alias base class binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7699,21 +7684,21 @@ fn project_build_supports_module_local_namespace_alias_imports() {
         src_dir.join("lib.arden"),
         "package lib;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } function get(): T { return this.value; } }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nmodule M { import lib as u; function make(): Integer { f: (Integer) -> u.Box<Integer> = u.Box<Integer>; value: u.Box<Integer> = f(7); return value.get(); } }\nfunction main(): Integer { return M.make(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support module-local namespace alias imports");
+            .must("project build should support module-local namespace alias imports");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled module-local namespace alias binary");
+        .must("run compiled module-local namespace alias binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7733,21 +7718,21 @@ fn project_build_supports_module_local_exact_import_aliases() {
         src_dir.join("lib.arden"),
         "package lib;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } function get(): T { return this.value; } }\n",
     )
-    .expect("write lib");
+    .must("write lib");
     fs::write(
         src_dir.join("main.arden"),
         "package app;\nmodule M { import lib.Box as Boxed; function make(): Integer { f: (Integer) -> Boxed<Integer> = Boxed<Integer>; value: Boxed<Integer> = f(7); return value.get(); } }\nfunction main(): Integer { return M.make(); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should support module-local exact import aliases");
+            .must("project build should support module-local exact import aliases");
     });
 
     let status = std::process::Command::new(temp_root.join("smoke"))
         .status()
-        .expect("run compiled module-local exact import alias binary");
+        .must("run compiled module-local exact import alias binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7762,12 +7747,11 @@ fn project_build_no_check_rejects_module_local_wildcard_import_leaking_to_top_le
         src_dir.join("main.arden"),
         "package app;\nmodule Inner { import std.math.*; function keep(): Float { return abs(-1.0); } }\nfunction main(): Float { return abs(-1.0); }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
-            "project build should reject top-level use of module-local wildcard import",
-        );
+        let err = build_project(false, false, true, false, false)
+            .must_err("project build should reject top-level use of module-local wildcard import");
         assert!(
             err.contains("Function 'abs' is defined in 'std.math' but not imported in 'app'")
                 || err.contains("Import check failed"),
@@ -7791,16 +7775,16 @@ fn project_build_rechecks_module_local_wildcard_import_dependents_after_symbol_r
         temp_root.join("src/main.arden"),
         "package app;\nmodule Inner { import lib.*; function run(): Integer { return add(1); } }\nfunction main(): Integer { return Inner.run(); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial module-local wildcard project build should succeed");
+            .must("initial module-local wildcard project build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -7808,11 +7792,11 @@ fn project_build_rechecks_module_local_wildcard_import_dependents_after_symbol_r
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction plus(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite helper without module-local wildcard imported symbol");
+    .must("rewrite helper without module-local wildcard imported symbol");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after module-local wildcard-imported symbol removal");
+            .must_err("build should fail after module-local wildcard-imported symbol removal");
         assert!(
             err.contains("Wildcard import 'lib.*' no longer provides 'add'")
                 || err.contains("Function 'add' is defined in 'lib' but not imported in 'app'")
@@ -7839,16 +7823,16 @@ fn project_build_rechecks_module_local_exact_import_alias_dependents_after_symbo
         temp_root.join("src/main.arden"),
         "package app;\nmodule Inner { import lib.add as plus_one; function run(): Integer { return plus_one(1); } }\nfunction main(): Integer { return Inner.run(); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial module-local exact-import alias project build should succeed");
+            .must("initial module-local exact-import alias project build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -7856,11 +7840,11 @@ fn project_build_rechecks_module_local_exact_import_alias_dependents_after_symbo
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction plus(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite helper without module-local exact-import alias symbol");
+    .must("rewrite helper without module-local exact-import alias symbol");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after module-local exact-import alias symbol removal");
+            .must_err("build should fail after module-local exact-import alias symbol removal");
         assert!(
             err.contains("Imported alias 'plus_one' no longer resolves")
                 || err.contains("Function 'plus_one' is defined")
@@ -7887,16 +7871,16 @@ fn project_build_rechecks_module_local_namespace_alias_dependents_after_symbol_r
         temp_root.join("src/main.arden"),
         "package app;\nmodule Inner { import lib as l; function run(): Integer { return l.add(1); } }\nfunction main(): Integer { return Inner.run(); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial module-local namespace-alias project build should succeed");
+            .must("initial module-local namespace-alias project build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -7904,11 +7888,11 @@ fn project_build_rechecks_module_local_namespace_alias_dependents_after_symbol_r
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction plus(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite helper without module-local namespace-alias symbol");
+    .must("rewrite helper without module-local namespace-alias symbol");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after module-local namespace-alias symbol removal");
+            .must_err("build should fail after module-local namespace-alias symbol removal");
         assert!(
             err.contains("Imported namespace alias 'l' has no member 'add'")
                 || err.contains("Import check failed"),
@@ -7927,16 +7911,16 @@ fn project_check_recovers_cleanly_after_invalid_files_list_fix() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/helper.txt\", \"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write invalid arden.toml");
+        .must("write invalid arden.toml");
     fs::write(
         temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
-    .expect("write main");
-    fs::write(temp_root.join("src/helper.txt"), "not arden\n").expect("write helper");
+    .must("write main");
+    fs::write(temp_root.join("src/helper.txt"), "not arden\n").must("write helper");
 
     with_current_dir(&temp_root, || {
-        let err = check_file(None).expect_err("check should reject invalid files list entry");
+        let err = check_file(None).must_err("check should reject invalid files list entry");
         assert!(
             err.contains("src/helper.txt") || err.contains("is not an .arden file"),
             "{err}"
@@ -7948,10 +7932,10 @@ fn project_check_recovers_cleanly_after_invalid_files_list_fix() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("rewrite valid arden.toml");
+        .must("rewrite valid arden.toml");
 
     with_current_dir(&temp_root, || {
-        check_file(None).expect("check should recover cleanly after fixing files list");
+        check_file(None).must("check should recover cleanly after fixing files list");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7964,46 +7948,45 @@ fn project_commands_recover_after_repeated_helper_validity_toggles() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
             temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
 
     let invalid_helper = "package lib;\nfunction add(: Integer { return 1; }\n";
     let valid_helper = "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n";
 
-    fs::write(temp_root.join("src/helper.arden"), invalid_helper).expect("write invalid helper");
+    fs::write(temp_root.join("src/helper.arden"), invalid_helper).must("write invalid helper");
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect_err("check should fail on first invalid helper");
+        check_command(None, false).must_err("check should fail on first invalid helper");
         build_project(false, false, true, false, false)
-            .expect_err("build should fail on first invalid helper");
+            .must_err("build should fail on first invalid helper");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
-    fs::write(temp_root.join("src/helper.arden"), valid_helper).expect("write valid helper");
+    fs::write(temp_root.join("src/helper.arden"), valid_helper).must("write valid helper");
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect("check should pass on first valid helper");
+        check_command(None, false).must("check should pass on first valid helper");
         build_project(false, false, true, false, false)
-            .expect("build should pass on first valid helper");
+            .must("build should pass on first valid helper");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
-    fs::write(temp_root.join("src/helper.arden"), invalid_helper).expect("rewrite invalid helper");
+    fs::write(temp_root.join("src/helper.arden"), invalid_helper).must("rewrite invalid helper");
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect_err("check should fail on second invalid helper");
+        check_command(None, false).must_err("check should fail on second invalid helper");
         build_project(false, false, true, false, false)
-            .expect_err("build should fail on second invalid helper");
+            .must_err("build should fail on second invalid helper");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
-    fs::write(temp_root.join("src/helper.arden"), valid_helper)
-        .expect("rewrite valid helper again");
+    fs::write(temp_root.join("src/helper.arden"), valid_helper).must("rewrite valid helper again");
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect("check should pass after repeated validity toggles");
+        check_command(None, false).must("check should pass after repeated validity toggles");
         build_project(false, false, true, false, false)
-            .expect("build should pass after repeated validity toggles");
+            .must("build should pass after repeated validity toggles");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8016,43 +7999,43 @@ fn project_commands_ignore_metadata_only_touch_after_recovery() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
             temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(: Integer { return 1; }\n",
     )
-    .expect("write malformed helper");
+    .must("write malformed helper");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect_err("project check should fail on malformed helper");
+        check_command(None, false).must_err("project check should fail on malformed helper");
         build_project(false, false, true, false, false)
-            .expect_err("build should fail on malformed helper");
+            .must_err("build should fail on malformed helper");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     let fixed_helper = "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n";
-    fs::write(temp_root.join("src/helper.arden"), fixed_helper).expect("rewrite valid helper");
+    fs::write(temp_root.join("src/helper.arden"), fixed_helper).must("rewrite valid helper");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect("project check should recover after helper fix");
+        check_command(None, false).must("project check should recover after helper fix");
         build_project(false, false, true, false, false)
-            .expect("build should recover after helper fix");
+            .must("build should recover after helper fix");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(temp_root.join("src/helper.arden"), fixed_helper)
-        .expect("rewrite identical helper for metadata touch");
+        .must("rewrite identical helper for metadata touch");
 
     with_current_dir(&temp_root, || {
         check_command(None, false)
-            .expect("project check should ignore metadata-only touch after recovery");
+            .must("project check should ignore metadata-only touch after recovery");
         build_project(false, false, true, false, false)
-            .expect("build should ignore metadata-only touch after recovery");
+            .must("build should ignore metadata-only touch after recovery");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8065,21 +8048,21 @@ fn project_commands_recover_cleanly_after_metadata_only_config_edit() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
             temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect("project check should pass initially");
-        build_project(false, false, true, false, false).expect("build should pass initially");
+        check_command(None, false).must("project check should pass initially");
+        build_project(false, false, true, false, false).must("build should pass initially");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -8087,13 +8070,13 @@ fn project_commands_recover_cleanly_after_metadata_only_config_edit() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.1\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke2\"\n",
         )
-        .expect("rewrite metadata-only arden.toml");
+        .must("rewrite metadata-only arden.toml");
 
     with_current_dir(&temp_root, || {
         check_command(None, false)
-            .expect("project check should recover after metadata-only config edit");
+            .must("project check should recover after metadata-only config edit");
         build_project(false, false, true, false, false)
-            .expect("build should recover after metadata-only config edit");
+            .must("build should recover after metadata-only config edit");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8106,21 +8089,21 @@ fn project_commands_recover_cleanly_after_output_only_config_edit() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
             temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect("project check should pass initially");
-        build_project(false, false, true, false, false).expect("build should pass initially");
+        check_command(None, false).must("project check should pass initially");
+        build_project(false, false, true, false, false).must("build should pass initially");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -8128,12 +8111,12 @@ fn project_commands_recover_cleanly_after_output_only_config_edit() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-renamed\"\n",
         )
-        .expect("rewrite output-only arden.toml");
+        .must("rewrite output-only arden.toml");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect("project check should ignore output-only config edit");
+        check_command(None, false).must("project check should ignore output-only config edit");
         build_project(false, false, true, false, false)
-            .expect("build should rebuild cleanly after output-only config edit");
+            .must("build should rebuild cleanly after output-only config edit");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8157,37 +8140,37 @@ fn project_build_rebuilds_after_same_length_source_edit_with_preserved_mtime() {
         &source_path,
         "package app;\nfunction main(): Integer { return 11; }\n",
     )
-    .expect("write initial main");
-    fs::copy(&source_path, &mtime_reference).expect("write mtime reference");
+    .must("write initial main");
+    fs::copy(&source_path, &mtime_reference).must("write mtime reference");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect("initial build should pass");
+        build_project(false, false, true, false, false).must("initial build should pass");
     });
     let first_status = std::process::Command::new(&output_path)
         .status()
-        .expect("run first built binary");
+        .must("run first built binary");
     assert_eq!(first_status.code(), Some(11));
 
     fs::write(
         &source_path,
         "package app;\nfunction main(): Integer { return 22; }\n",
     )
-    .expect("rewrite main with same-length content");
+    .must("rewrite main with same-length content");
     let touch_status = std::process::Command::new("touch")
         .arg("-r")
         .arg(&mtime_reference)
         .arg(&source_path)
         .status()
-        .expect("run touch to preserve main mtime");
+        .must("run touch to preserve main mtime");
     assert!(touch_status.success(), "touch should preserve source mtime");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("build should rebuild after same-length content change");
+            .must("build should rebuild after same-length content change");
     });
     let second_status = std::process::Command::new(&output_path)
         .status()
-        .expect("run rebuilt binary after same-length content change");
+        .must("run rebuilt binary after same-length content change");
     assert_eq!(second_status.code(), Some(22));
 
     let _ = fs::remove_file(mtime_reference);
@@ -8205,27 +8188,27 @@ fn parse_project_unit_reparses_after_same_length_source_edit_with_preserved_mtim
         &source_path,
         "package app;\nfunction main(): Integer { return 11; }\n",
     )
-    .expect("write initial source");
-    fs::copy(&source_path, &mtime_reference).expect("write mtime reference");
+    .must("write initial source");
+    fs::copy(&source_path, &mtime_reference).must("write mtime reference");
 
-    let first = parse_project_unit(&temp_root, &source_path).expect("first parse");
+    let first = parse_project_unit(&temp_root, &source_path).must("first parse");
     assert!(!first.from_parse_cache);
 
     fs::write(
         &source_path,
         "package app;\nfunction main(): Integer { return 22; }\n",
     )
-    .expect("rewrite source with same-length content");
+    .must("rewrite source with same-length content");
     let touch_status = std::process::Command::new("touch")
         .arg("-r")
         .arg(&mtime_reference)
         .arg(&source_path)
         .status()
-        .expect("run touch to preserve source mtime");
+        .must("run touch to preserve source mtime");
     assert!(touch_status.success(), "touch should preserve source mtime");
 
     let second = parse_project_unit(&temp_root, &source_path)
-        .expect("second parse after same-length content change");
+        .must("second parse after same-length content change");
     assert!(!second.from_parse_cache);
     assert_ne!(first.semantic_fingerprint, second.semantic_fingerprint);
 
@@ -8254,20 +8237,20 @@ fn project_commands_recover_after_repeated_output_path_toggles() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
             temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect("initial build should pass");
+        build_project(false, false, true, false, false).must("initial build should pass");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -8275,10 +8258,10 @@ fn project_commands_recover_after_repeated_output_path_toggles() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-a\"\n",
         )
-        .expect("rewrite output path a");
+        .must("rewrite output path a");
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("build should pass after first output toggle");
+            .must("build should pass after first output toggle");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -8286,10 +8269,10 @@ fn project_commands_recover_after_repeated_output_path_toggles() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-b\"\n",
         )
-        .expect("rewrite output path b");
+        .must("rewrite output path b");
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("build should pass after second output toggle");
+            .must("build should pass after second output toggle");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8302,20 +8285,20 @@ fn project_commands_recover_after_repeated_output_and_version_toggles() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
             temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect("initial build should pass");
+        build_project(false, false, true, false, false).must("initial build should pass");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -8323,10 +8306,10 @@ fn project_commands_recover_after_repeated_output_and_version_toggles() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.1\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-a\"\n",
         )
-        .expect("rewrite output/version a");
+        .must("rewrite output/version a");
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("build should pass after first metadata toggle");
+            .must("build should pass after first metadata toggle");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -8334,10 +8317,10 @@ fn project_commands_recover_after_repeated_output_and_version_toggles() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.2\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-b\"\n",
         )
-        .expect("rewrite output/version b");
+        .must("rewrite output/version b");
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("build should pass after second metadata toggle");
+            .must("build should pass after second metadata toggle");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8350,21 +8333,21 @@ fn project_commands_ignore_files_order_only_toggles() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
             temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect("initial check should pass");
-        build_project(false, false, true, false, false).expect("initial build should pass");
+        check_command(None, false).must("initial check should pass");
+        build_project(false, false, true, false, false).must("initial build should pass");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -8372,12 +8355,12 @@ fn project_commands_ignore_files_order_only_toggles() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/helper.arden\", \"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("rewrite file order");
+        .must("rewrite file order");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect("check should ignore files-order-only toggle");
+        check_command(None, false).must("check should ignore files-order-only toggle");
         build_project(false, false, true, false, false)
-            .expect("build should ignore files-order-only toggle");
+            .must("build should ignore files-order-only toggle");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8390,17 +8373,17 @@ fn project_build_recovers_cleanly_after_invalid_files_list_fix() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/helper.txt\", \"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write invalid arden.toml");
+        .must("write invalid arden.toml");
     fs::write(
         temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
-    .expect("write main");
-    fs::write(temp_root.join("src/helper.txt"), "not arden\n").expect("write helper");
+    .must("write main");
+    fs::write(temp_root.join("src/helper.txt"), "not arden\n").must("write helper");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should reject invalid files list entry");
+            .must_err("build should reject invalid files list entry");
         assert!(
             err.contains("src/helper.txt") || err.contains("is not an .arden file"),
             "{err}"
@@ -8412,11 +8395,11 @@ fn project_build_recovers_cleanly_after_invalid_files_list_fix() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("rewrite valid arden.toml");
+        .must("rewrite valid arden.toml");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("build should recover cleanly after fixing files list");
+            .must("build should recover cleanly after fixing files list");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8429,27 +8412,27 @@ fn project_commands_recover_cleanly_after_malformed_helper_fix() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
             temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(: Integer { return 1; }\n",
     )
-    .expect("write malformed helper");
+    .must("write malformed helper");
 
     with_current_dir(&temp_root, || {
         let check_err =
-            check_command(None, false).expect_err("project check should fail on malformed helper");
+            check_command(None, false).must_err("project check should fail on malformed helper");
         assert!(
             check_err.contains("Parse error") || check_err.contains("Expected an identifier"),
             "{check_err}"
         );
         let build_err = build_project(false, false, true, false, false)
-            .expect_err("build should fail on malformed helper");
+            .must_err("build should fail on malformed helper");
         assert!(
             build_err.contains("Parse error") || build_err.contains("Expected an identifier"),
             "{build_err}"
@@ -8461,13 +8444,13 @@ fn project_commands_recover_cleanly_after_malformed_helper_fix() {
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite valid helper");
+    .must("rewrite valid helper");
 
     with_current_dir(&temp_root, || {
-        show_project_info().expect("info should recover after helper fix");
-        check_command(None, false).expect("project check should recover after helper fix");
+        show_project_info().must("info should recover after helper fix");
+        check_command(None, false).must("project check should recover after helper fix");
         build_project(false, false, true, false, false)
-            .expect("build should recover after helper fix");
+            .must("build should recover after helper fix");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8480,22 +8463,22 @@ fn project_commands_recover_after_malformed_source_then_output_toggle() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
             temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(: Integer { return 1; }\n",
     )
-    .expect("write malformed helper");
+    .must("write malformed helper");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect_err("project check should fail on malformed helper");
+        check_command(None, false).must_err("project check should fail on malformed helper");
         build_project(false, false, true, false, false)
-            .expect_err("build should fail on malformed helper");
+            .must_err("build should fail on malformed helper");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -8503,18 +8486,18 @@ fn project_commands_recover_after_malformed_source_then_output_toggle() {
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite valid helper");
+    .must("rewrite valid helper");
     fs::write(
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-renamed\"\n",
         )
-        .expect("rewrite output path after recovery");
+        .must("rewrite output path after recovery");
 
     with_current_dir(&temp_root, || {
         check_command(None, false)
-            .expect("project check should recover after malformed helper fix and output toggle");
+            .must("project check should recover after malformed helper fix and output toggle");
         build_project(false, false, true, false, false)
-            .expect("build should recover after malformed helper fix and output toggle");
+            .must("build should recover after malformed helper fix and output toggle");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8527,27 +8510,27 @@ fn project_build_recovers_after_malformed_helper_fix_with_cache_history() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
             temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(: Integer { return 1; }\n",
     )
-    .expect("write malformed helper");
+    .must("write malformed helper");
 
     with_current_dir(&temp_root, || {
         let check_err =
-            check_command(None, false).expect_err("project check should fail on malformed helper");
+            check_command(None, false).must_err("project check should fail on malformed helper");
         assert!(
             check_err.contains("Parse error") || check_err.contains("Expected an identifier"),
             "{check_err}"
         );
         let build_err = build_project(false, false, true, false, false)
-            .expect_err("build should fail on malformed helper");
+            .must_err("build should fail on malformed helper");
         assert!(
             build_err.contains("Parse error") || build_err.contains("Expected an identifier"),
             "{build_err}"
@@ -8559,12 +8542,12 @@ fn project_build_recovers_after_malformed_helper_fix_with_cache_history() {
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite valid helper");
+    .must("rewrite valid helper");
 
     with_current_dir(&temp_root, || {
-        check_command(None, false).expect("project check should recover after helper fix");
+        check_command(None, false).must("project check should recover after helper fix");
         build_project(false, false, true, false, false)
-            .expect("build should recover after helper fix");
+            .must("build should recover after helper fix");
     });
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8576,7 +8559,7 @@ fn new_project_rejects_names_that_would_generate_invalid_scaffolding() {
     let project_path = temp_root.join("target");
 
     let err = new_project("bad\"name", Some(&project_path))
-        .expect_err("invalid project name should be rejected");
+        .must_err("invalid project name should be rejected");
     assert!(err.contains("Invalid project name"), "{err}");
     assert!(
         !project_path.exists(),
@@ -8590,10 +8573,10 @@ fn new_project_rejects_names_that_would_generate_invalid_scaffolding() {
 fn new_project_reports_existing_file_paths_without_claiming_they_are_directories() {
     let temp_root = make_temp_project_root("new-project-existing-file");
     let project_path = temp_root.join("existing-file");
-    fs::write(&project_path, "occupied\n").expect("write existing file");
+    fs::write(&project_path, "occupied\n").must("write existing file");
 
     let err = new_project("demo", Some(&project_path))
-        .expect_err("existing file path should block scaffold creation");
+        .must_err("existing file path should block scaffold creation");
     assert!(err.contains("Path '"), "{err}");
     assert!(!err.contains("Directory '"), "{err}");
 
@@ -8605,14 +8588,14 @@ fn project_build_rejects_output_paths_outside_project_root() {
     let temp_root = make_temp_project_root("project-output-escape");
     let outside_dir = temp_root
         .parent()
-        .expect("temp dir should have parent")
+        .must("temp dir should have parent")
         .join("arden-output-escape-target");
     let rel_outside = format!(
         "../{}/smoke",
         outside_dir
             .file_name()
             .and_then(|name| name.to_str())
-            .expect("outside dir name")
+            .must("outside dir name")
     );
     fs::write(
             temp_root.join("arden.toml"),
@@ -8621,16 +8604,16 @@ fn project_build_rejects_output_paths_outside_project_root() {
                 rel_outside
             ),
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
         temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, true, true, false, false)
-            .expect_err("build should reject output paths outside the project root");
+            .must_err("build should reject output paths outside the project root");
         assert!(err.contains("outside the project root"), "{err}");
     });
 
@@ -8650,21 +8633,21 @@ fn project_build_rejects_output_path_matching_source_file() {
             temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"src/helper.arden\"\n",
         )
-        .expect("write arden.toml");
+        .must("write arden.toml");
     fs::write(
         temp_root.join("src/main.arden"),
         "package app;\nimport lib.helper;\nfunction main(): Integer { return helper(); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction helper(): Integer { return 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should reject output path matching a source file");
+            .must_err("build should reject output path matching a source file");
         assert!(err.contains("overwrite source file"), "{err}");
     });
 
@@ -8685,11 +8668,11 @@ fn project_build_creates_missing_nested_output_parent_directory() {
         src_dir.join("main.arden"),
         "function main(): Integer { return 0; }\n",
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("project build should create missing nested output directories");
+            .must("project build should create missing nested output directories");
     });
 
     #[cfg(windows)]
@@ -8718,15 +8701,15 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
             &main_file,
             "package app;\nimport lib.foo;\nfunction main(): None { value: Integer = foo(); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         &helper_file,
         "package lib;\nfunction foo(): Integer { return 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
     let parsed_before = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main before"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+        parse_project_unit(&temp_root, &main_file).must("parse main before"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper before"),
     ];
     let symbol_maps_before = collect_project_symbol_maps(&parsed_before);
     let namespace_functions_before = parsed_before.iter().fold(
@@ -8793,7 +8776,7 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
     let main_before = parsed_before
         .iter()
         .find(|u| u.file == main_file)
-        .expect("main");
+        .must("main");
     let rewrite_fp_before =
         compute_rewrite_context_fingerprint_for_unit(main_before, "app", &rewrite_ctx_before);
 
@@ -8802,11 +8785,11 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
         &helper_file,
         "package lib;\nfunction foo(): Integer { return 2; }\n",
     )
-    .expect("rewrite helper body");
+    .must("rewrite helper body");
 
     let parsed_files = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main after"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+        parse_project_unit(&temp_root, &main_file).must("parse main after"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper after"),
     ];
     let (
         namespace_files_map,
@@ -8886,7 +8869,7 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
     let main_unit = parsed_files
         .iter()
         .find(|u| u.file == main_file)
-        .expect("main");
+        .must("main");
     let rewrite_fp_after =
         compute_rewrite_context_fingerprint_for_unit(main_unit, "app", &rewrite_ctx);
     let _ = namespace_files_map;
@@ -8912,15 +8895,15 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
             &main_file,
             "package app;\nimport lib.foo;\nfunction main(): None { value: Integer = foo(); return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         &helper_file,
         "package lib;\nfunction foo(): Integer { return 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
     let parsed_before = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main before"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+        parse_project_unit(&temp_root, &main_file).must("parse main before"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper before"),
     ];
     let (
         _namespace_files_map_before,
@@ -9000,7 +8983,7 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
     let main_before = parsed_before
         .iter()
         .find(|u| u.file == main_file)
-        .expect("main");
+        .must("main");
     let rewrite_fp_before =
         compute_rewrite_context_fingerprint_for_unit(main_before, "app", &rewrite_ctx_before);
 
@@ -9009,11 +8992,11 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
         &helper_file,
         "package lib;\nfunction bar(): Integer { return 1; }\n",
     )
-    .expect("rewrite helper api");
+    .must("rewrite helper api");
 
     let parsed_files = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper"),
+        parse_project_unit(&temp_root, &main_file).must("parse main"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper"),
     ];
     let symbol_maps = collect_project_symbol_maps(&parsed_files);
     let namespace_functions = parsed_files.iter().fold(
@@ -9080,7 +9063,7 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
     let main_unit = parsed_files
         .iter()
         .find(|u| u.file == main_file)
-        .expect("main");
+        .must("main");
     let rewrite_fp_after =
         compute_rewrite_context_fingerprint_for_unit(main_unit, "app", &rewrite_ctx);
 
@@ -9106,16 +9089,16 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
             &main_file,
             "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         &helper_file,
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
-    .expect("write helper before");
+    .must("write helper before");
 
     let parsed_before = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main before"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+        parse_project_unit(&temp_root, &main_file).must("parse main before"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper before"),
     ];
 
     let mut namespace_function_files_before: HashMap<String, HashMap<String, PathBuf>> =
@@ -9240,7 +9223,7 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
     let main_before = parsed_before
         .iter()
         .find(|u| u.file == main_file)
-        .expect("main before");
+        .must("main before");
     let rewrite_fp_before =
         compute_rewrite_context_fingerprint_for_unit(main_before, "app", &rewrite_ctx_before);
 
@@ -9249,11 +9232,11 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
             &helper_file,
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
-        .expect("write helper after");
+        .must("write helper after");
 
     let parsed_after = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main after"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+        parse_project_unit(&temp_root, &main_file).must("parse main after"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper after"),
     ];
 
     let mut namespace_function_files_after: HashMap<String, HashMap<String, PathBuf>> =
@@ -9377,7 +9360,7 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
     let main_after = parsed_after
         .iter()
         .find(|u| u.file == main_file)
-        .expect("main after");
+        .must("main after");
     let rewrite_fp_after =
         compute_rewrite_context_fingerprint_for_unit(main_after, "app", &rewrite_ctx_after);
 
@@ -9402,16 +9385,16 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
             &main_file,
             "package app;\nimport lib.Maybe.Empty as Empty;\nfunction main(x: Maybe): None { match (x) { Empty => { return None; }, _ => { return None; } } }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         &helper_file,
         "package lib;\nenum Maybe { Empty, Filled(value: Integer) }\n",
     )
-    .expect("write helper before");
+    .must("write helper before");
 
     let parsed_before = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main before"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+        parse_project_unit(&temp_root, &main_file).must("parse main before"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper before"),
     ];
     let (
         _namespace_files_map_before,
@@ -9491,17 +9474,17 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
     let main_before = parsed_before
         .iter()
         .find(|u| u.file == main_file)
-        .expect("main before");
+        .must("main before");
     let rewrite_fp_before =
         compute_rewrite_context_fingerprint_for_unit(main_before, "app", &rewrite_ctx_before);
 
     thread::sleep(Duration::from_millis(5));
 
-    fs::write(&helper_file, "package lib;\nenum Maybe { Empty }\n").expect("write helper after");
+    fs::write(&helper_file, "package lib;\nenum Maybe { Empty }\n").must("write helper after");
 
     let parsed_after = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main after"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+        parse_project_unit(&temp_root, &main_file).must("parse main after"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper after"),
     ];
     let (
         _namespace_files_map_after,
@@ -9581,7 +9564,7 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
     let main_after = parsed_after
         .iter()
         .find(|u| u.file == main_file)
-        .expect("main after");
+        .must("main after");
     let rewrite_fp_after =
         compute_rewrite_context_fingerprint_for_unit(main_after, "app", &rewrite_ctx_after);
 
@@ -9611,22 +9594,22 @@ fn project_rewrite_fingerprint_ignores_body_only_alias_target_change() {
             &main_file,
             "package app;\nimport lib.Maybe.Empty as Empty;\nfunction main(x: Maybe): None { match (x) { Empty => { return None; }, _ => { return None; } } }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
             &helper_file,
             "package lib;\nenum Maybe { Empty, Filled(value: Integer) }\nfunction make(): Integer { return helper_value(); }\n",
         )
-        .expect("write helper before");
+        .must("write helper before");
     fs::write(
         &helper_impl_file,
         "package lib;\nfunction helper_value(): Integer { return 1; }\n",
     )
-    .expect("write helper impl before");
+    .must("write helper impl before");
 
     let parsed_before = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main before"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
-        parse_project_unit(&temp_root, &helper_impl_file).expect("parse helper impl before"),
+        parse_project_unit(&temp_root, &main_file).must("parse main before"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper before"),
+        parse_project_unit(&temp_root, &helper_impl_file).must("parse helper impl before"),
     ];
     let rewrite_fp_before = rewrite_fingerprint_for_test_unit(&parsed_before, &main_file, "app");
 
@@ -9635,12 +9618,12 @@ fn project_rewrite_fingerprint_ignores_body_only_alias_target_change() {
         &helper_impl_file,
         "package lib;\nfunction helper_value(): Integer { return 99; }\n",
     )
-    .expect("write helper impl after");
+    .must("write helper impl after");
 
     let parsed_after = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main after"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
-        parse_project_unit(&temp_root, &helper_impl_file).expect("parse helper impl after"),
+        parse_project_unit(&temp_root, &main_file).must("parse main after"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper after"),
+        parse_project_unit(&temp_root, &helper_impl_file).must("parse helper impl after"),
     ];
     let rewrite_fp_after = rewrite_fingerprint_for_test_unit(&parsed_after, &main_file, "app");
 
@@ -9665,22 +9648,21 @@ fn project_rewrite_fingerprint_changes_on_same_namespace_enum_api_change_without
             &main_file,
             "package app;\nfunction main(): Integer { return match (State.Ok(1)) { Ok(value) => value, }; }\n",
         )
-        .expect("write main");
-    fs::write(&enum_file, "package app;\nenum State { Ok(Integer) }\n").expect("write enum before");
+        .must("write main");
+    fs::write(&enum_file, "package app;\nenum State { Ok(Integer) }\n").must("write enum before");
 
     let parsed_before = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main before"),
-        parse_project_unit(&temp_root, &enum_file).expect("parse enum before"),
+        parse_project_unit(&temp_root, &main_file).must("parse main before"),
+        parse_project_unit(&temp_root, &enum_file).must("parse enum before"),
     ];
     let rewrite_fp_before = rewrite_fingerprint_for_test_unit(&parsed_before, &main_file, "app");
 
     thread::sleep(Duration::from_millis(5));
-    fs::write(&enum_file, "package app;\nenum State { Ready(Integer) }\n")
-        .expect("write enum after");
+    fs::write(&enum_file, "package app;\nenum State { Ready(Integer) }\n").must("write enum after");
 
     let parsed_after = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main after"),
-        parse_project_unit(&temp_root, &enum_file).expect("parse enum after"),
+        parse_project_unit(&temp_root, &main_file).must("parse main after"),
+        parse_project_unit(&temp_root, &enum_file).must("parse enum after"),
     ];
     let rewrite_fp_after = rewrite_fingerprint_for_test_unit(&parsed_after, &main_file, "app");
 
@@ -9705,16 +9687,16 @@ fn project_rewrite_fingerprint_ignores_body_only_change_for_alias_heavy_builtin_
             &main_file,
             "package app;\nimport app.Option.Some as Present;\nimport app.Option.None as Empty;\nimport app.Result.Ok as Success;\nimport app.Result.Error as Failure;\nfunction unwrap_opt(value: Option<Integer>): Integer { return match (value) { Present(inner) => inner, Empty => 0, }; }\nfunction run(flag: Boolean): Integer { result: Result<Option<Integer>, String> = make(flag); value: Option<Integer> = match (result) { Success(inner) => inner, Failure(err) => Option<Integer>(), }; return unwrap_opt(value); }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
             &helper_file,
             "package app;\nfunction make(flag: Boolean): Result<Option<Integer>, String> { if (flag) { return Result<Option<Integer>, String>(); } return Result<Option<Integer>, String>(); }\n",
         )
-        .expect("write helper before");
+        .must("write helper before");
 
     let parsed_before = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main before"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+        parse_project_unit(&temp_root, &main_file).must("parse main before"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper before"),
     ];
     let rewrite_fp_before = rewrite_fingerprint_for_test_unit(&parsed_before, &main_file, "app");
 
@@ -9723,11 +9705,11 @@ fn project_rewrite_fingerprint_ignores_body_only_change_for_alias_heavy_builtin_
             &helper_file,
             "package app;\nfunction make(flag: Boolean): Result<Option<Integer>, String> { if (flag) { return Result<Option<Integer>, String>(); } return Result<Option<Integer>, String>(); }\n// body-only comment perturbation\n",
         )
-        .expect("write helper after");
+        .must("write helper after");
 
     let parsed_after = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main after"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+        parse_project_unit(&temp_root, &main_file).must("parse main after"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper after"),
     ];
     let rewrite_fp_after = rewrite_fingerprint_for_test_unit(&parsed_after, &main_file, "app");
 
@@ -9762,16 +9744,16 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
                 &main_file,
                 "package app;\nimport lib.foo;\nfunction main(): None { value: Integer = foo(); return None; }\n",
             )
-            .expect("write main");
+            .must("write main");
         fs::write(
             &helper_file,
             "package lib;\nfunction foo(): Integer { return 1; }\n",
         )
-        .expect("write helper");
+        .must("write helper");
 
         let parsed_before = vec![
-            parse_project_unit(&temp_root, &main_file).expect("parse main before"),
-            parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+            parse_project_unit(&temp_root, &main_file).must("parse main before"),
+            parse_project_unit(&temp_root, &helper_file).must("parse helper before"),
         ];
         let (
             _namespace_files_map_before,
@@ -9851,14 +9833,14 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
         let main_before = parsed_before
             .iter()
             .find(|u| u.file == main_file)
-            .expect("main");
+            .must("main");
         let rewrite_fp_before =
             compute_rewrite_context_fingerprint_for_unit(main_before, "app", &rewrite_ctx_before);
 
-        fs::write(&helper_file, helper_after).expect("rewrite helper body variant");
+        fs::write(&helper_file, helper_after).must("rewrite helper body variant");
         let parsed_after = vec![
-            parse_project_unit(&temp_root, &main_file).expect("parse main after"),
-            parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+            parse_project_unit(&temp_root, &main_file).must("parse main after"),
+            parse_project_unit(&temp_root, &helper_file).must("parse helper after"),
         ];
         let (
             _namespace_files_map_after,
@@ -9938,7 +9920,7 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
         let main_after = parsed_after
             .iter()
             .find(|u| u.file == main_file)
-            .expect("main");
+            .must("main");
         let rewrite_fp_after =
             compute_rewrite_context_fingerprint_for_unit(main_after, "app", &rewrite_ctx_after);
 
@@ -9961,16 +9943,16 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
                 &main_file,
                 "package app;\nimport lib.foo;\nfunction main(): None { value: Integer = foo(); return None; }\n",
             )
-            .expect("write main");
+            .must("write main");
         fs::write(
             &helper_file,
             "package lib;\nfunction foo(): Integer { return 1; }\n",
         )
-        .expect("write helper");
+        .must("write helper");
 
         let parsed_before = vec![
-            parse_project_unit(&temp_root, &main_file).expect("parse main before"),
-            parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+            parse_project_unit(&temp_root, &main_file).must("parse main before"),
+            parse_project_unit(&temp_root, &helper_file).must("parse helper before"),
         ];
         let (
             _namespace_files_map_before,
@@ -10050,14 +10032,14 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
         let main_before = parsed_before
             .iter()
             .find(|u| u.file == main_file)
-            .expect("main");
+            .must("main");
         let rewrite_fp_before =
             compute_rewrite_context_fingerprint_for_unit(main_before, "app", &rewrite_ctx_before);
 
-        fs::write(&helper_file, helper_after).expect("rewrite helper api variant");
+        fs::write(&helper_file, helper_after).must("rewrite helper api variant");
         let parsed_after = vec![
-            parse_project_unit(&temp_root, &main_file).expect("parse main after"),
-            parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+            parse_project_unit(&temp_root, &main_file).must("parse main after"),
+            parse_project_unit(&temp_root, &helper_file).must("parse helper after"),
         ];
         let (
             _namespace_files_map_after,
@@ -10137,7 +10119,7 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
         let main_after = parsed_after
             .iter()
             .find(|u| u.file == main_file)
-            .expect("main");
+            .must("main");
         let rewrite_fp_after =
             compute_rewrite_context_fingerprint_for_unit(main_after, "app", &rewrite_ctx_after);
 
@@ -10757,16 +10739,16 @@ fn parsed_dependency_graph_tracks_nested_module_wildcard_import_owner_files() {
         &main_file,
         "package app;\nimport app.U.*;\nfunction main(): Integer { return id(1); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         &helper_file,
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     let parsed_files = vec![
-        parse_project_unit(&temp_root, &main_file).expect("parse main"),
-        parse_project_unit(&temp_root, &helper_file).expect("parse helper"),
+        parse_project_unit(&temp_root, &main_file).must("parse main"),
+        parse_project_unit(&temp_root, &helper_file).must("parse helper"),
     ];
     let (
         namespace_files_map,
@@ -10830,16 +10812,16 @@ fn project_build_rechecks_wildcard_import_dependents_after_symbol_removal() {
         temp_root.join("src/main.arden"),
         "package app;\nimport lib.*;\nfunction main(): Integer { return add(1); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial wildcard project build should succeed");
+            .must("initial wildcard project build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -10847,11 +10829,11 @@ fn project_build_rechecks_wildcard_import_dependents_after_symbol_removal() {
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite helper without imported symbol");
+    .must("rewrite helper without imported symbol");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after wildcard-imported symbol removal");
+            .must_err("build should fail after wildcard-imported symbol removal");
         assert!(
             err.contains("Wildcard import 'lib.*' no longer provides 'add'")
                 || err.contains("Import check failed"),
@@ -10876,16 +10858,16 @@ fn project_build_rechecks_nested_module_wildcard_import_dependents_after_symbol_
         temp_root.join("src/main.arden"),
         "package app;\nimport app.U.*;\nfunction main(): Integer { return id(1); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial nested module wildcard project build should succeed");
+            .must("initial nested module wildcard project build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -10893,11 +10875,11 @@ fn project_build_rechecks_nested_module_wildcard_import_dependents_after_symbol_
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("rewrite helper without nested-module imported symbol");
+    .must("rewrite helper without nested-module imported symbol");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after nested-module wildcard-imported symbol removal");
+            .must_err("build should fail after nested-module wildcard-imported symbol removal");
         assert!(
             err.contains("Wildcard import 'app.U.*' no longer provides 'id'")
                 || err.contains("Import check failed"),
@@ -10923,16 +10905,16 @@ fn project_build_reports_user_facing_error_for_stale_nested_module_wildcard_gene
             temp_root.join("src/main.arden"),
             "package app;\nimport app.U.*;\nfunction main(): Integer { f: (Integer) -> Integer = id<Integer>; return f(1); }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id<T>(x: T): T { return x; } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial nested module wildcard generic function value build should succeed");
+            .must("initial nested module wildcard generic function value build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -10940,11 +10922,11 @@ fn project_build_reports_user_facing_error_for_stale_nested_module_wildcard_gene
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus<T>(x: T): T { return x; } }\n",
     )
-    .expect("rewrite helper without nested-module wildcard generic symbol");
+    .must("rewrite helper without nested-module wildcard generic symbol");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after nested-module wildcard generic symbol removal");
+            .must_err("build should fail after nested-module wildcard generic symbol removal");
         assert!(
             err.contains("Wildcard import 'app.U.*' no longer provides 'id'"),
             "{err}"
@@ -10970,16 +10952,16 @@ fn project_build_rechecks_nested_exact_import_alias_dependents_after_symbol_remo
         temp_root.join("src/main.arden"),
         "package app;\nimport app.U.id as ident;\nfunction main(): Integer { return ident(1); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial nested exact-import alias project build should succeed");
+            .must("initial nested exact-import alias project build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -10987,11 +10969,11 @@ fn project_build_rechecks_nested_exact_import_alias_dependents_after_symbol_remo
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("rewrite helper without nested exact-import alias symbol");
+    .must("rewrite helper without nested exact-import alias symbol");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after nested exact-import alias symbol removal");
+            .must_err("build should fail after nested exact-import alias symbol removal");
         assert!(
             err.contains("Imported alias 'ident' no longer resolves")
                 || err.contains("Import check failed"),
@@ -11018,16 +11000,16 @@ fn project_build_reports_user_facing_error_for_stale_nested_exact_import_alias_f
             temp_root.join("src/main.arden"),
             "package app;\nimport app.U.id as ident;\nfunction main(): Integer {\n    f: (Integer) -> Integer = ident;\n    return f(1);\n}\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial stale nested exact-import alias function-value build should succeed");
+            .must("initial stale nested exact-import alias function-value build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11035,10 +11017,10 @@ fn project_build_reports_user_facing_error_for_stale_nested_exact_import_alias_f
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("rewrite helper without nested exact-import alias function-value symbol");
+    .must("rewrite helper without nested exact-import alias function-value symbol");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
             "build should fail after stale nested exact-import alias function-value symbol removal",
         );
         assert!(
@@ -11066,16 +11048,16 @@ fn project_build_rechecks_namespace_alias_dependents_after_symbol_removal() {
         temp_root.join("src/main.arden"),
         "package app;\nimport lib as l;\nfunction main(): Integer { return l.add(1); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial namespace-alias project build should succeed");
+            .must("initial namespace-alias project build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11083,11 +11065,11 @@ fn project_build_rechecks_namespace_alias_dependents_after_symbol_removal() {
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite helper without namespace-alias symbol");
+    .must("rewrite helper without namespace-alias symbol");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after namespace-alias symbol removal");
+            .must_err("build should fail after namespace-alias symbol removal");
         assert!(
             err.contains("Imported namespace alias 'l' has no member 'add'")
                 || err.contains("Import check failed"),
@@ -11111,16 +11093,16 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_call()
         temp_root.join("src/main.arden"),
         "package app;\nimport app as root;\nfunction main(): Integer { return root.U.id(1); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial stale root namespace alias call build should succeed");
+            .must("initial stale root namespace alias call build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11128,11 +11110,11 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_call()
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("rewrite helper without stale root namespace alias call symbol");
+    .must("rewrite helper without stale root namespace alias call symbol");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after stale root namespace alias call symbol removal");
+            .must_err("build should fail after stale root namespace alias call symbol removal");
         assert!(
             err.contains("Imported namespace alias 'root' has no member 'U.id'"),
             "{err}"
@@ -11158,16 +11140,16 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_nested
             temp_root.join("src/main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer { return match (root.M.E.A(5)) { root.M.E.A(v) => v, root.M.E.B(v) => v, }; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { A(Integer), B(Integer) } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial root namespace alias nested enum build should succeed");
+            .must("initial root namespace alias nested enum build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11175,10 +11157,10 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_nested
         temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { C(Integer), D(Integer) } }\n",
     )
-    .expect("rewrite helper without nested enum alias variant");
+    .must("rewrite helper without nested enum alias variant");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
             "build should fail after stale root namespace alias nested enum variant removal",
         );
         assert!(
@@ -11206,16 +11188,16 @@ fn project_build_reports_user_facing_error_for_stale_exact_import_alias_generic_
             temp_root.join("src/main.arden"),
             "package app;\nimport app.U.id as ident;\nfunction main(): Integer { f: (Integer) -> Integer = ident<Integer>; return f(7); }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial exact-import alias generic function value build should succeed");
+            .must("initial exact-import alias generic function value build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11223,10 +11205,10 @@ fn project_build_reports_user_facing_error_for_stale_exact_import_alias_generic_
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function other<T>(value: T): T { return value; } }\n",
     )
-    .expect("rewrite helper without exact-import alias generic symbol");
+    .must("rewrite helper without exact-import alias generic symbol");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
             "build should fail after stale exact-import alias generic function value removal",
         );
         assert!(
@@ -11254,16 +11236,16 @@ fn project_build_reports_user_facing_error_for_stale_exact_imported_nested_enum_
             temp_root.join("src/main.arden"),
             "package app;\nimport app.M.E.B as Variant;\nfunction main(): None { e: M.E = Variant(2); match (e) { Variant(v) => { require(v == 2); } M.E.A(v) => { require(false); } } return None; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial exact imported nested enum variant alias build should succeed");
+            .must("initial exact imported nested enum variant alias build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11271,10 +11253,10 @@ fn project_build_reports_user_facing_error_for_stale_exact_imported_nested_enum_
         temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { C(Integer) D(Integer) } }\n",
     )
-    .expect("rewrite helper without exact imported nested enum variant alias");
+    .must("rewrite helper without exact imported nested enum variant alias");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
             "build should fail after stale exact imported nested enum variant alias removal",
         );
         assert!(
@@ -11303,16 +11285,16 @@ fn project_build_reports_user_facing_error_for_stale_exact_imported_nested_enum_
             temp_root.join("src/main.arden"),
             "package app;\nimport app.M.E as Enum;\nfunction main(): Integer { value: Enum = Enum.B(2); return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { A(Integer), B(Integer) } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial exact imported nested enum alias type build should succeed");
+            .must("initial exact imported nested enum alias type build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11320,10 +11302,10 @@ fn project_build_reports_user_facing_error_for_stale_exact_imported_nested_enum_
         temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum F { A(Integer), B(Integer) } }\n",
     )
-    .expect("rewrite helper without exact imported nested enum alias type");
+    .must("rewrite helper without exact imported nested enum alias type");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
             "build should fail after stale exact imported nested enum alias type removal",
         );
         assert!(
@@ -11357,16 +11339,16 @@ fn project_build_reports_user_facing_error_for_stale_wildcard_imported_nested_en
             temp_root.join("src/main.arden"),
             "package app;\nimport app.M.*;\nfunction main(): Integer { value: E = E.B(2); return 0; }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { A(Integer), B(Integer) } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial wildcard imported nested enum type build should succeed");
+            .must("initial wildcard imported nested enum type build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11374,11 +11356,11 @@ fn project_build_reports_user_facing_error_for_stale_wildcard_imported_nested_en
         temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum F { A(Integer), B(Integer) } }\n",
     )
-    .expect("rewrite helper without wildcard imported nested enum type");
+    .must("rewrite helper without wildcard imported nested enum type");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after stale wildcard imported nested enum type removal");
+            .must_err("build should fail after stale wildcard imported nested enum type removal");
         assert!(
             err.contains("Wildcard import 'app.M.*' no longer provides 'E'"),
             "{err}"
@@ -11404,16 +11386,16 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_generi
             temp_root.join("src/main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer { f: (Integer) -> Integer = root.U.id<Integer>; return f(7); }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial root namespace alias generic function value build should succeed");
+            .must("initial root namespace alias generic function value build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11421,10 +11403,10 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_generi
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function other<T>(value: T): T { return value; } }\n",
     )
-    .expect("rewrite helper without root namespace alias generic symbol");
+    .must("rewrite helper without root namespace alias generic symbol");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
+        let err = build_project(false, false, true, false, false).must_err(
             "build should fail after stale root namespace alias generic function value removal",
         );
         assert!(
@@ -11452,16 +11434,16 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_functi
             temp_root.join("src/main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer { f: (Integer) -> Integer = root.U.id; return f(1); }\n",
         )
-        .expect("write main");
+        .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial root namespace alias function value build should succeed");
+            .must("initial root namespace alias function value build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11469,12 +11451,11 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_functi
         temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
     )
-    .expect("rewrite helper without root namespace alias function value symbol");
+    .must("rewrite helper without root namespace alias function value symbol");
 
     with_current_dir(&temp_root, || {
-        let err = build_project(false, false, true, false, false).expect_err(
-            "build should fail after stale root namespace alias function value removal",
-        );
+        let err = build_project(false, false, true, false, false)
+            .must_err("build should fail after stale root namespace alias function value removal");
         assert!(
             err.contains("Imported namespace alias 'root' has no member 'U.id'"),
             "{err}"
@@ -11499,16 +11480,16 @@ fn project_build_rechecks_exact_import_alias_dependents_after_symbol_removal() {
         temp_root.join("src/main.arden"),
         "package app;\nimport lib.add as inc;\nfunction main(): Integer { return inc(1); }\n",
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial exact-import-alias project build should succeed");
+            .must("initial exact-import-alias project build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11516,11 +11497,11 @@ fn project_build_rechecks_exact_import_alias_dependents_after_symbol_removal() {
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite helper without exact-import alias symbol");
+    .must("rewrite helper without exact-import alias symbol");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
-            .expect_err("build should fail after exact-import alias symbol removal");
+            .must_err("build should fail after exact-import alias symbol removal");
         assert!(
             err.contains("Imported alias 'inc' no longer resolves")
                 || err.contains("Import check failed"),
@@ -11554,16 +11535,16 @@ function main(): Integer {
 }
 "#,
     )
-    .expect("write main");
+    .must("write main");
     fs::write(
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("write helper");
+    .must("write helper");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
-            .expect("initial exact-import alias shadowing build should succeed");
+            .must("initial exact-import alias shadowing build should succeed");
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -11571,18 +11552,17 @@ function main(): Integer {
         temp_root.join("src/helper.arden"),
         "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite helper without shadowed exact-import alias symbol");
+    .must("rewrite helper without shadowed exact-import alias symbol");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "shadowed exact-import alias local call should stay valid after symbol removal",
-        );
+        build_project(false, false, true, false, false)
+            .must("shadowed exact-import alias local call should stay valid after symbol removal");
     });
 
     let output_path = temp_root.join("smoke");
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled shadowed exact-import alias binary");
+        .must("run compiled shadowed exact-import alias binary");
     assert_eq!(
         output.status.code(),
         Some(11),
@@ -11629,17 +11609,16 @@ function main(): Integer {
 }
 "#,
     )
-    .expect("write main");
+    .must("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false).expect(
-            "project build should succeed for module-local nested constructor and fn value",
-        );
+        build_project(false, false, true, false, false)
+            .must("project build should succeed for module-local nested constructor and fn value");
     });
 
     let output = std::process::Command::new(temp_root.join("smoke"))
         .output()
-        .expect("run compiled nested module project binary");
+        .must("run compiled nested module project binary");
     assert_eq!(
         output.status.code(),
         Some(110),
@@ -11833,7 +11812,7 @@ fn link_manifest_skip_requires_exact_manifest_match_and_no_object_misses() {
 fn link_manifest_skip_allows_relink_elision_for_identical_cached_inputs() {
     let temp =
         std::env::temp_dir().join(format!("arden-link-manifest-test-{}", std::process::id()));
-    fs::write(&temp, b"bin").expect("write output placeholder");
+    fs::write(&temp, b"bin").must("write output placeholder");
     let link_inputs = vec![PathBuf::from("a.o"), PathBuf::from("b.o")];
     let link = LinkConfig {
         opt_level: Some("3"),
@@ -11899,16 +11878,16 @@ fn object_shard_cache_hit_ignores_member_order() {
         cache_paths
             .object_path
             .parent()
-            .expect("object shard cache path should have parent"),
+            .must("object shard cache path should have parent"),
     )
-    .expect("create object shard cache directory");
-    fs::write(&cache_paths.object_path, b"obj").expect("write cached object shard");
+    .must("create object shard cache directory");
+    fs::write(&cache_paths.object_path, b"obj").must("write cached object shard");
     save_object_shard_cache_meta(&cache_paths, &members_ab, fingerprint)
-        .expect("save object shard meta");
+        .must("save object shard meta");
 
     let reordered_cache_paths = object_shard_cache_paths(&temp_root, &files_ba);
     let hit = load_object_shard_cache_hit(&reordered_cache_paths, &members_ba, fingerprint)
-        .expect("load object shard cache hit");
+        .must("load object shard cache hit");
     assert_eq!(hit, Some(reordered_cache_paths.object_path.clone()));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11921,10 +11900,10 @@ fn load_link_manifest_cache_reports_io_errors_instead_of_silent_cache_miss() {
         .join(".ardencache")
         .join("link")
         .join("latest.json");
-    fs::create_dir_all(&manifest_path).expect("create manifest path as directory");
+    fs::create_dir_all(&manifest_path).must("create manifest path as directory");
 
     let err = load_link_manifest_cache(&temp_root)
-        .expect_err("directory-shaped manifest path should surface an io error");
+        .must_err("directory-shaped manifest path should surface an io error");
     assert!(err.contains("link manifest cache"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11940,13 +11919,13 @@ fn read_cache_blob_treats_invalid_payload_as_cache_miss() {
     fs::create_dir_all(
         cache_path
             .parent()
-            .expect("cache path should have parent directory"),
+            .must("cache path should have parent directory"),
     )
-    .expect("create cache dir");
-    fs::write(&cache_path, b"not valid bincode").expect("write invalid cache payload");
+    .must("create cache dir");
+    fs::write(&cache_path, b"not valid bincode").must("write invalid cache payload");
 
     let cache = read_cache_blob::<ParsedFileCacheEntry>(&cache_path, "parse cache")
-        .expect("invalid cache payload should be treated as a cache miss");
+        .must("invalid cache payload should be treated as a cache miss");
     assert!(
         cache.is_none(),
         "invalid cache payload should be ignored as a cache miss"
@@ -11959,10 +11938,10 @@ fn read_cache_blob_treats_invalid_payload_as_cache_miss() {
 fn load_cached_fingerprint_reports_io_errors_instead_of_silent_cache_miss() {
     let temp_root = make_temp_project_root("build-fingerprint-io-error");
     let cache_path = temp_root.join(".ardencache").join("build_fingerprint");
-    fs::create_dir_all(&cache_path).expect("create directory-shaped build cache path");
+    fs::create_dir_all(&cache_path).must("create directory-shaped build cache path");
 
     let err = load_cached_fingerprint(&temp_root)
-        .expect_err("directory-shaped build fingerprint path should surface an io error");
+        .must_err("directory-shaped build fingerprint path should surface an io error");
     assert!(err.contains("Failed to read build cache"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11974,10 +11953,10 @@ fn load_semantic_cached_fingerprint_reports_io_errors_instead_of_silent_cache_mi
     let cache_path = temp_root
         .join(".ardencache")
         .join("semantic_build_fingerprint");
-    fs::create_dir_all(&cache_path).expect("create directory-shaped semantic cache path");
+    fs::create_dir_all(&cache_path).must("create directory-shaped semantic cache path");
 
     let err = load_semantic_cached_fingerprint(&temp_root)
-        .expect_err("directory-shaped semantic fingerprint path should surface an io error");
+        .must_err("directory-shaped semantic fingerprint path should surface an io error");
     assert!(err.contains("Failed to read semantic build cache"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -12014,16 +11993,16 @@ fn project_parse_cache_recovers_cleanly_after_invalid_sibling_fix() {
             &main_file,
             "package app;\nimport lib.math;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
-        .expect("write main file");
+        .must("write main file");
     fs::write(
         &helper_file,
         "package lib;\nfunction add(: Integer { return 1; }\n",
     )
-    .expect("write invalid helper file");
+    .must("write invalid helper file");
 
-    let first_main = parse_project_unit(&temp_root, &main_file).expect("first main parse");
-    let first_helper_err = parse_project_unit(&temp_root, &helper_file)
-        .expect_err("invalid helper should fail parsing");
+    let first_main = parse_project_unit(&temp_root, &main_file).must("first main parse");
+    let first_helper_err =
+        parse_project_unit(&temp_root, &helper_file).must_err("invalid helper should fail parsing");
     assert!(
         first_helper_err.contains("Parse error")
             || first_helper_err.contains("Expected an identifier"),
@@ -12036,10 +12015,10 @@ fn project_parse_cache_recovers_cleanly_after_invalid_sibling_fix() {
         &helper_file,
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
-    .expect("rewrite helper file");
+    .must("rewrite helper file");
 
-    let second_main = parse_project_unit(&temp_root, &main_file).expect("second main parse");
-    let second_helper = parse_project_unit(&temp_root, &helper_file).expect("second helper parse");
+    let second_main = parse_project_unit(&temp_root, &main_file).must("second main parse");
+    let second_helper = parse_project_unit(&temp_root, &helper_file).must("second helper parse");
     assert!(second_main.from_parse_cache);
     assert!(!second_helper.from_parse_cache);
 
@@ -12053,22 +12032,22 @@ fn parse_cache_reuses_same_content_even_after_metadata_change() {
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("time")
+            .must("time")
             .as_nanos()
     ));
     let src_dir = temp_root.join("src");
-    fs::create_dir_all(&src_dir).expect("create temp src dir");
+    fs::create_dir_all(&src_dir).must("create temp src dir");
     let file = src_dir.join("main.arden");
     let source = "function main(): None { return None; }\n";
-    fs::write(&file, source).expect("write source");
+    fs::write(&file, source).must("write source");
 
-    let first = parse_project_unit(&temp_root, &file).expect("first parse");
+    let first = parse_project_unit(&temp_root, &file).must("first parse");
     assert!(!first.from_parse_cache);
 
     thread::sleep(Duration::from_millis(5));
-    fs::write(&file, source).expect("rewrite identical source");
+    fs::write(&file, source).must("rewrite identical source");
 
-    let second = parse_project_unit(&temp_root, &file).expect("second parse");
+    let second = parse_project_unit(&temp_root, &file).must("second parse");
     assert!(second.from_parse_cache);
     assert_eq!(first.semantic_fingerprint, second.semantic_fingerprint);
 

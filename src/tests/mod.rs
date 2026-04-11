@@ -21,7 +21,7 @@ pub(crate) use helpers::{
     compute_rewrite_context_fingerprint_for_unit, fingerprint_for, make_temp_project_root,
     normalize_nested_cargo_linker_env, normalize_output, parse_program,
     rewrite_fingerprint_for_test_unit, with_current_dir, write_test_project_config,
-    ProjectSymbolLookupMaps,
+    ProjectSymbolLookupMaps, TestExpectErrExt, TestExpectExt,
 };
 
 mod bindgen;

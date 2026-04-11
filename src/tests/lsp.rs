@@ -1,3 +1,4 @@
+use super::TestExpectExt;
 use crate::lsp::{
     find_nth_name_occurrence_in_span, offset_to_position_impl, position_to_offset_impl,
     word_at_position_impl,
@@ -7,7 +8,7 @@ use tower_lsp::lsp_types::Position;
 #[test]
 fn lsp_offsets_roundtrip_through_utf16_positions() {
     let text = "🙂value = 1;\n";
-    let offset = text.find("value").expect("identifier should exist");
+    let offset = text.find("value").must("identifier should exist");
 
     let position = offset_to_position_impl(text, offset);
     assert_eq!(position, Position::new(0, 2));
@@ -30,9 +31,9 @@ fn lsp_name_lookup_can_reach_parameter_after_function_name() {
     let span = 0..text.len();
 
     let function_name =
-        find_nth_name_occurrence_in_span(text, "value", &span, 0).expect("function name");
+        find_nth_name_occurrence_in_span(text, "value", &span, 0).must("function name");
     let parameter_name =
-        find_nth_name_occurrence_in_span(text, "value", &span, 1).expect("parameter name");
+        find_nth_name_occurrence_in_span(text, "value", &span, 1).must("parameter name");
 
     assert!(function_name.start < parameter_name.start);
     assert_eq!(&text[function_name], "value");
@@ -77,7 +78,7 @@ fn lsp_name_lookup_respects_identifier_boundaries() {
 #[test]
 fn lsp_name_lookup_honors_requested_span_window() {
     let text = "function alpha(): None { alpha(); }\nfunction alpha_beta(): None {}\n";
-    let first_line_end = text.find('\n').expect("newline");
+    let first_line_end = text.find('\n').must("newline");
     let span = 0..first_line_end;
 
     assert_eq!(

@@ -26,13 +26,13 @@ fn compile_source_runs_unique_interface_method_dispatch_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("single-implementation interface method dispatch should codegen");
+        .must("single-implementation interface method dispatch should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled interface method dispatch binary");
+        .must("run compiled interface method dispatch binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -62,9 +62,9 @@ fn compile_source_rejects_module_local_import_alias_leaking_to_top_level() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("module-local alias should not resolve at top level");
+        .must_err("module-local alias should not resolve at top level");
     assert!(
         err.contains("Unknown type: math")
             || err.contains("Undefined variable: math")
@@ -98,13 +98,13 @@ fn compile_source_runs_unique_interface_bound_method_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("single-implementation interface bound method value should codegen");
+        .must("single-implementation interface bound method value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled interface bound method value binary");
+        .must("run compiled interface bound method value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -132,9 +132,9 @@ fn compile_source_no_check_rejects_interface_method_wrong_arity_before_runtime()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("interface method wrong arity should fail in codegen");
+        .must_err("interface method wrong arity should fail in codegen");
     assert!(
         err.contains("Reader.read() expects 0 argument(s), got 1"),
         "{err}"
@@ -172,9 +172,9 @@ fn compile_source_no_check_rejects_missing_interface_method_before_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("missing interface method should fail in codegen");
+        .must_err("missing interface method should fail in codegen");
     assert!(
         err.contains("Unknown method 'missing' for interface 'Reader'"),
         "{err}"
@@ -213,9 +213,9 @@ fn compile_source_no_check_rejects_missing_interface_bound_method_before_runtime
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("missing interface bound method should fail in codegen");
+        .must_err("missing interface bound method should fail in codegen");
     assert!(
         err.contains("Unknown method 'missing' for interface 'Reader'"),
         "{err}"
@@ -250,9 +250,9 @@ fn compile_source_no_check_rejects_interface_dispatch_to_non_implementor_before_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-implementor interface dispatch should fail in codegen");
+        .must_err("non-implementor interface dispatch should fail in codegen");
     assert!(
         err.contains("Unknown interface method implementation: read"),
         "{err}"
@@ -288,9 +288,9 @@ fn compile_source_no_check_rejects_interface_bound_method_from_non_implementor_b
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-implementor interface bound method should fail in codegen");
+        .must_err("non-implementor interface bound method should fail in codegen");
     assert!(
         err.contains("Unknown interface method implementation: read"),
         "{err}"
@@ -322,9 +322,9 @@ fn compile_source_no_check_rejects_interface_bound_method_function_value_signatu
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("interface bound method signature mismatch should fail in codegen");
+        .must_err("interface bound method signature mismatch should fail in codegen");
     assert!(
         err.contains("Cannot use function value () -> Integer as (Integer) -> Integer"),
         "{err}"
@@ -364,13 +364,13 @@ fn compile_source_runs_generic_bound_constructor_method_dispatch_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("generic bound constructor dispatch should codegen");
+        .must("generic bound constructor dispatch should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run generic bound constructor dispatch binary");
+        .must("run generic bound constructor dispatch binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -400,13 +400,13 @@ fn compile_source_runs_multi_bound_interface_method_dispatch_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("multi-bound interface method dispatch should codegen");
+        .must("multi-bound interface method dispatch should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run multi-bound interface method dispatch binary");
+        .must("run multi-bound interface method dispatch binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -437,13 +437,13 @@ fn compile_source_runs_multi_bound_interface_bound_method_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("multi-bound interface bound method should codegen");
+        .must("multi-bound interface bound method should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run multi-bound interface bound method binary");
+        .must("run multi-bound interface bound method binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -469,13 +469,13 @@ fn compile_source_runs_generic_interface_implements_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("generic interface implements clause should codegen");
+        .must("generic interface implements clause should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled generic interface implements binary");
+        .must("run compiled generic interface implements binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -504,13 +504,13 @@ fn compile_source_runs_specialized_parent_interface_method_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("specialized parent interface methods should codegen");
+        .must("specialized parent interface methods should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled specialized parent interface binary");
+        .must("run compiled specialized parent interface binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -528,13 +528,13 @@ fn compile_source_runs_async_block_tail_expression_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("async block tail-expression path should codegen");
+        .must("async block tail-expression path should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled async block tail-expression binary");
+        .must("run compiled async block tail-expression binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -552,13 +552,13 @@ fn compile_source_runs_async_block_negative_tail_expression_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("async block negative tail-expression path should codegen");
+        .must("async block negative tail-expression path should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled async block negative tail-expression binary");
+        .must("run compiled async block negative tail-expression binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -576,13 +576,13 @@ fn compile_source_runs_async_block_binary_tail_expression_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("async block binary tail-expression path should codegen");
+        .must("async block binary tail-expression path should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled async block binary tail-expression binary");
+        .must("run compiled async block binary tail-expression binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -603,13 +603,13 @@ fn compile_source_runs_async_block_function_value_tail_expression_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("async block function-value tail-expression path should codegen");
+        .must("async block function-value tail-expression path should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled async block function-value tail-expression binary");
+        .must("run compiled async block function-value tail-expression binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -633,13 +633,13 @@ fn compile_source_runs_async_block_unit_enum_value_tail_expression_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("async block unit-enum tail-expression path should codegen");
+        .must("async block unit-enum tail-expression path should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled async block unit-enum tail-expression binary");
+        .must("run compiled async block unit-enum tail-expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -706,13 +706,13 @@ fn compile_source_runs_builtin_and_reference_async_block_tail_expression_runtime
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("builtin and reference async block tail-expression paths should codegen");
+        .must("builtin and reference async block tail-expression paths should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled builtin and reference async block tail-expression binary");
+        .must("run compiled builtin and reference async block tail-expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -735,9 +735,9 @@ fn compile_source_supports_implicit_default_class_constructor() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("implicit default constructor codegen should succeed");
+        .must("implicit default constructor codegen should succeed");
     assert!(output_path.with_extension("ll").exists());
 
     let _ = fs::remove_dir_all(temp_root);
@@ -760,9 +760,9 @@ fn compile_source_supports_explicit_generic_method_calls() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("explicit generic method codegen should succeed");
+        .must("explicit generic method codegen should succeed");
     assert!(output_path.with_extension("ll").exists());
 
     let _ = fs::remove_dir_all(temp_root);
@@ -787,9 +787,9 @@ fn compile_source_supports_generic_class_instance_method_calls() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("generic class instance method codegen should succeed");
+        .must("generic class instance method codegen should succeed");
     assert!(output_path.with_extension("ll").exists());
 
     let _ = fs::remove_dir_all(temp_root);
@@ -813,13 +813,13 @@ fn compile_source_runs_generic_class_instance_methods() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("generic class runtime codegen should succeed");
+        .must("generic class runtime codegen should succeed");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled generic class binary");
+        .must("run compiled generic class binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -846,13 +846,13 @@ fn compile_source_runs_method_calls_on_function_returned_objects() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("method call on function return value should codegen");
+        .must("method call on function return value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled function-return method binary");
+        .must("run compiled function-return method binary");
     assert_eq!(status.code(), Some(9));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -884,13 +884,13 @@ fn compile_source_runs_method_calls_on_try_unwrapped_objects() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("method call on try-unwrapped object should codegen");
+        .must("method call on try-unwrapped object should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled try-object method binary");
+        .must("run compiled try-object method binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -922,13 +922,13 @@ fn compile_source_runs_method_calls_on_awaited_objects_without_extra_parentheses
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("awaited object method chain should parse and codegen");
+        .must("awaited object method chain should parse and codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled awaited-object method binary");
+        .must("run compiled awaited-object method binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -952,13 +952,13 @@ fn compile_source_fails_fast_on_negative_await_timeout() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("negative await_timeout should still codegen");
+        .must("negative await_timeout should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled negative await_timeout binary");
+        .must("run compiled negative await_timeout binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -975,13 +975,13 @@ fn compile_source_prints_clean_option_unwrap_panic_message() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Option.none unwrap panic path should codegen");
+        .must("Option.none unwrap panic path should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled Option.none unwrap binary");
+        .must("run compiled Option.none unwrap binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(stdout.contains("Option.unwrap() called on None\n"));
@@ -1001,13 +1001,13 @@ fn compile_source_prints_clean_result_unwrap_panic_message() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Result.error unwrap panic path should codegen");
+        .must("Result.error unwrap panic path should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled Result.error unwrap binary");
+        .must("run compiled Result.error unwrap binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(stdout.contains("Result.unwrap() called on Error\n"));
@@ -1028,13 +1028,13 @@ fn compile_source_prints_clean_integer_division_by_zero_runtime_error() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("dynamic integer division by zero path should codegen");
+        .must("dynamic integer division by zero path should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled integer division by zero binary");
+        .must("run compiled integer division by zero binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(stdout.contains("Integer division by zero\n"), "{stdout}");
@@ -1054,13 +1054,13 @@ fn compile_source_prints_clean_integer_modulo_by_zero_runtime_error() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("dynamic integer modulo by zero path should codegen");
+        .must("dynamic integer modulo by zero path should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled integer modulo by zero binary");
+        .must("run compiled integer modulo by zero binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(stdout.contains("Integer modulo by zero\n"), "{stdout}");
@@ -1083,13 +1083,13 @@ fn compile_source_fails_fast_on_negative_time_sleep() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("dynamic negative Time.sleep should still codegen");
+        .must("dynamic negative Time.sleep should still codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled negative Time.sleep binary");
+        .must("run compiled negative Time.sleep binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -1115,13 +1115,13 @@ fn compile_source_fails_fast_on_negative_args_get_index() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("dynamic negative Args.get should still codegen");
+        .must("dynamic negative Args.get should still codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled negative Args.get binary");
+        .must("run compiled negative Args.get binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -1147,13 +1147,13 @@ fn compile_source_fails_fast_on_out_of_bounds_args_get_index() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("dynamic out-of-bounds Args.get should still codegen");
+        .must("dynamic out-of-bounds Args.get should still codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled out-of-bounds Args.get binary");
+        .must("run compiled out-of-bounds Args.get binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -1179,15 +1179,15 @@ fn compile_source_fails_fast_on_file_read_with_nul_bytes() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
-    fs::write(&input_path, [b'A', 0, b'B']).expect("write binary payload");
+    fs::write(&source_path, source).must("write source");
+    fs::write(&input_path, [b'A', 0, b'B']).must("write binary payload");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("File.read with NUL byte payload should still codegen");
+        .must("File.read with NUL byte payload should still codegen");
 
     let output = std::process::Command::new(&output_path)
         .current_dir(&temp_root)
         .output()
-        .expect("run compiled File.read NUL-byte binary");
+        .must("run compiled File.read NUL-byte binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -1213,15 +1213,15 @@ fn compile_source_fails_fast_on_file_read_with_invalid_utf8() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
-    fs::write(&input_path, [b'A', 0xFF, b'B']).expect("write invalid utf8 payload");
+    fs::write(&source_path, source).must("write source");
+    fs::write(&input_path, [b'A', 0xFF, b'B']).must("write invalid utf8 payload");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("File.read with invalid UTF-8 payload should still codegen");
+        .must("File.read with invalid UTF-8 payload should still codegen");
 
     let output = std::process::Command::new(&output_path)
         .current_dir(&temp_root)
         .output()
-        .expect("run compiled File.read invalid UTF-8 binary");
+        .must("run compiled File.read invalid UTF-8 binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -1247,13 +1247,13 @@ fn compile_source_reports_file_write_failure_when_flush_fails() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("File.write /dev/full failure path should codegen");
+        .must("File.write /dev/full failure path should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled File.write /dev/full binary");
+        .must("run compiled File.write /dev/full binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1273,15 +1273,15 @@ fn compile_source_reports_file_exists_false_for_directories() {
             }
         "#;
 
-    fs::create_dir_all(&directory_path).expect("create directory");
-    fs::write(&source_path, source).expect("write source");
+    fs::create_dir_all(&directory_path).must("create directory");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("File.exists directory path should codegen");
+        .must("File.exists directory path should codegen");
 
     let status = std::process::Command::new(&output_path)
         .current_dir(&temp_root)
         .status()
-        .expect("run compiled File.exists directory binary");
+        .must("run compiled File.exists directory binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1301,15 +1301,15 @@ fn compile_source_reports_file_delete_false_for_directories() {
             }
         "#;
 
-    fs::create_dir_all(&directory_path).expect("create directory");
-    fs::write(&source_path, source).expect("write source");
+    fs::create_dir_all(&directory_path).must("create directory");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("File.delete directory path should codegen");
+        .must("File.delete directory path should codegen");
 
     let status = std::process::Command::new(&output_path)
         .current_dir(&temp_root)
         .status()
-        .expect("run compiled File.delete directory binary");
+        .must("run compiled File.delete directory binary");
     assert_eq!(status.code(), Some(1));
     assert!(directory_path.exists(), "directory should not be removed");
 
@@ -1332,21 +1332,21 @@ fn compile_source_fails_fast_on_file_read_from_fifo() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let mkfifo_status = std::process::Command::new("mkfifo")
         .arg(&fifo_path)
         .status()
-        .expect("spawn mkfifo");
+        .must("spawn mkfifo");
     assert!(mkfifo_status.success(), "mkfifo should succeed");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("File.read FIFO failure path should codegen");
+        .must("File.read FIFO failure path should codegen");
 
     let writer_fifo = fifo_path.clone();
     let writer = std::thread::spawn(move || {
         let mut handle = std::fs::OpenOptions::new()
             .write(true)
             .open(&writer_fifo)
-            .expect("open fifo for writing");
+            .must("open fifo for writing");
         use std::io::Write as _;
         match handle.write_all(b"abc") {
             Ok(()) => {}
@@ -1358,8 +1358,8 @@ fn compile_source_fails_fast_on_file_read_from_fifo() {
     let output = std::process::Command::new(&output_path)
         .current_dir(&temp_root)
         .output()
-        .expect("run compiled File.read FIFO binary");
-    writer.join().expect("join fifo writer");
+        .must("run compiled File.read FIFO binary");
+    writer.join().must("join fifo writer");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -1391,13 +1391,13 @@ fn compile_source_runs_if_expression_generic_constructor_branches() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("if-expression generic constructors should codegen");
+        .must("if-expression generic constructors should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled if-expression generic constructor binary");
+        .must("run compiled if-expression generic constructor binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1420,13 +1420,13 @@ fn compile_source_runs_method_calls_on_if_expression_objects() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("method call on if-expression object should codegen");
+        .must("method call on if-expression object should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled if-expression object binary");
+        .must("run compiled if-expression object binary");
     assert_eq!(status.code(), Some(17));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1448,13 +1448,13 @@ fn compile_source_runs_field_access_on_match_expression_objects() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("field access on match-expression object should codegen");
+        .must("field access on match-expression object should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled match-expression object binary");
+        .must("run compiled match-expression object binary");
     assert_eq!(status.code(), Some(19));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1479,13 +1479,13 @@ fn compile_source_runs_method_calls_on_indexed_objects() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("method call on indexed object should codegen");
+        .must("method call on indexed object should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled indexed-object method binary");
+        .must("run compiled indexed-object method binary");
     assert_eq!(status.code(), Some(30));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1509,13 +1509,13 @@ fn compile_source_runs_field_access_on_indexed_objects() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("field access on indexed object should codegen");
+        .must("field access on indexed object should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled indexed-object field binary");
+        .must("run compiled indexed-object field binary");
     assert_eq!(status.code(), Some(31));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1559,13 +1559,13 @@ fn compile_source_runs_borrowed_read_accesses_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed read accesses should codegen");
+        .must("borrowed read accesses should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed read access binary");
+        .must("run compiled borrowed read access binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1592,13 +1592,13 @@ fn compile_source_runs_borrowed_class_read_access_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed class reads should codegen");
+        .must("borrowed class reads should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed class read access binary");
+        .must("run compiled borrowed class read access binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1621,13 +1621,13 @@ fn compile_source_runs_borrowed_list_read_access_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed list reads should codegen");
+        .must("borrowed list reads should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed list read access binary");
+        .must("run compiled borrowed list read access binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1646,13 +1646,13 @@ fn compile_source_runs_borrowed_string_index_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed string index should codegen");
+        .must("borrowed string index should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed string index binary");
+        .must("run compiled borrowed string index binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1675,13 +1675,13 @@ fn compile_source_runs_borrowed_map_read_access_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed map reads should codegen");
+        .must("borrowed map reads should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed map read access binary");
+        .must("run compiled borrowed map read access binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1708,13 +1708,13 @@ fn compile_source_runs_borrowed_map_object_field_reads_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed map object field reads should codegen");
+        .must("borrowed map object field reads should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed map object field reads binary");
+        .must("run compiled borrowed map object field reads binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1741,13 +1741,13 @@ fn compile_source_runs_mutable_borrowed_builtin_methods_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed builtin methods should codegen");
+        .must("mutable borrowed builtin methods should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed builtin methods binary");
+        .must("run compiled mutable borrowed builtin methods binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1794,13 +1794,13 @@ fn compile_source_runs_mutable_borrowed_nested_builtin_field_methods_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed nested builtin field methods should codegen");
+        .must("mutable borrowed nested builtin field methods should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed nested builtin field methods binary");
+        .must("run compiled mutable borrowed nested builtin field methods binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1820,13 +1820,13 @@ fn compile_source_runs_mutable_borrowed_map_methods_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed map methods should codegen");
+        .must("mutable borrowed map methods should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed map binary");
+        .must("run compiled mutable borrowed map binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1847,13 +1847,13 @@ fn compile_source_runs_mutable_borrowed_set_methods_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed set methods should codegen");
+        .must("mutable borrowed set methods should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed set binary");
+        .must("run compiled mutable borrowed set binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1873,13 +1873,13 @@ fn compile_source_runs_mutable_borrowed_range_methods_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed range methods should codegen");
+        .must("mutable borrowed range methods should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed range binary");
+        .must("run compiled mutable borrowed range binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1900,13 +1900,13 @@ fn compile_source_runs_mutable_borrowed_range_next_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed range next should codegen");
+        .must("mutable borrowed range next should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed range next binary");
+        .must("run compiled mutable borrowed range next binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1927,13 +1927,13 @@ fn compile_source_runs_mutable_borrowed_range_has_next_after_next_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed range has_next should codegen");
+        .must("mutable borrowed range has_next should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed range has_next binary");
+        .must("run compiled mutable borrowed range has_next binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1952,13 +1952,13 @@ fn compile_source_runs_borrowed_range_has_next_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed range has_next should codegen");
+        .must("borrowed range has_next should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed range has_next binary");
+        .must("run compiled borrowed range has_next binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1984,13 +1984,13 @@ fn compile_source_runs_borrowed_task_methods_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed task methods should codegen");
+        .must("borrowed task methods should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed task methods binary");
+        .must("run compiled borrowed task methods binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2014,13 +2014,13 @@ fn compile_source_runs_mutable_borrowed_task_cancel_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed task cancel should codegen");
+        .must("mutable borrowed task cancel should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed task cancel binary");
+        .must("run compiled mutable borrowed task cancel binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2049,13 +2049,13 @@ fn compile_source_runs_canceled_task_string_length_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task string length should codegen");
+        .must("canceled task string length should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task string length binary");
+        .must("run compiled canceled task string length binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2084,13 +2084,13 @@ fn compile_source_runs_canceled_task_string_equality_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task string equality should codegen");
+        .must("canceled task string equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task string equality binary");
+        .must("run compiled canceled task string equality binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2126,13 +2126,13 @@ fn compile_source_runs_canceled_task_object_field_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task object field access should codegen");
+        .must("canceled task object field access should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task object field binary");
+        .must("run compiled canceled task object field binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2171,13 +2171,13 @@ fn compile_source_runs_canceled_task_object_string_method_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task object string method should codegen");
+        .must("canceled task object string method should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task object string method binary");
+        .must("run compiled canceled task object string method binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2223,13 +2223,13 @@ fn compile_source_runs_canceled_task_nested_object_method_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task nested object method should codegen");
+        .must("canceled task nested object method should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task nested object method binary");
+        .must("run compiled canceled task nested object method binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2270,13 +2270,13 @@ fn compile_source_runs_canceled_task_recursive_object_string_method_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task recursive object string method should codegen");
+        .must("canceled task recursive object string method should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task recursive object string method binary");
+        .must("run compiled canceled task recursive object string method binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2328,13 +2328,13 @@ fn compile_source_runs_canceled_task_mutually_recursive_object_string_method_run
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task mutually recursive object string method should codegen");
+        .must("canceled task mutually recursive object string method should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task mutually recursive object string method binary");
+        .must("run compiled canceled task mutually recursive object string method binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2366,13 +2366,13 @@ fn compile_source_runs_canceled_task_result_error_string_match_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task result error string match should codegen");
+        .must("canceled task result error string match should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task result error string match binary");
+        .must("run compiled canceled task result error string match binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2416,13 +2416,13 @@ fn compile_source_runs_canceled_task_object_result_error_string_match_runtime() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task object result error string match should codegen");
+        .must("canceled task object result error string match should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task object result error string match binary");
+        .must("run compiled canceled task object result error string match binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2474,13 +2474,13 @@ fn compile_source_runs_canceled_task_object_result_error_class_match_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task object result error class match should codegen");
+        .must("canceled task object result error class match should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task object result error class match binary");
+        .must("run compiled canceled task object result error class match binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2501,13 +2501,13 @@ fn compile_source_runs_block_expression_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("block expression assignment should codegen");
+        .must("block expression assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled block expression assignment binary");
+        .must("run compiled block expression assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2537,13 +2537,13 @@ fn compile_source_runs_block_expression_method_receiver_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("block expression method receiver should codegen");
+        .must("block expression method receiver should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled block expression method receiver binary");
+        .must("run compiled block expression method receiver binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2576,13 +2576,13 @@ fn compile_source_runs_block_expression_match_binding_receiver_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("block expression match binding receiver should codegen");
+        .must("block expression match binding receiver should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled block expression match binding receiver binary");
+        .must("run compiled block expression match binding receiver binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2611,13 +2611,13 @@ fn compile_source_runs_canceled_task_range_has_next_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("canceled task range has_next should codegen");
+        .must("canceled task range has_next should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled canceled task range has_next binary");
+        .must("run compiled canceled task range has_next binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2645,13 +2645,13 @@ fn compile_source_runs_borrowed_field_reference_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed field reference should codegen");
+        .must("borrowed field reference should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed field reference binary");
+        .must("run compiled borrowed field reference binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2681,13 +2681,13 @@ fn compile_source_runs_mutable_borrowed_field_reference_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed field reference should codegen");
+        .must("mutable borrowed field reference should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed field reference binary");
+        .must("run compiled mutable borrowed field reference binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2708,13 +2708,13 @@ fn compile_source_runs_borrowed_float_list_index_arithmetic_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed float list index arithmetic should codegen");
+        .must("borrowed float list index arithmetic should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed float list arithmetic binary");
+        .must("run compiled borrowed float list arithmetic binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2735,13 +2735,13 @@ fn compile_source_runs_borrowed_float_list_index_interpolation_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed float list index interpolation should codegen");
+        .must("borrowed float list index interpolation should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed float list interpolation binary");
+        .must("run compiled borrowed float list interpolation binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2762,13 +2762,13 @@ fn compile_source_runs_mutable_borrowed_list_index_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed list index assignment should codegen");
+        .must("mutable borrowed list index assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed list index assignment binary");
+        .must("run compiled mutable borrowed list index assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2788,13 +2788,13 @@ fn compile_source_runs_mutable_borrowed_map_index_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed map index assignment should codegen");
+        .must("mutable borrowed map index assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed map index assignment binary");
+        .must("run compiled mutable borrowed map index assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2830,13 +2830,13 @@ fn compile_source_runs_mutable_borrowed_nested_index_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed nested index assignment should codegen");
+        .must("mutable borrowed nested index assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed nested index assignment binary");
+        .must("run compiled mutable borrowed nested index assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2864,13 +2864,13 @@ fn compile_source_runs_method_with_mutating_builtin_field_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("method with mutating builtin field should codegen");
+        .must("method with mutating builtin field should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutating builtin field method binary");
+        .must("run compiled mutating builtin field method binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2890,13 +2890,13 @@ fn compile_source_runs_local_deref_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("local deref assignment should codegen");
+        .must("local deref assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled local deref assignment binary");
+        .must("run compiled local deref assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2921,13 +2921,13 @@ fn compile_source_runs_direct_mutable_reference_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct mutable reference assignment should codegen");
+        .must("direct mutable reference assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct mutable reference assignment binary");
+        .must("run compiled direct mutable reference assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2952,13 +2952,13 @@ fn compile_source_runs_inline_mutable_reference_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("inline mutable reference assignment should codegen");
+        .must("inline mutable reference assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled inline mutable reference assignment binary");
+        .must("run compiled inline mutable reference assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -2985,13 +2985,13 @@ fn compile_source_runs_option_unwrap_method_chains_on_call_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("option unwrap method chain on call result should codegen");
+        .must("option unwrap method chain on call result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled option-unwrap method chain binary");
+        .must("run compiled option-unwrap method chain binary");
     assert_eq!(status.code(), Some(32));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3015,13 +3015,13 @@ fn compile_source_runs_list_methods_on_call_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("list method on call result should codegen");
+        .must("list method on call result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled list-call method binary");
+        .must("run compiled list-call method binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3042,13 +3042,13 @@ fn compile_source_runs_range_methods_on_call_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("range method on call result should codegen");
+        .must("range method on call result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled range-call method binary");
+        .must("run compiled range-call method binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3071,13 +3071,13 @@ fn compile_source_runs_set_methods_on_call_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("set method on call result should codegen");
+        .must("set method on call result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled set-call method binary");
+        .must("run compiled set-call method binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3100,13 +3100,13 @@ fn compile_source_runs_set_remove_on_call_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("set remove on call result should codegen");
+        .must("set remove on call result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled set-remove call binary");
+        .must("run compiled set-remove call binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3125,13 +3125,13 @@ fn compile_source_runs_set_contains_on_option_values() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("set option contains should codegen");
+        .must("set option contains should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled set-option contains binary");
+        .must("run compiled set-option contains binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3150,13 +3150,13 @@ fn compile_source_runs_set_contains_on_result_values() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("set result contains should codegen");
+        .must("set result contains should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled set-result contains binary");
+        .must("run compiled set-result contains binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3179,13 +3179,13 @@ fn compile_source_runs_map_methods_on_call_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map method on call result should codegen");
+        .must("map method on call result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map-call method binary");
+        .must("run compiled map-call method binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3217,13 +3217,13 @@ fn compile_source_runs_map_growth_past_initial_capacity() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map growth should codegen");
+        .must("map growth should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map-growth binary");
+        .must("run compiled map-growth binary");
     assert_eq!(status.code(), Some(18));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3246,13 +3246,13 @@ fn compile_source_runs_map_option_growth_for_earlier_keys() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map option growth should codegen");
+        .must("map option growth should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map-option growth binary");
+        .must("run compiled map-option growth binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3276,13 +3276,13 @@ fn compile_source_runs_map_option_updates_after_growth() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map option update should codegen");
+        .must("map option update should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map-option update binary");
+        .must("run compiled map-option update binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3306,13 +3306,13 @@ fn compile_source_runs_set_option_remove_after_growth() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("set option remove should codegen");
+        .must("set option remove should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled set-option remove binary");
+        .must("run compiled set-option remove binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3335,13 +3335,13 @@ fn compile_source_runs_map_result_growth_with_integer_error_keys() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map result growth should codegen");
+        .must("map result growth should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map-result growth binary");
+        .must("run compiled map-result growth binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3364,13 +3364,13 @@ fn compile_source_runs_set_result_error_contains_after_growth() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("set result growth should codegen");
+        .must("set result growth should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled set-result growth binary");
+        .must("run compiled set-result growth binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3404,13 +3404,13 @@ fn compile_source_runs_map_nested_result_option_growth_and_updates() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("nested result-option map growth should codegen");
+        .must("nested result-option map growth should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled nested result-option map binary");
+        .must("run compiled nested result-option map binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3432,13 +3432,13 @@ fn compile_source_runs_result_error_with_non_integer_ok_type() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("result error layout should codegen");
+        .must("result error layout should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled result-error layout binary");
+        .must("run compiled result-error layout binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3465,13 +3465,13 @@ fn compile_source_runs_map_with_class_pointer_keys() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map class key should codegen");
+        .must("map class key should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map-class-key binary");
+        .must("run compiled map-class-key binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3498,13 +3498,13 @@ fn compile_source_runs_set_with_class_pointer_keys() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("set class key should codegen");
+        .must("set class key should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled set-class-key binary");
+        .must("run compiled set-class-key binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3531,13 +3531,13 @@ fn compile_source_runs_map_with_nested_option_class_keys() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("nested option class key should codegen");
+        .must("nested option class key should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled nested option class key binary");
+        .must("run compiled nested option class key binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3562,13 +3562,13 @@ fn compile_source_runs_map_with_multi_variant_enum_keys() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map enum key should codegen");
+        .must("map enum key should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map-enum-key binary");
+        .must("run compiled map-enum-key binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3593,13 +3593,13 @@ fn compile_source_runs_set_with_multi_variant_enum_keys() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("set enum key should codegen");
+        .must("set enum key should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled set-enum-key binary");
+        .must("run compiled set-enum-key binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3620,13 +3620,13 @@ fn compile_source_runs_option_is_some_in_condition() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("option is_some condition should codegen");
+        .must("option is_some condition should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled option-is-some binary");
+        .must("run compiled option-is-some binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3647,13 +3647,13 @@ fn compile_source_runs_result_is_ok_in_condition() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("result is_ok condition should codegen");
+        .must("result is_ok condition should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled result-is-ok binary");
+        .must("run compiled result-is-ok binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3670,13 +3670,13 @@ fn compile_source_runs_string_length_on_literal_receiver() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string length on literal receiver should codegen");
+        .must("string length on literal receiver should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string-length literal binary");
+        .must("run compiled string-length literal binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3693,13 +3693,13 @@ fn compile_source_runs_string_length_on_concatenation_receiver() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string length on concatenation receiver should codegen");
+        .must("string length on concatenation receiver should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string-length concat binary");
+        .must("run compiled string-length concat binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3716,13 +3716,13 @@ fn compile_source_runs_string_length_on_interpolation_receiver() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string length on interpolation receiver should codegen");
+        .must("string length on interpolation receiver should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string-length interpolation binary");
+        .must("run compiled string-length interpolation binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3746,13 +3746,13 @@ fn compile_source_runs_field_access_on_list_get_object_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("field access on list.get object result should codegen");
+        .must("field access on list.get object result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled list-get object field binary");
+        .must("run compiled list-get object field binary");
     assert_eq!(status.code(), Some(5));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3776,13 +3776,13 @@ fn compile_source_runs_field_access_on_map_get_object_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("field access on map.get object result should codegen");
+        .must("field access on map.get object result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map-get object field binary");
+        .must("run compiled map-get object field binary");
     assert_eq!(status.code(), Some(6));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3805,13 +3805,13 @@ fn compile_source_fails_fast_on_missing_map_get_object_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("missing map.get object result should still codegen");
+        .must("missing map.get object result should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled missing map.get object binary");
+        .must("run compiled missing map.get object binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3835,13 +3835,13 @@ fn compile_source_runs_field_access_on_map_index_object_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("field access on map index object result should codegen");
+        .must("field access on map index object result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map index object field binary");
+        .must("run compiled map index object field binary");
     assert_eq!(status.code(), Some(8));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3860,13 +3860,13 @@ fn compile_source_runs_map_index_assignment_with_string_keys() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map index assignment should codegen");
+        .must("map index assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map index assignment binary");
+        .must("run compiled map index assignment binary");
     assert_eq!(status.code(), Some(21));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3890,13 +3890,13 @@ fn compile_source_runs_list_index_assignment_on_function_returned_list() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("list index assignment on function-returned list should codegen");
+        .must("list index assignment on function-returned list should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled list assignment call binary");
+        .must("run compiled list assignment call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3926,13 +3926,13 @@ fn compile_source_runs_list_index_compound_assignment_without_double_evaluation(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("list index compound assignment on function-returned list should codegen");
+        .must("list index compound assignment on function-returned list should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled list compound assignment call binary");
+        .must("run compiled list compound assignment call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -3965,13 +3965,13 @@ fn compile_source_runs_field_compound_assignment_without_double_evaluation() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("field compound assignment on function-returned object should codegen");
+        .must("field compound assignment on function-returned object should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled field compound assignment call binary");
+        .must("run compiled field compound assignment call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4001,13 +4001,13 @@ fn compile_source_runs_map_index_compound_assignment_without_double_evaluation()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map index compound assignment on function-returned map should codegen");
+        .must("map index compound assignment on function-returned map should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map compound assignment call binary");
+        .must("run compiled map compound assignment call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4038,13 +4038,13 @@ fn compile_source_runs_field_map_index_assignment_on_function_value_call_result(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map index assignment on function-valued field call result should codegen");
+        .must("map index assignment on function-valued field call result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled field map assignment function value binary");
+        .must("run compiled field map assignment function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4080,14 +4080,13 @@ fn compile_source_runs_field_map_index_compound_assignment_on_function_value_cal
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
-    compile_source(source, &source_path, &output_path, false, true, None, None).expect(
-        "map index compound assignment on function-valued field call result should codegen",
-    );
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .must("map index compound assignment on function-valued field call result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled field map compound assignment function value binary");
+        .must("run compiled field map compound assignment function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4117,13 +4116,13 @@ fn compile_source_runs_map_index_compound_assignment_without_double_key_evaluati
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map index compound assignment with key side effects should codegen");
+        .must("map index compound assignment with key side effects should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map compound assignment key binary");
+        .must("run compiled map compound assignment key binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4144,13 +4143,13 @@ fn compile_source_runs_mutable_borrowed_list_index_compound_assignment_runtime()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed list compound assignment should codegen");
+        .must("mutable borrowed list compound assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed list compound assignment binary");
+        .must("run compiled mutable borrowed list compound assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4171,13 +4170,13 @@ fn compile_source_runs_mutable_borrowed_map_index_compound_assignment_runtime() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable borrowed map compound assignment should codegen");
+        .must("mutable borrowed map compound assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable borrowed map compound assignment binary");
+        .must("run compiled mutable borrowed map compound assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4196,13 +4195,13 @@ fn compile_source_runs_mod_compound_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mod compound assignment should codegen");
+        .must("mod compound assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mod compound assignment binary");
+        .must("run compiled mod compound assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4220,13 +4219,13 @@ fn compile_source_runs_float_mod_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("float modulo should codegen");
+        .must("float modulo should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled float modulo binary");
+        .must("run compiled float modulo binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4245,13 +4244,13 @@ fn compile_source_runs_float_mod_compound_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("float modulo compound assignment should codegen");
+        .must("float modulo compound assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled float modulo compound assignment binary");
+        .must("run compiled float modulo compound assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4271,13 +4270,13 @@ fn compile_source_runs_integer_rhs_to_float_compound_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer RHS to Float compound assignment should codegen");
+        .must("integer RHS to Float compound assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float compound assignment binary");
+        .must("run compiled int-to-float compound assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4307,13 +4306,13 @@ fn compile_source_runs_mod_compound_assignment_without_double_key_evaluation() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mod compound assignment with key side effects should codegen");
+        .must("mod compound assignment with key side effects should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mod compound assignment key binary");
+        .must("run compiled mod compound assignment key binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4334,13 +4333,13 @@ fn compile_source_runs_mixed_numeric_arithmetic_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric arithmetic should codegen");
+        .must("mixed numeric arithmetic should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric arithmetic binary");
+        .must("run compiled mixed numeric arithmetic binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4361,13 +4360,13 @@ fn compile_source_runs_mixed_numeric_equality_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric equality should codegen");
+        .must("mixed numeric equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric equality binary");
+        .must("run compiled mixed numeric equality binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4389,13 +4388,13 @@ fn compile_source_runs_mixed_numeric_branch_and_math_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric branch and math should codegen");
+        .must("mixed numeric branch and math should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric branch and math binary");
+        .must("run compiled mixed numeric branch and math binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4422,13 +4421,13 @@ fn compile_source_runs_mixed_numeric_match_expression_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric match expression should codegen");
+        .must("mixed numeric match expression should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric match expression binary");
+        .must("run compiled mixed numeric match expression binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4449,13 +4448,13 @@ fn compile_source_runs_mixed_numeric_assert_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric assert helpers should codegen");
+        .must("mixed numeric assert helpers should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric assert binary");
+        .must("run compiled mixed numeric assert binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4480,13 +4479,13 @@ fn compile_source_runs_mixed_numeric_match_literal_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric match literal should codegen");
+        .must("mixed numeric match literal should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric match literal binary");
+        .must("run compiled mixed numeric match literal binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4508,13 +4507,13 @@ fn compile_source_runs_integer_argument_to_float_parameter_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer argument to float parameter should codegen");
+        .must("integer argument to float parameter should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float parameter binary");
+        .must("run compiled int-to-float parameter binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4543,13 +4542,13 @@ fn compile_source_runs_integer_argument_to_float_method_and_constructor_runtime(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer argument to float method and constructor should codegen");
+        .must("integer argument to float method and constructor should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float method/constructor binary");
+        .must("run compiled int-to-float method/constructor binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4568,13 +4567,13 @@ fn compile_source_runs_integer_argument_to_float_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer argument to float function value should codegen");
+        .must("integer argument to float function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float function value binary");
+        .must("run compiled int-to-float function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4598,13 +4597,13 @@ fn compile_source_runs_integer_argument_to_float_module_local_function_call_runt
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer argument to Float module-local function call should codegen");
+        .must("integer argument to Float module-local function call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float module-local function call binary");
+        .must("run compiled int-to-float module-local function call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4630,13 +4629,13 @@ fn compile_source_runs_integer_argument_to_float_nested_module_function_call_run
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer argument to Float nested-module function call should codegen");
+        .must("integer argument to Float nested-module function call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float nested-module function call binary");
+        .must("run compiled int-to-float nested-module function call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4662,13 +4661,13 @@ fn compile_source_runs_integer_argument_to_float_exact_import_alias_call_runtime
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer argument to Float exact-import alias call should codegen");
+        .must("integer argument to Float exact-import alias call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float exact-import alias call binary");
+        .must("run compiled int-to-float exact-import alias call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4694,13 +4693,13 @@ fn compile_source_runs_integer_argument_to_float_enum_payload_variant_runtime() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer argument to Float enum payload variant should codegen");
+        .must("integer argument to Float enum payload variant should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float enum payload variant binary");
+        .must("run compiled int-to-float enum payload variant binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4728,13 +4727,13 @@ fn compile_source_runs_integer_argument_to_float_nested_enum_payload_variant_run
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer argument to Float nested enum payload variant should codegen");
+        .must("integer argument to Float nested enum payload variant should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float nested enum payload variant binary");
+        .must("run compiled int-to-float nested enum payload variant binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4761,13 +4760,13 @@ fn compile_source_runs_integer_argument_to_float_container_methods_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer argument to float container methods should codegen");
+        .must("integer argument to float container methods should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float container methods binary");
+        .must("run compiled int-to-float container methods binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4802,13 +4801,13 @@ fn compile_source_runs_integer_assignment_into_float_containers_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer assignment into float containers should codegen");
+        .must("integer assignment into float containers should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float container assignment binary");
+        .must("run compiled int-to-float container assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4834,13 +4833,13 @@ fn compile_source_runs_integer_assignment_into_float_fields_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer assignment into float fields should codegen");
+        .must("integer assignment into float fields should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float field assignment binary");
+        .must("run compiled int-to-float field assignment binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4862,13 +4861,13 @@ fn compile_source_runs_integer_arguments_to_float_math_unary_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer arguments to float math unary functions should codegen");
+        .must("integer arguments to float math unary functions should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled int-to-float math unary binary");
+        .must("run compiled int-to-float math unary binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4896,9 +4895,9 @@ fn compile_source_rejects_integer_payloads_for_float_option_and_result() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("Option/Result payloads should stay invariant across Integer/Float");
+        .must_err("Option/Result payloads should stay invariant across Integer/Float");
     assert!(err.contains("Type mismatch"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4917,9 +4916,9 @@ fn compile_source_rejects_invalid_to_int_and_to_float_argument_types() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("invalid to_int/to_float argument types should fail");
+        .must_err("invalid to_int/to_float argument types should fail");
     assert!(err.contains("to_int") || err.contains("to_float"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4938,13 +4937,13 @@ fn compile_source_runs_string_to_int_conversion_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string to int conversion should codegen");
+        .must("string to int conversion should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string to int binary");
+        .must("run compiled string to int binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4964,13 +4963,13 @@ fn compile_source_runs_to_string_on_option_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_string on Option should codegen");
+        .must("to_string on Option should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_string Option binary");
+        .must("run compiled to_string Option binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4990,13 +4989,13 @@ fn compile_source_runs_to_string_on_direct_option_none_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_string on direct Option.none should codegen");
+        .must("to_string on direct Option.none should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_string direct Option.none binary");
+        .must("run compiled to_string direct Option.none binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5016,13 +5015,13 @@ fn compile_source_runs_to_string_on_nested_direct_option_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_string on nested direct Option should codegen");
+        .must("to_string on nested direct Option should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_string nested direct Option binary");
+        .must("run compiled to_string nested direct Option binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5043,13 +5042,13 @@ fn compile_source_runs_to_string_on_result_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_string on Result should codegen");
+        .must("to_string on Result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_string Result binary");
+        .must("run compiled to_string Result binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5069,13 +5068,13 @@ fn compile_source_runs_to_string_on_direct_result_ok_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_string on direct Result.ok should codegen");
+        .must("to_string on direct Result.ok should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_string direct Result.ok binary");
+        .must("run compiled to_string direct Result.ok binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5095,13 +5094,13 @@ fn compile_source_runs_to_string_on_direct_result_error_with_option_none_runtime
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_string on direct Result.error(Option.none()) should codegen");
+        .must("to_string on direct Result.error(Option.none()) should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_string direct Result.error(Option.none()) binary");
+        .must("run compiled to_string direct Result.error(Option.none()) binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5122,13 +5121,13 @@ fn compile_source_runs_to_string_on_char_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_string on Char should codegen");
+        .must("to_string on Char should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_string Char binary");
+        .must("run compiled to_string Char binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5149,13 +5148,13 @@ fn compile_source_runs_to_string_on_unicode_char_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_string on Unicode Char should codegen");
+        .must("to_string on Unicode Char should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_string Unicode Char binary");
+        .must("run compiled to_string Unicode Char binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5175,13 +5174,13 @@ fn compile_source_runs_str_ends_with_false_for_longer_suffix_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Str.endsWith longer suffix should codegen");
+        .must("Str.endsWith longer suffix should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Str.endsWith longer suffix binary");
+        .must("run compiled Str.endsWith longer suffix binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5199,13 +5198,13 @@ fn compile_source_runs_string_interpolation_on_option_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation on Option should codegen");
+        .must("string interpolation on Option should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string interpolation Option binary");
+        .must("run compiled string interpolation Option binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5223,13 +5222,13 @@ fn compile_source_runs_string_interpolation_on_direct_option_none_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation on direct Option.none should codegen");
+        .must("string interpolation on direct Option.none should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string interpolation direct Option.none binary");
+        .must("run compiled string interpolation direct Option.none binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5250,13 +5249,13 @@ fn compile_source_runs_string_interpolation_on_direct_result_error_with_option_n
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation on direct Result.error(Option.none()) should codegen");
+        .must("string interpolation on direct Result.error(Option.none()) should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string interpolation direct Result.error(Option.none()) binary");
+        .must("run compiled string interpolation direct Result.error(Option.none()) binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5275,13 +5274,13 @@ fn compile_source_runs_string_interpolation_on_result_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation on Result should codegen");
+        .must("string interpolation on Result should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string interpolation Result binary");
+        .must("run compiled string interpolation Result binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5299,13 +5298,13 @@ fn compile_source_runs_string_interpolation_on_direct_result_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation on direct Result.ok should codegen");
+        .must("string interpolation on direct Result.ok should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string interpolation direct Result binary");
+        .must("run compiled string interpolation direct Result binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5323,9 +5322,9 @@ fn compile_source_reports_only_primary_error_for_invalid_interpolation_expr() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("invalid interpolation expression should fail typecheck");
+        .must_err("invalid interpolation expression should fail typecheck");
     assert!(
         err.contains("Arithmetic operator requires numeric types, got Integer and Boolean"),
         "{err}"
@@ -5350,9 +5349,9 @@ fn compile_source_reports_only_primary_error_for_unknown_method_receiver() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown method receiver should fail typecheck");
+        .must_err("unknown method receiver should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Cannot call method on type unknown"), "{err}");
 
@@ -5371,9 +5370,9 @@ fn compile_source_reports_only_primary_error_for_unknown_to_string_arg() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown to_string arg should fail typecheck");
+        .must_err("unknown to_string arg should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("to_string() currently supports"), "{err}");
 
@@ -5394,9 +5393,9 @@ fn compile_source_reports_only_primary_error_for_unknown_print_arg() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown print arg should fail typecheck");
+        .must_err("unknown print arg should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("print() currently supports"), "{err}");
 
@@ -5415,9 +5414,9 @@ fn compile_source_reports_only_primary_error_for_unknown_arithmetic_operand() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown arithmetic operand should fail typecheck");
+        .must_err("unknown arithmetic operand should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Arithmetic operator requires numeric types"),
@@ -5439,9 +5438,9 @@ fn compile_source_reports_only_primary_error_for_unknown_comparison_operand() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown comparison operand should fail typecheck");
+        .must_err("unknown comparison operand should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Comparison requires numeric types"), "{err}");
 
@@ -5460,13 +5459,13 @@ fn compile_source_accepts_ordered_char_comparisons() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("ordered char comparison should compile");
+        .must("ordered char comparison should compile");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run ordered char comparison binary");
+        .must("run ordered char comparison binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -5484,9 +5483,9 @@ fn compile_source_reports_only_primary_error_for_unknown_logical_operand() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown logical operand should fail typecheck");
+        .must_err("unknown logical operand should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Logical operator requires Boolean types"),
@@ -5508,9 +5507,9 @@ fn compile_source_reports_only_primary_error_for_unknown_indexed_object() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown indexed object should fail typecheck");
+        .must_err("unknown indexed object should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Cannot index type unknown"), "{err}");
 
@@ -5529,9 +5528,9 @@ fn compile_source_reports_only_primary_error_for_unknown_string_index() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown string index should fail typecheck");
+        .must_err("unknown string index should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Index must be Integer, found unknown"),
@@ -5554,9 +5553,9 @@ fn compile_source_reports_only_primary_error_for_unknown_list_get_index() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown list get index should fail typecheck");
+        .must_err("unknown list get index should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("List.get() index must be Integer"), "{err}");
 
@@ -5576,9 +5575,9 @@ fn compile_source_reports_only_primary_error_for_unknown_list_set_index() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown list set index should fail typecheck");
+        .must_err("unknown list set index should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("List.set() index must be Integer"), "{err}");
 
@@ -5597,9 +5596,9 @@ fn compile_source_reports_only_primary_error_for_unknown_await_operand() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown await operand should fail typecheck");
+        .must_err("unknown await operand should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("'await' can only be used on Task types"),
@@ -5621,9 +5620,9 @@ fn compile_source_reports_only_primary_error_for_unknown_require_condition() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown require condition should fail typecheck");
+        .must_err("unknown require condition should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("require() condition must be Boolean"),
@@ -5645,9 +5644,9 @@ fn compile_source_reports_only_primary_error_for_unknown_if_condition() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown if condition should fail typecheck");
+        .must_err("unknown if condition should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("If condition must be Boolean"), "{err}");
 
@@ -5666,9 +5665,9 @@ fn compile_source_reports_only_primary_error_for_unknown_range_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown range argument should fail typecheck");
+        .must_err("unknown range argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("range() arguments must be all Integer or all Float"),
@@ -5690,9 +5689,9 @@ fn compile_source_reports_only_primary_error_for_unknown_exit_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown exit argument should fail typecheck");
+        .must_err("unknown exit argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("exit() requires Integer code"), "{err}");
 
@@ -5711,9 +5710,9 @@ fn compile_source_reports_only_primary_error_for_unknown_fail_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown fail argument should fail typecheck");
+        .must_err("unknown fail argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("fail() requires String message"), "{err}");
 
@@ -5732,9 +5731,9 @@ fn compile_source_reports_only_primary_error_for_unknown_assert_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown assert argument should fail typecheck");
+        .must_err("unknown assert argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("assert() requires boolean condition"),
@@ -5756,9 +5755,9 @@ fn compile_source_reports_only_primary_error_for_unknown_assert_true_argument() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown assert_true argument should fail typecheck");
+        .must_err("unknown assert_true argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("assert_true() requires boolean"), "{err}");
 
@@ -5777,9 +5776,9 @@ fn compile_source_reports_only_primary_error_for_unknown_assert_false_argument()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown assert_false argument should fail typecheck");
+        .must_err("unknown assert_false argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("assert_false() requires boolean"), "{err}");
 
@@ -5800,9 +5799,9 @@ fn compile_source_reports_only_primary_error_for_unknown_str_len_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Str.len argument should fail typecheck");
+        .must_err("unknown Str.len argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Str.len() requires String"), "{err}");
 
@@ -5823,9 +5822,9 @@ fn compile_source_reports_only_primary_error_for_unknown_str_contains_argument()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Str.contains argument should fail typecheck");
+        .must_err("unknown Str.contains argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Str.contains() requires two String arguments"),
@@ -5851,9 +5850,9 @@ fn compile_source_reports_only_primary_error_for_unknown_str_starts_with_argumen
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Str.startsWith argument should fail typecheck");
+        .must_err("unknown Str.startsWith argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Str.startsWith() requires two String arguments"),
@@ -5877,9 +5876,9 @@ fn compile_source_reports_only_primary_error_for_unknown_str_ends_with_argument(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Str.endsWith argument should fail typecheck");
+        .must_err("unknown Str.endsWith argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Str.endsWith() requires two String arguments"),
@@ -5903,9 +5902,9 @@ fn compile_source_reports_only_primary_error_for_unknown_str_compare_argument() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Str.compare argument should fail typecheck");
+        .must_err("unknown Str.compare argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Str.compare() requires String arguments"),
@@ -5929,9 +5928,9 @@ fn compile_source_reports_only_primary_error_for_unknown_str_concat_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Str.concat argument should fail typecheck");
+        .must_err("unknown Str.concat argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Str.concat() requires String arguments"),
@@ -5955,9 +5954,9 @@ fn compile_source_reports_only_primary_error_for_unknown_str_upper_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Str.upper argument should fail typecheck");
+        .must_err("unknown Str.upper argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Str.upper() requires String"), "{err}");
 
@@ -5978,9 +5977,9 @@ fn compile_source_reports_only_primary_error_for_unknown_str_trim_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Str.trim argument should fail typecheck");
+        .must_err("unknown Str.trim argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Str.trim() requires String"), "{err}");
 
@@ -6001,9 +6000,9 @@ fn compile_source_reports_only_primary_error_for_unknown_file_read_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown File.read argument should fail typecheck");
+        .must_err("unknown File.read argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("File.read() requires String path"), "{err}");
 
@@ -6024,9 +6023,9 @@ fn compile_source_reports_only_primary_error_for_unknown_file_exists_argument() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown File.exists argument should fail typecheck");
+        .must_err("unknown File.exists argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("File.exists() requires String path"), "{err}");
 
@@ -6047,9 +6046,9 @@ fn compile_source_reports_only_primary_error_for_unknown_file_delete_argument() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown File.delete argument should fail typecheck");
+        .must_err("unknown File.delete argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("File.delete() requires String path"), "{err}");
 
@@ -6070,9 +6069,9 @@ fn compile_source_reports_only_primary_error_for_unknown_file_write_path() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown File.write path should fail typecheck");
+        .must_err("unknown File.write path should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("File.write() path must be String"), "{err}");
 
@@ -6093,9 +6092,9 @@ fn compile_source_reports_only_primary_error_for_unknown_await_timeout_argument(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown await_timeout argument should fail typecheck");
+        .must_err("unknown await_timeout argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Task.await_timeout() expects Integer milliseconds"),
@@ -6119,9 +6118,9 @@ fn compile_source_reports_only_primary_error_for_unknown_args_get_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Args.get argument should fail typecheck");
+        .must_err("unknown Args.get argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Args.get() requires Integer index"), "{err}");
 
@@ -6142,9 +6141,9 @@ fn compile_source_reports_only_primary_error_for_unknown_time_now_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Time.now argument should fail typecheck");
+        .must_err("unknown Time.now argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Time.now() requires String format"), "{err}");
 
@@ -6165,9 +6164,9 @@ fn compile_source_reports_only_primary_error_for_unknown_time_sleep_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Time.sleep argument should fail typecheck");
+        .must_err("unknown Time.sleep argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Time.sleep() requires Integer milliseconds"),
@@ -6191,9 +6190,9 @@ fn compile_source_reports_only_primary_error_for_unknown_system_getenv_argument(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown System.getenv argument should fail typecheck");
+        .must_err("unknown System.getenv argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("System.getenv() requires String name"),
@@ -6217,9 +6216,9 @@ fn compile_source_reports_only_primary_error_for_unknown_system_shell_argument()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown System.shell argument should fail typecheck");
+        .must_err("unknown System.shell argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("System.shell() requires String command"),
@@ -6243,9 +6242,9 @@ fn compile_source_reports_only_primary_error_for_unknown_system_exec_argument() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown System.exec argument should fail typecheck");
+        .must_err("unknown System.exec argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("System.exec() requires String command"),
@@ -6267,9 +6266,9 @@ fn compile_source_reports_only_primary_error_for_unknown_unary_neg_operand() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown unary neg operand should fail typecheck");
+        .must_err("unknown unary neg operand should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Cannot negate non-numeric type"), "{err}");
 
@@ -6288,9 +6287,9 @@ fn compile_source_reports_only_primary_error_for_unknown_unary_not_operand() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown unary not operand should fail typecheck");
+        .must_err("unknown unary not operand should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Cannot apply '!' to non-boolean type"),
@@ -6317,9 +6316,9 @@ fn compile_source_reports_only_primary_error_for_unknown_try_operand() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown try operand should fail typecheck");
+        .must_err("unknown try operand should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("'?' operator can only be used on Option or Result"),
@@ -6341,9 +6340,9 @@ fn compile_source_reports_only_primary_error_for_unknown_deref_operand() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown deref operand should fail typecheck");
+        .must_err("unknown deref operand should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Cannot dereference non-pointer type"),
@@ -6367,9 +6366,9 @@ fn compile_source_reports_only_primary_error_for_unknown_list_constructor_argume
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown List constructor argument should fail typecheck");
+        .must_err("unknown List constructor argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Constructor List<Integer> expects optional Integer capacity"),
@@ -6393,9 +6392,9 @@ fn compile_source_reports_only_primary_error_for_unknown_map_constructor_argumen
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Map constructor argument should fail typecheck");
+        .must_err("unknown Map constructor argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Constructor Map<String, Integer> expects 0 arguments"),
@@ -6419,9 +6418,9 @@ fn compile_source_reports_only_primary_error_for_unknown_set_constructor_argumen
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Set constructor argument should fail typecheck");
+        .must_err("unknown Set constructor argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Constructor Set<Integer> expects 0 arguments"),
@@ -6445,9 +6444,9 @@ fn compile_source_reports_only_primary_error_for_unknown_option_constructor_argu
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Option constructor argument should fail typecheck");
+        .must_err("unknown Option constructor argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Constructor Option<Integer> expects 0 arguments"),
@@ -6471,9 +6470,9 @@ fn compile_source_reports_only_primary_error_for_unknown_result_constructor_argu
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("unknown Result constructor argument should fail typecheck");
+        .must_err("unknown Result constructor argument should fail typecheck");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(
         !err.contains("Constructor Result<Integer, String> expects 0 arguments"),
@@ -6495,9 +6494,9 @@ fn compile_source_no_check_rejects_invalid_list_constructor_arity_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid list constructor arity should fail in codegen without checks");
+        .must_err("invalid list constructor arity should fail in codegen without checks");
     assert!(
         err.contains("Constructor List<Integer> expects 0 or 1 arguments, got 2"),
         "{err}"
@@ -6518,9 +6517,9 @@ fn compile_source_no_check_rejects_non_integer_list_capacity_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-integer list capacity should fail in codegen without checks");
+        .must_err("non-integer list capacity should fail in codegen without checks");
     assert!(
         err.contains("Constructor List<Integer> expects optional Integer capacity, got String"),
         "{err}"
@@ -6541,9 +6540,9 @@ fn compile_source_no_check_rejects_invalid_map_constructor_arity_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid map constructor arity should fail in codegen without checks");
+        .must_err("invalid map constructor arity should fail in codegen without checks");
     assert!(
         err.contains("Constructor Map<String, Integer> expects 0 arguments, got 1"),
         "{err}"
@@ -6563,9 +6562,9 @@ fn compile_source_no_check_reports_undefined_variable_for_unknown_method_receive
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unknown method receiver should fail in codegen without checks");
+        .must_err("unknown method receiver should fail in codegen without checks");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Unknown variable: nope"), "{err}");
     assert!(
@@ -6594,9 +6593,9 @@ fn compile_source_no_check_rejects_module_local_import_alias_leaking_to_top_leve
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local alias should not resolve at top level in no-check mode");
+        .must_err("module-local alias should not resolve at top level in no-check mode");
     assert!(
         err.contains("Undefined variable: math") || err.contains("Unknown type: math"),
         "{err}"
@@ -6623,11 +6622,9 @@ fn compile_source_no_check_rejects_module_local_wildcard_import_leaking_to_top_l
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err(
-            "module-local wildcard import should not resolve at top level in no-check mode",
-        );
+        .must_err("module-local wildcard import should not resolve at top level in no-check mode");
     assert!(err.contains("Undefined function: abs"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6644,9 +6641,9 @@ fn compile_source_no_check_reports_undefined_variable_for_unknown_field_root() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unknown field root should fail in codegen without checks");
+        .must_err("unknown field root should fail in codegen without checks");
     assert!(err.contains("Undefined variable: nope"), "{err}");
     assert!(!err.contains("Unknown variable: nope"), "{err}");
 
@@ -6665,7 +6662,7 @@ fn compile_source_no_check_rejects_nested_undefined_root_before_read_or_method_d
             }
         "#;
 
-    fs::write(&read_source_path, read_source).expect("write read source");
+    fs::write(&read_source_path, read_source).must("write read source");
     let read_err = compile_source(
         read_source,
         &read_source_path,
@@ -6675,7 +6672,7 @@ fn compile_source_no_check_rejects_nested_undefined_root_before_read_or_method_d
         None,
         None,
     )
-    .expect_err("nested undefined-root read should fail in codegen");
+    .must_err("nested undefined-root read should fail in codegen");
     assert!(
         read_err.contains("Undefined variable: missing"),
         "{read_err}"
@@ -6690,7 +6687,7 @@ fn compile_source_no_check_rejects_nested_undefined_root_before_read_or_method_d
             }
         "#;
 
-    fs::write(&method_source_path, method_source).expect("write method source");
+    fs::write(&method_source_path, method_source).must("write method source");
     let method_err = compile_source(
         method_source,
         &method_source_path,
@@ -6700,7 +6697,7 @@ fn compile_source_no_check_rejects_nested_undefined_root_before_read_or_method_d
         None,
         None,
     )
-    .expect_err("nested undefined-root method should fail in codegen");
+    .must_err("nested undefined-root method should fail in codegen");
     assert!(
         method_err.contains("Undefined variable: missing"),
         "{method_err}"
@@ -6720,9 +6717,9 @@ fn compile_source_no_check_reports_undefined_function_for_unknown_direct_call() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unknown direct call should fail in codegen without checks");
+        .must_err("unknown direct call should fail in codegen without checks");
     assert!(err.contains("Undefined function: missing"), "{err}");
     assert!(!err.contains("Unknown function: missing"), "{err}");
 
@@ -6741,9 +6738,9 @@ fn compile_source_no_check_reports_undefined_variable_for_unknown_function_value
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unknown function value should fail in codegen without checks");
+        .must_err("unknown function value should fail in codegen without checks");
     assert!(err.contains("Undefined variable: missing"), "{err}");
     assert!(!err.contains("Unknown variable: missing"), "{err}");
 
@@ -6761,9 +6758,9 @@ fn compile_source_no_check_rejects_literal_call_with_non_function_type_diagnosti
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("literal call should fail in codegen without checks");
+        .must_err("literal call should fail in codegen without checks");
     assert!(
         err.contains("Cannot call non-function type Integer"),
         "{err}"
@@ -6786,9 +6783,9 @@ fn compile_source_rejects_exact_import_alias_non_function_call_with_type_diagnos
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("exact import alias non-function call should fail in checked build");
+        .must_err("exact import alias non-function call should fail in checked build");
     assert!(
         err.contains("Cannot call non-function type String"),
         "{err}"
@@ -6816,9 +6813,9 @@ fn compile_source_rejects_exact_import_integer_alias_non_function_call_with_type
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("integer exact import alias non-function call should fail in checked build");
+        .must_err("integer exact import alias non-function call should fail in checked build");
     assert!(
         err.contains("Cannot call non-function type Integer"),
         "{err}"
@@ -6839,9 +6836,9 @@ fn compile_source_no_check_rejects_local_non_function_call_with_type_diagnostic(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("local non-function call should fail in codegen without checks");
+        .must_err("local non-function call should fail in codegen without checks");
     assert!(
         err.contains("Cannot call non-function type String"),
         "{err}"
@@ -6864,9 +6861,9 @@ fn compile_source_no_check_rejects_exact_import_alias_non_function_call_with_typ
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("exact import alias non-function call should fail in codegen without checks");
+        .must_err("exact import alias non-function call should fail in codegen without checks");
     assert!(
         err.contains("Cannot call non-function type String"),
         "{err}"
@@ -6899,9 +6896,9 @@ fn compile_source_no_check_rejects_module_local_non_function_call_with_user_faci
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local non-function call should fail in codegen without checks");
+        .must_err("module-local non-function call should fail in codegen without checks");
     assert!(err.contains("Cannot call non-function type M.Box"), "{err}");
     assert!(!err.contains("Undefined variable: M"), "{err}");
 
@@ -6933,13 +6930,13 @@ fn compile_source_no_check_runs_module_local_constructor_in_single_file_mode() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("module-local constructor should codegen without checks");
+        .must("module-local constructor should codegen without checks");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled module-local constructor binary");
+        .must("run compiled module-local constructor binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6970,13 +6967,13 @@ fn compile_source_no_check_runs_current_package_namespace_alias_constructor() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("current-package namespace alias constructor should codegen without checks");
+        .must("current-package namespace alias constructor should codegen without checks");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled current-package namespace alias constructor binary");
+        .must("run compiled current-package namespace alias constructor binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7007,13 +7004,13 @@ fn compile_source_no_check_runs_current_package_exact_import_class_alias_constru
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("current-package exact imported class alias constructor should codegen");
+        .must("current-package exact imported class alias constructor should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled current-package exact class alias constructor binary");
+        .must("run compiled current-package exact class alias constructor binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7044,13 +7041,13 @@ fn compile_source_no_check_runs_current_package_exact_import_generic_class_alias
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("current-package exact imported generic class alias constructor should codegen");
+        .must("current-package exact imported generic class alias constructor should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled current-package exact generic class alias constructor binary");
+        .must("run compiled current-package exact generic class alias constructor binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -7083,9 +7080,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_generic_class_al
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic class alias non-function call should fail");
+        .must_err("generic class alias non-function call should fail");
     assert!(
         err.contains("Cannot call non-function type M.Box<Integer>"),
         "{err}"
@@ -7120,9 +7117,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_generic_class_al
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic class alias indexing should fail");
+        .must_err("generic class alias indexing should fail");
     assert!(err.contains("Cannot index type M.Box<Integer>"), "{err}");
     assert!(!err.contains("M.Box.spec.I64"), "{err}");
 
@@ -7155,9 +7152,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_generic_class_al
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic class alias println should fail");
+        .must_err("generic class alias println should fail");
     assert!(err.contains("got M.Box<Integer>"), "{err}");
     assert!(!err.contains("M.Box.spec.I64"), "{err}");
 
@@ -7191,9 +7188,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_list_generic_cla
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("list generic class alias indexing should fail");
+        .must_err("list generic class alias indexing should fail");
     assert!(
         err.contains("Cannot index type M.Box<List<Integer>>"),
         "{err}"
@@ -7231,9 +7228,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_option_generic_c
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("option generic class alias println should fail");
+        .must_err("option generic class alias println should fail");
     assert!(err.contains("got M.Box<Option<Integer>>"), "{err}");
     assert!(!err.contains("M.Box.spec.OptI64"), "{err}");
 
@@ -7267,9 +7264,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_map_generic_clas
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("map generic class alias indexing should fail");
+        .must_err("map generic class alias indexing should fail");
     assert!(
         err.contains("Cannot index type M.Box<Map<String, Integer>>"),
         "{err}"
@@ -7307,9 +7304,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_result_generic_c
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("result generic class alias println should fail");
+        .must_err("result generic class alias println should fail");
     assert!(err.contains("got M.Box<Result<Integer, String>>"), "{err}");
     assert!(!err.contains("M.Box.spec.ResI64_Str"), "{err}");
 
@@ -7347,9 +7344,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_function_generic
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("function generic class alias indexing should fail");
+        .must_err("function generic class alias indexing should fail");
     assert!(
         err.contains("Cannot index type M.Box<(Integer) -> Integer>"),
         "{err}"
@@ -7388,9 +7385,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_nested_map_resul
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("nested map/result generic class alias indexing should fail");
+        .must_err("nested map/result generic class alias indexing should fail");
     assert!(
         err.contains("Cannot index type M.Box<Map<Map<String, Integer>, Result<Integer, String>>>"),
         "{err}"
@@ -7433,9 +7430,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_list_function_ge
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("list function generic class alias println should fail");
+        .must_err("list function generic class alias println should fail");
     assert!(
         err.contains("got M.Box<List<(Integer) -> Integer>>"),
         "{err}"
@@ -7482,9 +7479,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_nested_named_gen
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("nested named generic map/result class alias indexing should fail");
+        .must_err("nested named generic map/result class alias indexing should fail");
     assert!(
         err.contains(
             "Cannot index type M.Box<Map<N.Inner<Integer>, Result<N.Inner<String>, String>>>"
@@ -7529,9 +7526,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_named_generic_pa
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("named generic payload alias indexing should fail");
+        .must_err("named generic payload alias indexing should fail");
     assert!(
         err.contains("Cannot index type M.Box<Payload.Item<Integer>>"),
         "{err}"
@@ -7575,9 +7572,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_underscored_name
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("underscored named generic payload alias indexing should fail");
+        .must_err("underscored named generic payload alias indexing should fail");
     assert!(
         err.contains("Cannot index type M.Box<N.Inner_Box<Integer>>"),
         "{err}"
@@ -7631,9 +7628,9 @@ fn compile_source_no_check_rejects_current_package_exact_import_underscored_two_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("underscored two-arg named generic payload alias indexing should fail");
+        .must_err("underscored two-arg named generic payload alias indexing should fail");
     assert!(
         err.contains("Cannot index type M.Box<O.Pair_Box<N.Inner_Box<Integer>, String>>"),
         "{err}"
@@ -7665,9 +7662,9 @@ fn compile_source_no_check_rejects_field_non_function_call_with_type_diagnostic(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("field non-function call should fail in codegen without checks");
+        .must_err("field non-function call should fail in codegen without checks");
     assert!(
         err.contains("Cannot call non-function type Integer"),
         "{err}"
@@ -7692,9 +7689,9 @@ fn compile_source_no_check_rejects_integer_indexing_with_type_diagnostic() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("integer indexing should fail in codegen without checks");
+        .must_err("integer indexing should fail in codegen without checks");
     assert!(err.contains("Cannot index type Integer"), "{err}");
     assert!(!err.contains("expected PointerValue"), "{err}");
 
@@ -7720,9 +7717,9 @@ fn compile_source_no_check_rejects_class_indexing_with_type_diagnostic() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("class indexing should fail in codegen without checks");
+        .must_err("class indexing should fail in codegen without checks");
     assert!(err.contains("Cannot index type Box"), "{err}");
     assert!(!err.contains("expected PointerValue"), "{err}");
 
@@ -7753,9 +7750,9 @@ fn compile_source_no_check_rejects_module_local_class_indexing_with_user_facing_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local class indexing should fail in codegen without checks");
+        .must_err("module-local class indexing should fail in codegen without checks");
     assert!(err.contains("Cannot index type M.Box"), "{err}");
     assert!(!err.contains("Undefined variable: M"), "{err}");
 
@@ -7775,9 +7772,9 @@ fn compile_source_no_check_rejects_integer_index_assignment_with_type_diagnostic
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("integer index assignment should fail in codegen without checks");
+        .must_err("integer index assignment should fail in codegen without checks");
     assert!(err.contains("Cannot index type Integer"), "{err}");
     assert!(!err.contains("expected PointerValue"), "{err}");
 
@@ -7804,9 +7801,9 @@ fn compile_source_no_check_rejects_class_index_assignment_with_type_diagnostic()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("class index assignment should fail in codegen without checks");
+        .must_err("class index assignment should fail in codegen without checks");
     assert!(err.contains("Cannot index type Box"), "{err}");
     assert!(!err.contains("expected PointerValue"), "{err}");
 
@@ -7834,9 +7831,9 @@ fn compile_source_no_check_rejects_module_local_class_index_assignment_with_user
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local class index assignment should fail in codegen");
+        .must_err("module-local class index assignment should fail in codegen");
     assert!(err.contains("Cannot index type M.Box"), "{err}");
     assert!(!err.contains("Undefined variable: M"), "{err}");
 
@@ -7855,9 +7852,9 @@ fn compile_source_no_check_rejects_integer_deref_with_type_diagnostic() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("integer deref should fail in codegen without checks");
+        .must_err("integer deref should fail in codegen without checks");
     assert!(
         err.contains("Cannot dereference non-pointer type Integer"),
         "{err}"
@@ -7878,9 +7875,9 @@ fn compile_source_no_check_rejects_literal_deref_with_type_diagnostic() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("literal deref should fail in codegen without checks");
+        .must_err("literal deref should fail in codegen without checks");
     assert!(
         err.contains("Cannot dereference non-pointer type Integer"),
         "{err}"
@@ -7903,9 +7900,9 @@ fn compile_source_no_check_rejects_exact_import_alias_deref_with_type_diagnostic
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("exact import alias deref should fail in codegen without checks");
+        .must_err("exact import alias deref should fail in codegen without checks");
     assert!(
         err.contains("Cannot dereference non-pointer type String"),
         "{err}"
@@ -7937,9 +7934,9 @@ fn compile_source_no_check_rejects_module_local_deref_with_user_facing_type_diag
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local deref should fail in codegen without checks");
+        .must_err("module-local deref should fail in codegen without checks");
     assert!(
         err.contains("Cannot dereference non-pointer type M.Box"),
         "{err}"
@@ -7962,9 +7959,9 @@ fn compile_source_no_check_rejects_integer_deref_assignment_with_type_diagnostic
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("integer deref assignment should fail in codegen without checks");
+        .must_err("integer deref assignment should fail in codegen without checks");
     assert!(
         err.contains("Cannot dereference non-pointer type Integer"),
         "{err}"
@@ -7987,9 +7984,9 @@ fn compile_source_no_check_rejects_try_on_non_option_result_type() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("? on Integer should fail in codegen without checks");
+        .must_err("? on Integer should fail in codegen without checks");
     assert!(
         err.contains("'?' operator can only be used on Option or Result, got Integer"),
         "{err}"
@@ -8022,9 +8019,9 @@ fn compile_source_no_check_rejects_try_on_module_local_non_option_result_type_wi
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("? on module-local Box should fail in codegen without checks");
+        .must_err("? on module-local Box should fail in codegen without checks");
     assert!(
         err.contains("'?' operator can only be used on Option or Result, got M.Box"),
         "{err}"
@@ -8046,13 +8043,13 @@ fn compile_source_no_check_preserves_box_constructor_payload_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("Box payload constructor should codegen without checks");
+        .must("Box payload constructor should codegen without checks");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled no-check box payload binary");
+        .must("run compiled no-check box payload binary");
     assert_eq!(status.code(), Some(41));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8070,13 +8067,13 @@ fn compile_source_no_check_preserves_rc_constructor_payload_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("Rc payload constructor should codegen without checks");
+        .must("Rc payload constructor should codegen without checks");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled no-check rc payload binary");
+        .must("run compiled no-check rc payload binary");
     assert_eq!(status.code(), Some(42));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8094,13 +8091,13 @@ fn compile_source_no_check_preserves_arc_constructor_payload_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("Arc payload constructor should codegen without checks");
+        .must("Arc payload constructor should codegen without checks");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled no-check arc payload binary");
+        .must("run compiled no-check arc payload binary");
     assert_eq!(status.code(), Some(43));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8119,9 +8116,9 @@ fn compile_source_no_check_rejects_assignment_to_immutable_variable_in_codegen()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("immutable local assignment should fail in codegen without checks");
+        .must_err("immutable local assignment should fail in codegen without checks");
     assert!(
         err.contains("Cannot assign to immutable variable 'value'"),
         "{err}"
@@ -8145,9 +8142,9 @@ fn compile_source_no_check_rejects_assignment_through_immutable_reference_in_cod
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("immutable reference assignment should fail in codegen without checks");
+        .must_err("immutable reference assignment should fail in codegen without checks");
     assert!(
         err.contains("Cannot assign through immutable reference 'view'"),
         "{err}"
@@ -8170,9 +8167,9 @@ fn compile_source_no_check_rejects_deref_assignment_through_immutable_reference_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("immutable deref assignment should fail in codegen without checks");
+        .must_err("immutable deref assignment should fail in codegen without checks");
     assert!(
         err.contains("Cannot assign through immutable reference 'r'"),
         "{err}"
@@ -8197,13 +8194,13 @@ fn compile_source_runs_mutable_function_parameter_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable function parameter assignment should codegen");
+        .must("mutable function parameter assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable function parameter binary");
+        .must("run compiled mutable function parameter binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8228,13 +8225,13 @@ fn compile_source_runs_mutable_method_parameter_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable method parameter assignment should codegen");
+        .must("mutable method parameter assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable method parameter binary");
+        .must("run compiled mutable method parameter binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8261,13 +8258,13 @@ fn compile_source_runs_mutable_constructor_parameter_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable constructor parameter assignment should codegen");
+        .must("mutable constructor parameter assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable constructor parameter binary");
+        .must("run compiled mutable constructor parameter binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8289,13 +8286,13 @@ fn compile_source_runs_mutable_async_parameter_assignment_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutable async parameter assignment should codegen");
+        .must("mutable async parameter assignment should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutable async parameter binary");
+        .must("run compiled mutable async parameter binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8312,9 +8309,9 @@ fn compile_source_no_check_rejects_invalid_integer_boolean_addition_in_codegen()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid integer + boolean should fail in codegen without checks");
+        .must_err("invalid integer + boolean should fail in codegen without checks");
     assert!(
         err.contains("Arithmetic operator requires numeric types, got Integer and Boolean"),
         "{err}"
@@ -8334,9 +8331,9 @@ fn compile_source_no_check_rejects_invalid_integer_boolean_equality_in_codegen()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid integer == boolean should fail in codegen without checks");
+        .must_err("invalid integer == boolean should fail in codegen without checks");
     assert!(err.contains("Cannot compare Integer and Boolean"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8353,9 +8350,9 @@ fn compile_source_no_check_rejects_invalid_boolean_comparison_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid boolean comparison should fail in codegen without checks");
+        .must_err("invalid boolean comparison should fail in codegen without checks");
     assert!(
         err.contains("Comparison requires ordered types, got Boolean and Boolean"),
         "{err}"
@@ -8376,13 +8373,13 @@ fn compile_source_no_check_accepts_ordered_char_comparisons_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("ordered char comparison should compile in codegen without checks");
+        .must("ordered char comparison should compile in codegen without checks");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run ordered char comparison no-check binary");
+        .must("run ordered char comparison no-check binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8399,9 +8396,9 @@ fn compile_source_no_check_rejects_invalid_integer_logical_and_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid integer logical and should fail in codegen without checks");
+        .must_err("invalid integer logical and should fail in codegen without checks");
     assert!(
         err.contains("Logical operator requires Boolean types, got Integer and Integer"),
         "{err}"
@@ -8422,9 +8419,9 @@ fn compile_source_no_check_rejects_invalid_interpolated_integer_boolean_addition
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid interpolated integer + boolean should fail in codegen");
+        .must_err("invalid interpolated integer + boolean should fail in codegen");
     assert!(
         err.contains("Arithmetic operator requires numeric types, got Integer and Boolean"),
         "{err}"
@@ -8444,9 +8441,9 @@ fn compile_source_no_check_rejects_invalid_unary_negation_on_boolean_in_codegen(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid unary negation on boolean should fail in codegen");
+        .must_err("invalid unary negation on boolean should fail in codegen");
     assert!(
         err.contains("Cannot negate non-numeric type Boolean"),
         "{err}"
@@ -8466,9 +8463,9 @@ fn compile_source_no_check_rejects_invalid_unary_not_on_integer_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid unary not on integer should fail in codegen");
+        .must_err("invalid unary not on integer should fail in codegen");
     assert!(
         err.contains("Cannot apply '!' to non-boolean type Integer"),
         "{err}"
@@ -8499,9 +8496,9 @@ fn compile_source_no_check_rejects_module_local_invalid_unary_neg_with_user_faci
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid unary negation on module-local Box should fail in codegen");
+        .must_err("invalid unary negation on module-local Box should fail in codegen");
     assert!(
         err.contains("Cannot negate non-numeric type M.Box"),
         "{err}"
@@ -8533,9 +8530,9 @@ fn compile_source_no_check_rejects_module_local_invalid_unary_not_with_user_faci
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid unary not on module-local Box should fail in codegen");
+        .must_err("invalid unary not on module-local Box should fail in codegen");
     assert!(
         err.contains("Cannot apply '!' to non-boolean type M.Box"),
         "{err}"
@@ -8557,9 +8554,9 @@ fn compile_source_no_check_rejects_non_boolean_if_statement_condition_in_codegen
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-boolean if statement condition should fail in codegen");
+        .must_err("non-boolean if statement condition should fail in codegen");
     assert!(
         err.contains("Condition must be Boolean, found Integer"),
         "{err}"
@@ -8579,9 +8576,9 @@ fn compile_source_no_check_rejects_non_boolean_if_expression_condition_in_codege
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-boolean if expression condition should fail in codegen");
+        .must_err("non-boolean if expression condition should fail in codegen");
     assert!(
         err.contains("Condition must be Boolean, found Integer"),
         "{err}"
@@ -8602,9 +8599,9 @@ fn compile_source_no_check_rejects_non_boolean_while_condition_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-boolean while condition should fail in codegen");
+        .must_err("non-boolean while condition should fail in codegen");
     assert!(
         err.contains("Condition must be Boolean, found Integer"),
         "{err}"
@@ -8625,9 +8622,9 @@ fn compile_source_no_check_rejects_non_boolean_require_condition_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-boolean require condition should fail in codegen");
+        .must_err("non-boolean require condition should fail in codegen");
     assert!(
         err.contains("Condition must be Boolean, found Integer"),
         "{err}"
@@ -8648,9 +8645,9 @@ fn compile_source_no_check_rejects_non_boolean_require_without_message_in_codege
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-boolean require condition without message should fail in codegen");
+        .must_err("non-boolean require condition without message should fail in codegen");
     assert!(
         err.contains("Condition must be Boolean, found Integer"),
         "{err}"
@@ -8671,9 +8668,9 @@ fn compile_source_no_check_rejects_non_boolean_assert_condition_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-boolean assert condition should fail in codegen");
+        .must_err("non-boolean assert condition should fail in codegen");
     assert!(
         err.contains("Condition must be Boolean, found Integer"),
         "{err}"
@@ -8694,9 +8691,9 @@ fn compile_source_checked_rejects_non_boolean_assert_condition() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("checked assert(Integer) should fail");
+        .must_err("checked assert(Integer) should fail");
     assert!(err.contains("assert() requires boolean condition"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8714,9 +8711,9 @@ fn compile_source_no_check_rejects_non_boolean_assert_true_condition_in_codegen(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-boolean assert_true condition should fail in codegen");
+        .must_err("non-boolean assert_true condition should fail in codegen");
     assert!(
         err.contains("Condition must be Boolean, found Integer"),
         "{err}"
@@ -8745,9 +8742,9 @@ fn compile_source_no_check_rejects_module_local_non_boolean_assert_true_conditio
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("assert_true on module-local Box should fail in codegen");
+        .must_err("assert_true on module-local Box should fail in codegen");
     assert!(
         err.contains("Condition must be Boolean, found M.Box"),
         "{err}"
@@ -8769,9 +8766,9 @@ fn compile_source_checked_rejects_non_boolean_assert_true_condition() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("checked assert_true(Integer) should fail");
+        .must_err("checked assert_true(Integer) should fail");
     assert!(err.contains("assert_true() requires boolean"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8789,9 +8786,9 @@ fn compile_source_no_check_rejects_non_boolean_assert_false_condition_in_codegen
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("non-boolean assert_false condition should fail in codegen");
+        .must_err("non-boolean assert_false condition should fail in codegen");
     assert!(
         err.contains("Condition must be Boolean, found Integer"),
         "{err}"
@@ -8820,9 +8817,9 @@ fn compile_source_no_check_rejects_module_local_non_boolean_assert_false_conditi
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("assert_false on module-local Box should fail in codegen");
+        .must_err("assert_false on module-local Box should fail in codegen");
     assert!(
         err.contains("Condition must be Boolean, found M.Box"),
         "{err}"
@@ -8844,9 +8841,9 @@ fn compile_source_checked_rejects_non_boolean_assert_false_condition() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("checked assert_false(Integer) should fail");
+        .must_err("checked assert_false(Integer) should fail");
     assert!(err.contains("assert_false() requires boolean"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8864,9 +8861,9 @@ fn compile_source_no_check_rejects_assert_eq_on_incompatible_types_in_codegen() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("assert_eq on incompatible types should fail in codegen");
+        .must_err("assert_eq on incompatible types should fail in codegen");
     assert!(err.contains("Cannot compare Integer and Boolean"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8884,9 +8881,9 @@ fn compile_source_no_check_rejects_assert_ne_on_incompatible_types_in_codegen() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("assert_ne on incompatible types should fail in codegen");
+        .must_err("assert_ne on incompatible types should fail in codegen");
     assert!(err.contains("Cannot compare Integer and Boolean"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -8904,9 +8901,9 @@ fn compile_source_no_check_rejects_non_integer_string_index_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("string[Boolean] should fail in codegen");
+        .must_err("string[Boolean] should fail in codegen");
     assert!(
         err.contains("Index must be Integer, found Boolean"),
         "{err}"
@@ -8929,9 +8926,9 @@ fn compile_source_no_check_rejects_non_integer_list_index_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("list[Boolean] should fail in codegen");
+        .must_err("list[Boolean] should fail in codegen");
     assert!(
         err.contains("Index must be Integer, found Boolean"),
         "{err}"
@@ -8961,9 +8958,9 @@ fn compile_source_no_check_rejects_module_local_non_integer_list_index_with_user
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("list index with module-local Box should fail in codegen");
+        .must_err("list index with module-local Box should fail in codegen");
     assert!(err.contains("Index must be Integer, found M.Box"), "{err}");
     assert!(!err.contains("M__Box"), "{err}");
 
@@ -8984,9 +8981,9 @@ fn compile_source_no_check_rejects_non_integer_list_index_assignment_in_codegen(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("list[Boolean] assignment should fail in codegen");
+        .must_err("list[Boolean] assignment should fail in codegen");
     assert!(
         err.contains("Index must be Integer, found Boolean"),
         "{err}"
@@ -9010,9 +9007,9 @@ fn compile_source_no_check_rejects_non_integer_for_loop_sugar_iterable_in_codege
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("for-loop sugar over Boolean should fail in codegen");
+        .must_err("for-loop sugar over Boolean should fail in codegen");
     assert!(err.contains("Cannot iterate over Boolean"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9039,9 +9036,9 @@ fn compile_source_no_check_rejects_module_local_non_integer_for_loop_sugar_itera
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("for-loop sugar over module-local Box should fail in codegen");
+        .must_err("for-loop sugar over module-local Box should fail in codegen");
     assert!(err.contains("Cannot iterate over M.Box"), "{err}");
     assert!(!err.contains("M__Box"), "{err}");
 
@@ -9060,9 +9057,9 @@ fn compile_source_no_check_rejects_invalid_range_argument_types_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("range(Boolean, Integer) should fail in codegen");
+        .must_err("range(Boolean, Integer) should fail in codegen");
     assert!(
         err.contains("range() arguments must be all Integer or all Float"),
         "{err}"
@@ -9083,9 +9080,9 @@ fn compile_source_no_check_rejects_non_integer_exit_code_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("exit(Boolean) should fail in codegen");
+        .must_err("exit(Boolean) should fail in codegen");
     assert!(err.contains("exit() requires Integer code"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9105,9 +9102,9 @@ fn compile_source_no_check_rejects_non_integer_time_sleep_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Time.sleep(Boolean) should fail in codegen");
+        .must_err("Time.sleep(Boolean) should fail in codegen");
     assert!(
         err.contains("Time.sleep(ms) requires Integer milliseconds"),
         "{err}"
@@ -9130,9 +9127,9 @@ fn compile_source_no_check_rejects_non_integer_args_get_index_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Args.get(Boolean) should fail in codegen");
+        .must_err("Args.get(Boolean) should fail in codegen");
     assert!(err.contains("Args.get() requires Integer index"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9151,9 +9148,9 @@ fn compile_source_no_check_rejects_non_string_system_shell_command_in_codegen() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("System.shell(Boolean) should fail in codegen");
+        .must_err("System.shell(Boolean) should fail in codegen");
     assert!(
         err.contains("System.shell() requires String command"),
         "{err}"
@@ -9175,9 +9172,9 @@ fn compile_source_no_check_rejects_non_string_file_exists_path_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("File.exists(Boolean) should fail in codegen");
+        .must_err("File.exists(Boolean) should fail in codegen");
     assert!(
         err.contains("File.exists() requires String path, got Boolean"),
         "{err}"
@@ -9207,9 +9204,9 @@ fn compile_source_no_check_rejects_module_local_non_string_file_exists_path_with
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("File.exists(module-local Box) should fail in codegen");
+        .must_err("File.exists(module-local Box) should fail in codegen");
     assert!(
         err.contains("File.exists() requires String path, got M.Box"),
         "{err}"
@@ -9233,9 +9230,9 @@ fn compile_source_no_check_rejects_non_string_file_read_path_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("File.read(Boolean) should fail in codegen");
+        .must_err("File.read(Boolean) should fail in codegen");
     assert!(
         err.contains("File.read() requires String path, got Boolean"),
         "{err}"
@@ -9269,9 +9266,9 @@ fn compile_source_no_check_rejects_module_local_non_string_file_read_path_with_u
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("File.read(module-local Box) should fail in codegen");
+        .must_err("File.read(module-local Box) should fail in codegen");
     assert!(
         err.contains("File.read() requires String path, got M.Box"),
         "{err}"
@@ -9295,9 +9292,9 @@ fn compile_source_no_check_rejects_non_string_file_delete_path_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("File.delete(Boolean) should fail in codegen");
+        .must_err("File.delete(Boolean) should fail in codegen");
     assert!(
         err.contains("File.delete() requires String path, got Boolean"),
         "{err}"
@@ -9328,9 +9325,9 @@ fn compile_source_no_check_rejects_module_local_non_string_file_delete_path_with
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("File.delete(module-local Box) should fail in codegen");
+        .must_err("File.delete(module-local Box) should fail in codegen");
     assert!(
         err.contains("File.delete() requires String path, got M.Box"),
         "{err}"
@@ -9354,9 +9351,9 @@ fn compile_source_no_check_rejects_non_string_file_write_path_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("File.write(Boolean, String) should fail in codegen");
+        .must_err("File.write(Boolean, String) should fail in codegen");
     assert!(err.contains("File.write() path must be String"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9376,9 +9373,9 @@ fn compile_source_no_check_rejects_non_string_file_write_content_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("File.write(String, Boolean) should fail in codegen");
+        .must_err("File.write(String, Boolean) should fail in codegen");
     assert!(err.contains("File.write() content must be String"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9398,9 +9395,9 @@ fn compile_source_no_check_rejects_non_string_time_now_format_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Time.now(Boolean) should fail in codegen");
+        .must_err("Time.now(Boolean) should fail in codegen");
     assert!(err.contains("Time.now() requires String format"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9420,9 +9417,9 @@ fn compile_source_no_check_rejects_non_string_system_getenv_name_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("System.getenv(Boolean) should fail in codegen");
+        .must_err("System.getenv(Boolean) should fail in codegen");
     assert!(
         err.contains("System.getenv() requires String name"),
         "{err}"
@@ -9445,9 +9442,9 @@ fn compile_source_no_check_rejects_non_string_system_exec_command_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("System.exec(Boolean) should fail in codegen");
+        .must_err("System.exec(Boolean) should fail in codegen");
     assert!(
         err.contains("System.exec() requires String command"),
         "{err}"
@@ -9468,9 +9465,9 @@ fn compile_source_no_check_rejects_non_string_fail_message_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("fail(Boolean) should fail in codegen");
+        .must_err("fail(Boolean) should fail in codegen");
     assert!(err.contains("fail() requires String message"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9488,9 +9485,9 @@ fn compile_source_no_check_rejects_non_string_require_message_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("require(Boolean, Boolean) should fail in codegen");
+        .must_err("require(Boolean, Boolean) should fail in codegen");
     assert!(
         err.contains("require() message must be String, got Boolean"),
         "{err}"
@@ -9519,9 +9516,9 @@ fn compile_source_no_check_rejects_module_local_non_string_require_message_with_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("require(Boolean, module-local Box) should fail in codegen");
+        .must_err("require(Boolean, module-local Box) should fail in codegen");
     assert!(
         err.contains("require() message must be String, got M.Box"),
         "{err}"
@@ -9544,9 +9541,9 @@ fn compile_source_no_check_rejects_non_string_str_len_argument_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Str.len(Boolean) should fail in codegen");
+        .must_err("Str.len(Boolean) should fail in codegen");
     assert!(
         err.contains("Str.len() requires String, got Boolean"),
         "{err}"
@@ -9576,9 +9573,9 @@ fn compile_source_no_check_rejects_module_local_non_string_str_len_argument_with
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Str.len(module-local Box) should fail in codegen");
+        .must_err("Str.len(module-local Box) should fail in codegen");
     assert!(
         err.contains("Str.len() requires String, got M.Box"),
         "{err}"
@@ -9602,9 +9599,9 @@ fn compile_source_no_check_rejects_non_string_str_compare_argument_in_codegen() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Str.compare(Boolean, String) should fail in codegen");
+        .must_err("Str.compare(Boolean, String) should fail in codegen");
     assert!(
         err.contains("Str.compare() requires String arguments"),
         "{err}"
@@ -9627,9 +9624,9 @@ fn compile_source_no_check_rejects_non_string_str_concat_argument_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Str.concat(Boolean, String) should fail in codegen");
+        .must_err("Str.concat(Boolean, String) should fail in codegen");
     assert!(
         err.contains("Str.concat() requires String arguments"),
         "{err}"
@@ -9652,9 +9649,9 @@ fn compile_source_no_check_rejects_non_string_str_upper_argument_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Str.upper(Boolean) should fail in codegen");
+        .must_err("Str.upper(Boolean) should fail in codegen");
     assert!(err.contains("Str.upper() requires String"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9674,9 +9671,9 @@ fn compile_source_no_check_rejects_non_string_str_lower_argument_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Str.lower(Boolean) should fail in codegen");
+        .must_err("Str.lower(Boolean) should fail in codegen");
     assert!(err.contains("Str.lower() requires String"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9696,9 +9693,9 @@ fn compile_source_no_check_rejects_non_string_str_trim_argument_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Str.trim(Boolean) should fail in codegen");
+        .must_err("Str.trim(Boolean) should fail in codegen");
     assert!(err.contains("Str.trim() requires String"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9718,9 +9715,9 @@ fn compile_source_no_check_rejects_non_string_str_contains_argument_in_codegen()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Str.contains(Boolean, String) should fail in codegen");
+        .must_err("Str.contains(Boolean, String) should fail in codegen");
     assert!(
         err.contains("Str.contains() requires two String arguments"),
         "{err}"
@@ -9743,9 +9740,9 @@ fn compile_source_no_check_rejects_non_string_str_starts_with_argument_in_codege
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Str.startsWith(Boolean, String) should fail in codegen");
+        .must_err("Str.startsWith(Boolean, String) should fail in codegen");
     assert!(
         err.contains("Str.startsWith() requires two String arguments"),
         "{err}"
@@ -9768,9 +9765,9 @@ fn compile_source_no_check_rejects_non_string_str_ends_with_argument_in_codegen(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Str.endsWith(Boolean, String) should fail in codegen");
+        .must_err("Str.endsWith(Boolean, String) should fail in codegen");
     assert!(
         err.contains("Str.endsWith() requires two String arguments"),
         "{err}"
@@ -9790,9 +9787,9 @@ fn compile_source_no_check_rejects_non_numeric_to_float_string_argument_in_codeg
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("to_float(String) should fail in codegen");
+        .must_err("to_float(String) should fail in codegen");
     assert!(
         err.contains("to_float() requires Integer or Float, got String"),
         "{err}"
@@ -9812,9 +9809,9 @@ fn compile_source_no_check_rejects_non_numeric_to_float_boolean_argument_in_code
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("to_float(Boolean) should fail in codegen");
+        .must_err("to_float(Boolean) should fail in codegen");
     assert!(
         err.contains("to_float() requires Integer or Float, got Boolean"),
         "{err}"
@@ -9842,9 +9839,9 @@ fn compile_source_no_check_rejects_module_local_non_numeric_to_float_argument_wi
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("to_float(module-local Box) should fail in codegen");
+        .must_err("to_float(module-local Box) should fail in codegen");
     assert!(
         err.contains("to_float() requires Integer or Float, got M.Box"),
         "{err}"
@@ -9865,9 +9862,9 @@ fn compile_source_no_check_rejects_non_supported_to_int_boolean_argument_in_code
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("to_int(Boolean) should fail in codegen");
+        .must_err("to_int(Boolean) should fail in codegen");
     assert!(
         err.contains("to_int() requires Integer, Float, or String, got Boolean"),
         "{err}"
@@ -9895,9 +9892,9 @@ fn compile_source_no_check_rejects_module_local_non_supported_to_int_argument_wi
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("to_int(module-local Box) should fail in codegen");
+        .must_err("to_int(module-local Box) should fail in codegen");
     assert!(
         err.contains("to_int() requires Integer, Float, or String, got M.Box"),
         "{err}"
@@ -9919,9 +9916,9 @@ fn compile_source_no_check_rejects_zero_range_step_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("range(..., 0) should fail in codegen");
+        .must_err("range(..., 0) should fail in codegen");
     assert!(err.contains("range() step cannot be 0"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9941,9 +9938,9 @@ fn compile_source_no_check_rejects_negative_time_sleep_constant_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Time.sleep(-1) should fail in codegen");
+        .must_err("Time.sleep(-1) should fail in codegen");
     assert!(
         err.contains("Time.sleep() milliseconds must be non-negative"),
         "{err}"
@@ -9966,9 +9963,9 @@ fn compile_source_no_check_rejects_negative_args_get_constant_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Args.get(-1) should fail in codegen");
+        .must_err("Args.get(-1) should fail in codegen");
     assert!(err.contains("Args.get() index cannot be negative"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -9990,9 +9987,9 @@ fn compile_source_no_check_rejects_negative_await_timeout_constant_in_codegen() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("await_timeout(-1) should fail in codegen");
+        .must_err("await_timeout(-1) should fail in codegen");
     assert!(
         err.contains("Task.await_timeout() timeout must be non-negative"),
         "{err}"
@@ -10012,9 +10009,9 @@ fn compile_source_no_check_rejects_await_on_string_literal_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("await on String literal should fail in codegen");
+        .must_err("await on String literal should fail in codegen");
     assert!(
         err.contains("'await' can only be used on Task types, got String"),
         "{err}"
@@ -10035,9 +10032,9 @@ fn compile_source_no_check_rejects_await_on_string_local_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("await on String local should fail in codegen");
+        .must_err("await on String local should fail in codegen");
     assert!(
         err.contains("'await' can only be used on Task types, got String"),
         "{err}"
@@ -10058,9 +10055,9 @@ fn compile_source_no_check_rejects_await_on_box_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("await on Box<Integer> should fail in codegen");
+        .must_err("await on Box<Integer> should fail in codegen");
     assert!(
         err.contains("'await' can only be used on Task types, got Box<Integer>"),
         "{err}"
@@ -10091,9 +10088,9 @@ fn compile_source_no_check_rejects_await_on_module_local_box_with_user_facing_ty
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("await on module-local Box should fail in codegen");
+        .must_err("await on module-local Box should fail in codegen");
     assert!(
         err.contains("'await' can only be used on Task types, got M.Box"),
         "{err}"
@@ -10121,9 +10118,9 @@ fn compile_source_no_check_rejects_println_on_unsupported_display_type_with_type
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("println(Box) should fail in codegen");
+        .must_err("println(Box) should fail in codegen");
     assert!(
             err.contains(
                 "println() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got Box"
@@ -10155,9 +10152,9 @@ fn compile_source_no_check_rejects_interpolation_on_unsupported_display_type_wit
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("string interpolation on Box should fail in codegen");
+        .must_err("string interpolation on Box should fail in codegen");
     assert!(
             err.contains(
                 "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got Box"
@@ -10191,9 +10188,9 @@ fn compile_source_no_check_rejects_interpolation_on_module_local_unsupported_dis
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("string interpolation on module-local Box should fail in codegen");
+        .must_err("string interpolation on module-local Box should fail in codegen");
     assert!(
             err.contains(
                 "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got M.Box"
@@ -10227,9 +10224,9 @@ fn compile_source_no_check_rejects_println_on_module_local_unsupported_display_t
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("println on module-local Box should fail in codegen");
+        .must_err("println on module-local Box should fail in codegen");
     assert!(
             err.contains(
                 "println() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got M.Box"
@@ -10264,9 +10261,9 @@ fn compile_source_no_check_rejects_to_string_on_module_local_unsupported_display
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("to_string on module-local Box should fail in codegen");
+        .must_err("to_string on module-local Box should fail in codegen");
     assert!(
             err.contains(
                 "to_string() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got M.Box"
@@ -10292,9 +10289,9 @@ fn compile_source_no_check_rejects_negative_list_index_constant_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("xs[-1] should fail in codegen");
+        .must_err("xs[-1] should fail in codegen");
     assert!(err.contains("List index cannot be negative"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10312,9 +10309,9 @@ fn compile_source_no_check_rejects_negative_string_index_constant_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("s[-1] should fail in codegen");
+        .must_err("s[-1] should fail in codegen");
     assert!(err.contains("String index cannot be negative"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10334,9 +10331,9 @@ fn compile_source_no_check_rejects_negative_list_get_constant_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("List.get(-1) should fail in codegen");
+        .must_err("List.get(-1) should fail in codegen");
     assert!(err.contains("List.get() index cannot be negative"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10357,9 +10354,9 @@ fn compile_source_no_check_rejects_negative_list_set_constant_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("List.set(-1, 99) should fail in codegen");
+        .must_err("List.set(-1, 99) should fail in codegen");
     assert!(err.contains("List.set() index cannot be negative"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10377,9 +10374,9 @@ fn compile_source_no_check_rejects_negative_list_constructor_capacity_constant_i
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("List<Integer>(-1) should fail in codegen");
+        .must_err("List<Integer>(-1) should fail in codegen");
     assert!(
         err.contains("List constructor capacity cannot be negative"),
         "{err}"
@@ -10399,9 +10396,9 @@ fn compile_source_no_check_rejects_constant_ascii_string_index_out_of_bounds_in_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("constant ASCII string index OOB should fail in codegen");
+        .must_err("constant ASCII string index OOB should fail in codegen");
     assert!(err.contains("String index out of bounds"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10418,9 +10415,9 @@ fn compile_source_no_check_rejects_constant_unicode_string_index_out_of_bounds_i
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("constant Unicode string index OOB should fail in codegen");
+        .must_err("constant Unicode string index OOB should fail in codegen");
     assert!(err.contains("String index out of bounds"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10438,9 +10435,9 @@ fn compile_source_no_check_rejects_boolean_method_call_with_type_diagnostic() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Boolean.length() should fail in codegen");
+        .must_err("Boolean.length() should fail in codegen");
     assert!(err.contains("Cannot call method on type Boolean"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10458,9 +10455,9 @@ fn compile_source_no_check_rejects_integer_method_call_with_type_diagnostic() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Integer.length() should fail in codegen");
+        .must_err("Integer.length() should fail in codegen");
     assert!(err.contains("Cannot call method on type Integer"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10478,9 +10475,9 @@ fn compile_source_no_check_rejects_boolean_field_access_with_type_diagnostic() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Boolean field access should fail in codegen");
+        .must_err("Boolean field access should fail in codegen");
     assert!(err.contains("Cannot access field on type Boolean"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10498,9 +10495,9 @@ fn compile_source_no_check_rejects_integer_field_access_with_type_diagnostic() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Integer field access should fail in codegen");
+        .must_err("Integer field access should fail in codegen");
     assert!(err.contains("Cannot access field on type Integer"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10519,9 +10516,9 @@ fn compile_source_no_check_rejects_boolean_field_assignment_with_type_diagnostic
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Boolean field assignment should fail in codegen");
+        .must_err("Boolean field assignment should fail in codegen");
     assert!(err.contains("Cannot access field on type Boolean"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10540,9 +10537,9 @@ fn compile_source_no_check_rejects_integer_field_assignment_with_type_diagnostic
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Integer field assignment should fail in codegen");
+        .must_err("Integer field assignment should fail in codegen");
     assert!(err.contains("Cannot access field on type Integer"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10565,9 +10562,9 @@ fn compile_source_no_check_rejects_unknown_class_field_access_with_class_diagnos
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("missing Box field access should fail in codegen");
+        .must_err("missing Box field access should fail in codegen");
     assert!(
         err.contains("Unknown field 'missing' on class 'Box'"),
         "{err}"
@@ -10594,9 +10591,9 @@ fn compile_source_no_check_rejects_unknown_class_field_assignment_with_class_dia
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("missing Box field assignment should fail in codegen");
+        .must_err("missing Box field assignment should fail in codegen");
     assert!(
         err.contains("Unknown field 'missing' on class 'Box'"),
         "{err}"
@@ -10637,9 +10634,9 @@ fn compile_source_no_check_rejects_nested_unknown_field_before_index_assignment_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("nested missing field index assignment should fail in codegen");
+        .must_err("nested missing field index assignment should fail in codegen");
     assert!(
         err.contains("Unknown field 'missing' on class 'Inner'"),
         "{err}"
@@ -10660,7 +10657,7 @@ fn compile_source_no_check_rejects_nested_deref_root_cause_diagnostic() {
             }
         "#;
 
-    fs::write(&undef_source_path, undef_source).expect("write undefined-root source");
+    fs::write(&undef_source_path, undef_source).must("write undefined-root source");
     let undef_err = compile_source(
         undef_source,
         &undef_source_path,
@@ -10670,7 +10667,7 @@ fn compile_source_no_check_rejects_nested_deref_root_cause_diagnostic() {
         None,
         None,
     )
-    .expect_err("nested undefined-root deref should fail in codegen");
+    .must_err("nested undefined-root deref should fail in codegen");
     assert!(
         undef_err.contains("Undefined variable: missing"),
         "{undef_err}"
@@ -10703,7 +10700,7 @@ fn compile_source_no_check_rejects_nested_deref_root_cause_diagnostic() {
             }
         "#;
 
-    fs::write(&missing_source_path, missing_source).expect("write missing-field source");
+    fs::write(&missing_source_path, missing_source).must("write missing-field source");
     let missing_err = compile_source(
         missing_source,
         &missing_source_path,
@@ -10713,7 +10710,7 @@ fn compile_source_no_check_rejects_nested_deref_root_cause_diagnostic() {
         None,
         None,
     )
-    .expect_err("nested missing-field deref should fail in codegen");
+    .must_err("nested missing-field deref should fail in codegen");
     assert!(
         missing_err.contains("Unknown field 'missing' on class 'Inner'"),
         "{missing_err}"
@@ -10739,9 +10736,9 @@ fn compile_source_reports_unknown_class_method_with_class_diagnostic() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("missing Box method should fail");
+        .must_err("missing Box method should fail");
     assert!(
         err.contains("Unknown method 'missing' for class 'Box'"),
         "{err}"
@@ -10768,9 +10765,9 @@ fn compile_source_no_check_rejects_generic_missing_class_root_without_internal_c
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic missing class root should fail in codegen");
+        .must_err("generic missing class root should fail in codegen");
     assert!(err.contains("Undefined variable: Box"), "{err}");
     assert!(
         !err.contains(
@@ -10793,9 +10790,9 @@ fn compile_source_no_check_rejects_generic_missing_function_call_without_interna
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic missing function call should fail in codegen");
+        .must_err("generic missing function call should fail in codegen");
     assert!(err.contains("Undefined function: missing"), "{err}");
     assert!(
         !err.contains("Explicit generic call code generation is not supported yet"),
@@ -10821,9 +10818,9 @@ fn compile_source_no_check_rejects_generic_missing_method_call_without_internal_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic missing method call should fail in codegen");
+        .must_err("generic missing method call should fail in codegen");
     assert!(
         err.contains("Unknown method 'missing' for class 'Box'"),
         "{err}"
@@ -10849,9 +10846,9 @@ fn compile_source_no_check_rejects_enum_variant_call_type_args_cleanly() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("enum variant call type args should fail in codegen");
+        .must_err("enum variant call type args should fail in codegen");
     assert!(
         err.contains("Enum variant 'Boxed.Wrap' does not accept type arguments"),
         "{err}"
@@ -10878,9 +10875,9 @@ fn compile_source_no_check_rejects_enum_missing_method_with_user_facing_diagnost
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("missing enum method should fail in codegen");
+        .must_err("missing enum method should fail in codegen");
     assert!(
         err.contains("Unknown method 'missing' for class 'Boxed'"),
         "{err}"
@@ -10907,9 +10904,9 @@ fn compile_source_no_check_rejects_imported_enum_variant_call_type_args_cleanly(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("imported enum variant call type args should fail in codegen");
+        .must_err("imported enum variant call type args should fail in codegen");
     assert!(
         err.contains("Enum variant 'Boxed.Wrap' does not accept type arguments"),
         "{err}"
@@ -10934,13 +10931,13 @@ fn compile_source_no_check_runs_imported_enum_variant_alias_constructor_runtime(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked imported enum variant alias constructor should codegen");
+        .must("unchecked imported enum variant alias constructor should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked imported enum variant alias constructor binary");
+        .must("run compiled unchecked imported enum variant alias constructor binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10960,13 +10957,13 @@ fn compile_source_no_check_runs_imported_option_some_alias_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked imported Option.Some alias should codegen");
+        .must("unchecked imported Option.Some alias should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked imported Option.Some alias binary");
+        .must("run compiled unchecked imported Option.Some alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -10987,13 +10984,13 @@ fn compile_source_no_check_runs_imported_option_some_alias_function_value_runtim
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked imported Option.Some alias function value should codegen");
+        .must("unchecked imported Option.Some alias function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked imported Option.Some alias function value binary");
+        .must("run compiled unchecked imported Option.Some alias function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11016,13 +11013,13 @@ fn compile_source_no_check_runs_generic_class_constructor_function_value_runtime
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked generic class constructor function value should codegen");
+        .must("unchecked generic class constructor function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked generic class constructor function value binary");
+        .must("run compiled unchecked generic class constructor function value binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11047,13 +11044,13 @@ fn compile_source_no_check_runs_imported_generic_class_constructor_function_valu
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked imported generic class constructor function value should codegen");
+        .must("unchecked imported generic class constructor function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked imported generic class constructor function value binary");
+        .must("run compiled unchecked imported generic class constructor function value binary");
     assert_eq!(status.code(), Some(4));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11083,12 +11080,11 @@ fn compile_source_no_check_runs_imported_nested_generic_class_constructor_functi
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
-    compile_source(source, &source_path, &output_path, false, false, None, None).expect(
-        "unchecked imported nested generic class constructor function value should codegen",
-    );
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, false, None, None)
+        .must("unchecked imported nested generic class constructor function value should codegen");
 
-    let status = std::process::Command::new(&output_path).status().expect(
+    let status = std::process::Command::new(&output_path).status().must(
         "run compiled unchecked imported nested generic class constructor function value binary",
     );
     assert_eq!(status.code(), Some(6));
@@ -11113,13 +11109,13 @@ fn compile_source_no_check_runs_inferred_generic_class_constructor_function_valu
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked inferred generic class constructor function value should codegen");
+        .must("unchecked inferred generic class constructor function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked inferred generic class constructor function value binary");
+        .must("run compiled unchecked inferred generic class constructor function value binary");
     assert_eq!(status.code(), Some(8));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11146,13 +11142,13 @@ fn compile_source_no_check_runs_exact_imported_nested_enum_variant_aliases_runti
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked exact imported nested enum variant aliases should codegen");
+        .must("unchecked exact imported nested enum variant aliases should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked exact imported nested enum variant alias binary");
+        .must("run compiled unchecked exact imported nested enum variant alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11176,13 +11172,13 @@ fn compile_source_no_check_runs_imported_option_alias_match_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked imported Option alias match should codegen");
+        .must("unchecked imported Option alias match should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked imported Option alias match binary");
+        .must("run compiled unchecked imported Option alias match binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11213,12 +11209,12 @@ fn compile_source_no_check_runs_imported_inferred_generic_class_constructor_func
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
-    compile_source(source, &source_path, &output_path, false, false, None, None).expect(
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, false, None, None).must(
         "unchecked imported inferred generic class constructor function value should codegen",
     );
 
-    let status = std::process::Command::new(&output_path).status().expect(
+    let status = std::process::Command::new(&output_path).status().must(
         "run compiled unchecked imported inferred generic class constructor function value binary",
     );
     assert_eq!(status.code(), Some(8));
@@ -11254,11 +11250,11 @@ fn compile_source_no_check_runs_namespace_alias_inferred_generic_class_construct
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-            .expect("unchecked namespace alias inferred generic class constructor function value should codegen");
+            .must("unchecked namespace alias inferred generic class constructor function value should codegen");
 
-    let status = std::process::Command::new(&output_path).status().expect(
+    let status = std::process::Command::new(&output_path).status().must(
             "run compiled unchecked namespace alias inferred generic class constructor function value binary",
         );
     assert_eq!(status.code(), Some(9));
@@ -11293,12 +11289,12 @@ fn compile_source_no_check_runs_wildcard_imported_inferred_generic_class_constru
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
-    compile_source(source, &source_path, &output_path, false, false, None, None).expect(
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, false, None, None).must(
             "unchecked wildcard imported inferred generic class constructor function value should codegen",
         );
 
-    let status = std::process::Command::new(&output_path).status().expect(
+    let status = std::process::Command::new(&output_path).status().must(
             "run compiled unchecked wildcard imported inferred generic class constructor function value binary",
         );
     assert_eq!(status.code(), Some(17));
@@ -11324,13 +11320,13 @@ fn compile_source_no_check_runs_nested_generic_class_field_access_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked nested generic class field access should codegen");
+        .must("unchecked nested generic class field access should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked nested generic class field access binary");
+        .must("run compiled unchecked nested generic class field access binary");
     assert_eq!(status.code(), Some(6));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11355,13 +11351,13 @@ fn compile_source_no_check_runs_nested_generic_class_method_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked nested generic class method call should codegen");
+        .must("unchecked nested generic class method call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked nested generic class method call binary");
+        .must("run compiled unchecked nested generic class method call binary");
     assert_eq!(status.code(), Some(6));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11390,13 +11386,13 @@ fn compile_source_no_check_runs_wildcard_imported_nested_generic_class_field_acc
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked wildcard imported nested generic class field access should codegen");
+        .must("unchecked wildcard imported nested generic class field access should codegen");
 
-    let status = std::process::Command::new(&output_path).status().expect(
-        "run compiled unchecked wildcard imported nested generic class field access binary",
-    );
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .must("run compiled unchecked wildcard imported nested generic class field access binary");
     assert_eq!(status.code(), Some(13));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11426,13 +11422,13 @@ fn compile_source_no_check_runs_wildcard_imported_nested_generic_class_method_ru
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("unchecked wildcard imported nested generic class method should codegen");
+        .must("unchecked wildcard imported nested generic class method should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unchecked wildcard imported nested generic class method binary");
+        .must("run compiled unchecked wildcard imported nested generic class method binary");
     assert_eq!(status.code(), Some(13));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11449,9 +11445,9 @@ fn compile_source_no_check_rejects_option_static_call_type_args_cleanly() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Option.some explicit type args should fail in codegen");
+        .must_err("Option.some explicit type args should fail in codegen");
     assert!(
         err.contains("Option static methods do not accept explicit type arguments"),
         "{err}"
@@ -11478,9 +11474,9 @@ fn compile_source_no_check_rejects_imported_option_some_alias_type_args_cleanly(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("imported Option.Some alias type args should fail in codegen");
+        .must_err("imported Option.Some alias type args should fail in codegen");
     assert!(
         err.contains("Built-in function 'Option.some' does not accept type arguments"),
         "{err}"
@@ -11501,9 +11497,9 @@ fn compile_source_no_check_rejects_result_static_call_type_args_cleanly() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Result.ok explicit type args should fail in codegen");
+        .must_err("Result.ok explicit type args should fail in codegen");
     assert!(
         err.contains("Result static methods do not accept explicit type arguments"),
         "{err}"
@@ -11533,9 +11529,9 @@ fn compile_source_no_check_rejects_explicit_type_args_on_non_function_field_call
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic call on non-function field should fail in codegen");
+        .must_err("generic call on non-function field should fail in codegen");
     assert!(
         err.contains("Unknown method 'value' for class 'Box'"),
         "{err}"
@@ -11565,9 +11561,9 @@ fn compile_source_no_check_rejects_explicit_type_args_on_non_function_field_valu
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic function value on non-function field should fail in codegen");
+        .must_err("generic function value on non-function field should fail in codegen");
     assert!(
         err.contains("Unknown field 'value' on class 'Box'"),
         "{err}"
@@ -11600,9 +11596,9 @@ fn compile_source_no_check_rejects_namespaced_non_function_field_call_with_deman
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic call on namespaced non-function field should fail in codegen");
+        .must_err("generic call on namespaced non-function field should fail in codegen");
     assert!(
         err.contains("Unknown method 'value' for class 'U.Box'"),
         "{err}"
@@ -11631,9 +11627,9 @@ fn compile_source_no_check_rejects_namespaced_non_function_field_value_with_dema
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic value on namespaced non-function field should fail in codegen");
+        .must_err("generic value on namespaced non-function field should fail in codegen");
     assert!(
         err.contains("Unknown field 'value' on class 'U.Box'"),
         "{err}"
@@ -11655,9 +11651,9 @@ fn compile_source_no_check_rejects_unknown_string_method_with_string_diagnostic(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unknown String method should fail in codegen");
+        .must_err("unknown String method should fail in codegen");
     assert!(err.contains("Unknown String method: missing"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11675,9 +11671,9 @@ fn compile_source_no_check_rejects_list_method_arity_mismatch_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("list method arity mismatch should fail in codegen");
+        .must_err("list method arity mismatch should fail in codegen");
     assert!(
         err.contains("List.length() expects 0 argument(s), got 1"),
         "{err}"
@@ -11698,9 +11694,9 @@ fn compile_source_no_check_rejects_map_method_arity_mismatch_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("map method arity mismatch should fail in codegen");
+        .must_err("map method arity mismatch should fail in codegen");
     assert!(
         err.contains("Map.get() expects 1 argument(s), got 2"),
         "{err}"
@@ -11721,9 +11717,9 @@ fn compile_source_no_check_rejects_set_method_arity_mismatch_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("set method arity mismatch should fail in codegen");
+        .must_err("set method arity mismatch should fail in codegen");
     assert!(
         err.contains("Set.contains() expects 1 argument(s), got 2"),
         "{err}"
@@ -11744,9 +11740,9 @@ fn compile_source_no_check_rejects_option_method_arity_mismatch_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("option method arity mismatch should fail in codegen");
+        .must_err("option method arity mismatch should fail in codegen");
     assert!(
         err.contains("Option.unwrap() expects 0 argument(s), got 1"),
         "{err}"
@@ -11767,9 +11763,9 @@ fn compile_source_no_check_rejects_result_method_arity_mismatch_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("result method arity mismatch should fail in codegen");
+        .must_err("result method arity mismatch should fail in codegen");
     assert!(
         err.contains("Result.unwrap() expects 0 argument(s), got 1"),
         "{err}"
@@ -11790,9 +11786,9 @@ fn compile_source_no_check_rejects_range_method_arity_mismatch_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("range method arity mismatch should fail in codegen");
+        .must_err("range method arity mismatch should fail in codegen");
     assert!(
         err.contains("Range.next() expects 0 argument(s), got 1"),
         "{err}"
@@ -11813,9 +11809,9 @@ fn compile_source_no_check_rejects_option_none_constructor_arity_mismatch_in_cod
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Option.none arity mismatch should fail in codegen");
+        .must_err("Option.none arity mismatch should fail in codegen");
     assert!(
         err.contains("Option.none() expects 0 argument(s), got 1"),
         "{err}"
@@ -11837,9 +11833,9 @@ fn compile_source_no_check_rejects_stdlib_math_abs_arity_mismatch_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Math.abs arity mismatch should fail in codegen");
+        .must_err("Math.abs arity mismatch should fail in codegen");
     assert!(
         err.contains("Math__abs() expects 1 argument(s), got 0"),
         "{err}"
@@ -11861,9 +11857,9 @@ fn compile_source_no_check_rejects_stdlib_math_pi_arity_mismatch_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Math.pi arity mismatch should fail in codegen");
+        .must_err("Math.pi arity mismatch should fail in codegen");
     assert!(
         err.contains("Math__pi() expects 0 argument(s), got 1"),
         "{err}"
@@ -11884,9 +11880,9 @@ fn compile_source_no_check_rejects_exit_arity_mismatch_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("exit arity mismatch should fail in codegen");
+        .must_err("exit arity mismatch should fail in codegen");
     assert!(err.contains("exit() expects 1 argument(s), got 0"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -11906,9 +11902,9 @@ fn compile_source_no_check_rejects_math_abs_boolean_argument_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Math.abs(Boolean) should fail in codegen");
+        .must_err("Math.abs(Boolean) should fail in codegen");
     assert!(
         err.contains("Math.abs() requires numeric type, got Boolean"),
         "{err}"
@@ -11931,9 +11927,9 @@ fn compile_source_no_check_rejects_math_min_boolean_arguments_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Math.min(Boolean, Boolean) should fail in codegen");
+        .must_err("Math.min(Boolean, Boolean) should fail in codegen");
     assert!(
         err.contains("Math.min() arguments must be numeric types, got Boolean and Boolean"),
         "{err}"
@@ -11967,9 +11963,9 @@ fn compile_source_no_check_rejects_math_min_on_module_local_non_numeric_type_wit
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Math.min(module-local Box, Float) should fail in codegen");
+        .must_err("Math.min(module-local Box, Float) should fail in codegen");
     assert!(
         err.contains("Math.min() arguments must be numeric types, got M.Box and Float"),
         "{err}"
@@ -12004,9 +12000,9 @@ fn compile_source_no_check_rejects_math_max_on_module_local_non_numeric_type_wit
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("Math.max(module-local Box, Float) should fail in codegen");
+        .must_err("Math.max(module-local Box, Float) should fail in codegen");
     assert!(
         err.contains("Math.max() arguments must be numeric types, got M.Box and Float"),
         "{err}"
@@ -12039,9 +12035,9 @@ fn compile_source_no_check_rejects_logical_operator_on_module_local_non_boolean_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("logical operator on module-local Box should fail in codegen");
+        .must_err("logical operator on module-local Box should fail in codegen");
     assert!(
         err.contains("Logical operator requires Boolean types, got M.Box and Boolean"),
         "{err}"
@@ -12064,9 +12060,9 @@ fn compile_source_no_check_rejects_invalid_to_float_function_value_signature() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid to_float function value signature should fail in codegen");
+        .must_err("invalid to_float function value signature should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected (Boolean) -> Float, got (unknown) -> Float"),
         "{err}"
@@ -12088,9 +12084,9 @@ fn compile_source_no_check_rejects_invalid_assert_true_function_value_signature(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("invalid assert_true function value signature should fail in codegen");
+        .must_err("invalid assert_true function value signature should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected (Integer) -> None, got (unknown) -> None"),
         "{err}"
@@ -12113,9 +12109,9 @@ fn compile_source_no_check_rejects_match_literal_type_mismatch_in_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("match literal type mismatch should fail in codegen");
+        .must_err("match literal type mismatch should fail in codegen");
     assert!(
         err.contains("Pattern type mismatch: expected Boolean, found Integer"),
         "{err}"
@@ -12146,9 +12142,9 @@ fn compile_source_no_check_rejects_module_local_match_literal_type_mismatch_with
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local match literal type mismatch should fail in codegen");
+        .must_err("module-local match literal type mismatch should fail in codegen");
     assert!(
         err.contains("Pattern type mismatch: expected M.Box, found Integer"),
         "{err}"
@@ -12172,9 +12168,9 @@ fn compile_source_no_check_rejects_match_expr_variant_type_mismatch_in_codegen()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("match expression variant mismatch should fail in codegen");
+        .must_err("match expression variant mismatch should fail in codegen");
     assert!(
         err.contains("Cannot match variant Some on type Boolean"),
         "{err}"
@@ -12203,9 +12199,9 @@ fn compile_source_no_check_rejects_module_local_match_expr_variant_type_mismatch
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local match expression variant mismatch should fail");
+        .must_err("module-local match expression variant mismatch should fail");
     assert!(
         err.contains("Cannot match variant Some on type M.Token"),
         "{err}"
@@ -12229,9 +12225,9 @@ fn compile_source_no_check_rejects_match_stmt_variant_type_mismatch_in_codegen()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("match statement variant mismatch should fail in codegen");
+        .must_err("match statement variant mismatch should fail in codegen");
     assert!(
         err.contains("Cannot match variant Some on type Boolean"),
         "{err}"
@@ -12260,9 +12256,9 @@ fn compile_source_no_check_rejects_module_local_match_stmt_variant_type_mismatch
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local match statement variant mismatch should fail");
+        .must_err("module-local match statement variant mismatch should fail");
     assert!(
         err.contains("Cannot match variant Some on type M.Token"),
         "{err}"
@@ -12292,13 +12288,13 @@ fn compile_source_runs_match_expr_with_user_enum_some_string_payload_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("match expression with user enum Some(String) should codegen");
+        .must("match expression with user enum Some(String) should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled user enum Some(String) match expression binary");
+        .must("run compiled user enum Some(String) match expression binary");
     assert_eq!(status.code(), Some(5));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -12318,13 +12314,13 @@ fn compile_source_runs_string_interpolation_on_boolean_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation on Boolean should codegen");
+        .must("string interpolation on Boolean should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string interpolation Boolean binary");
+        .must("run compiled string interpolation Boolean binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -12344,13 +12340,13 @@ fn compile_source_runs_string_interpolation_on_char_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation on Char should codegen");
+        .must("string interpolation on Char should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string interpolation Char binary");
+        .must("run compiled string interpolation Char binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -12370,13 +12366,13 @@ fn compile_source_runs_string_interpolation_on_none_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation on None should codegen");
+        .must("string interpolation on None should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string interpolation None binary");
+        .must("run compiled string interpolation None binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -12397,13 +12393,13 @@ fn compile_source_fails_fast_on_math_abs_min_integer_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Math.abs minimum integer should codegen");
+        .must("Math.abs minimum integer should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled Math.abs minimum integer binary");
+        .must("run compiled Math.abs minimum integer binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -12428,13 +12424,13 @@ fn compile_source_prints_boolean_with_user_facing_representation() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("print(Boolean) should codegen");
+        .must("print(Boolean) should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled print Boolean binary");
+        .must("run compiled print Boolean binary");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert_eq!(stdout, "true");
@@ -12456,13 +12452,13 @@ fn compile_source_prints_unicode_char_with_user_facing_representation() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("print(Char) should codegen");
+        .must("print(Char) should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled print Char binary");
+        .must("run compiled print Char binary");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert_eq!(stdout, "🚀");
@@ -12484,13 +12480,13 @@ fn compile_source_prints_none_with_user_facing_representation() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("print(None) should codegen");
+        .must("print(None) should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled print None binary");
+        .must("run compiled print None binary");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert_eq!(stdout, "None");
@@ -12512,13 +12508,13 @@ fn compile_source_runs_print_on_option_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("print on Option should codegen");
+        .must("print on Option should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled print Option binary");
+        .must("run compiled print Option binary");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert_eq!(stdout, "Some(1)");
@@ -12540,13 +12536,13 @@ fn compile_source_runs_print_on_direct_option_none_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("print on direct Option.none should codegen");
+        .must("print on direct Option.none should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled print direct Option.none binary");
+        .must("run compiled print direct Option.none binary");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert_eq!(stdout, "None");
@@ -12568,13 +12564,13 @@ fn compile_source_runs_print_on_direct_result_error_with_option_none_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("print on direct Result.error(Option.none()) should codegen");
+        .must("print on direct Result.error(Option.none()) should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled print direct Result.error(Option.none()) binary");
+        .must("run compiled print direct Result.error(Option.none()) binary");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert_eq!(stdout, "Error(None)");
@@ -12597,13 +12593,13 @@ fn compile_source_runs_print_on_result_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("print on Result should codegen");
+        .must("print on Result should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled print Result binary");
+        .must("run compiled print Result binary");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert_eq!(stdout, "Error(boom)");
@@ -12625,13 +12621,13 @@ fn compile_source_runs_print_on_direct_result_error_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("print on direct Result.error should codegen");
+        .must("print on direct Result.error should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled print direct Result.error binary");
+        .must("run compiled print direct Result.error binary");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert_eq!(stdout, "Error(boom)");
@@ -12653,13 +12649,13 @@ fn compile_source_runs_string_interpolation_with_string_literal_index_key_runtim
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation with string literal key should codegen");
+        .must("string interpolation with string literal key should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string interpolation with string key binary");
+        .must("run compiled string interpolation with string key binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -12685,13 +12681,13 @@ fn compile_source_runs_long_string_interpolation_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("long string interpolation should codegen");
+        .must("long string interpolation should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled long string interpolation binary");
+        .must("run compiled long string interpolation binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -12711,13 +12707,13 @@ fn compile_source_runs_string_interpolation_with_nested_braces_string_literal_ru
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation with nested braces in string literal should codegen");
+        .must("string interpolation with nested braces in string literal should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled nested braces string interpolation binary");
+        .must("run compiled nested braces string interpolation binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -12735,13 +12731,13 @@ fn compile_source_runs_string_interpolation_with_char_brace_literal_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string interpolation with char brace literal should codegen");
+        .must("string interpolation with char brace literal should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled char brace interpolation binary");
+        .must("run compiled char brace interpolation binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -12769,13 +12765,13 @@ fn compile_source_runs_float_interpolation_from_nested_module_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("nested module float interpolation should codegen");
+        .must("nested module float interpolation should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled nested module float interpolation binary");
+        .must("run compiled nested module float interpolation binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -12806,13 +12802,13 @@ fn compile_source_runs_inline_mixed_numeric_if_interpolation_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("inline mixed numeric if interpolation should codegen");
+        .must("inline mixed numeric if interpolation should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled inline mixed numeric if interpolation binary");
+        .must("run compiled inline mixed numeric if interpolation binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -12839,13 +12835,13 @@ fn compile_source_runs_inline_mixed_numeric_match_interpolation_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("inline mixed numeric match interpolation should codegen");
+        .must("inline mixed numeric match interpolation should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled inline mixed numeric match interpolation binary");
+        .must("run compiled inline mixed numeric match interpolation binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -12872,13 +12868,13 @@ fn compile_source_runs_unit_enum_match_expression_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("unit enum match expression should codegen");
+        .must("unit enum match expression should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled unit enum match expression binary");
+        .must("run compiled unit enum match expression binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -12905,13 +12901,13 @@ fn compile_source_runs_imported_unit_enum_variant_alias_match_expression_runtime
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported unit enum variant alias match interpolation should codegen");
+        .must("imported unit enum variant alias match interpolation should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled imported unit enum variant alias match binary");
+        .must("run compiled imported unit enum variant alias match binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -12939,13 +12935,13 @@ fn compile_source_runs_imported_unit_enum_variant_alias_patterns_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported unit enum variant alias pattern should codegen");
+        .must("imported unit enum variant alias pattern should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled imported unit enum variant alias pattern binary");
+        .must("run compiled imported unit enum variant alias pattern binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -12973,9 +12969,9 @@ fn check_source_rejects_non_exhaustive_imported_unit_enum_variant_alias_pattern(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("alias unit variant pattern should not act as catch-all");
+        .must_err("alias unit variant pattern should not act as catch-all");
     assert!(
         err.contains("Non-exhaustive match expression"),
         "unexpected error: {err}"
@@ -12999,13 +12995,13 @@ fn compile_source_runs_imported_payload_enum_variant_alias_patterns_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported payload enum variant alias patterns should codegen");
+        .must("imported payload enum variant alias patterns should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled imported payload enum variant alias pattern binary");
+        .must("run compiled imported payload enum variant alias pattern binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -13034,13 +13030,13 @@ fn compile_source_runs_imported_top_level_type_alias_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported top-level type alias should codegen");
+        .must("imported top-level type alias should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported top-level type alias binary");
+        .must("run compiled imported top-level type alias binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13065,13 +13061,13 @@ fn compile_source_runs_imported_nested_type_alias_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported nested type alias should codegen");
+        .must("imported nested type alias should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported nested type alias binary");
+        .must("run compiled imported nested type alias binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13094,13 +13090,13 @@ fn compile_source_runs_imported_generic_top_level_type_alias_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported generic top-level type alias should codegen");
+        .must("imported generic top-level type alias should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported generic top-level type alias binary");
+        .must("run compiled imported generic top-level type alias binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13125,13 +13121,13 @@ fn compile_source_runs_imported_generic_nested_type_alias_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported generic nested type alias should codegen");
+        .must("imported generic nested type alias should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported generic nested type alias binary");
+        .must("run compiled imported generic nested type alias binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13154,13 +13150,13 @@ fn compile_source_runs_generic_class_constructor_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("generic class constructor function value should codegen");
+        .must("generic class constructor function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled generic class constructor function value binary");
+        .must("run compiled generic class constructor function value binary");
     assert_eq!(status.code(), Some(3));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13185,13 +13181,13 @@ fn compile_source_runs_imported_generic_class_constructor_function_value_runtime
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported generic class constructor function value should codegen");
+        .must("imported generic class constructor function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported generic class constructor function value binary");
+        .must("run compiled imported generic class constructor function value binary");
     assert_eq!(status.code(), Some(4));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13218,13 +13214,13 @@ fn compile_source_runs_imported_nested_generic_class_constructor_function_value_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported nested generic class constructor function value should codegen");
+        .must("imported nested generic class constructor function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported nested generic class constructor function value binary");
+        .must("run compiled imported nested generic class constructor function value binary");
     assert_eq!(status.code(), Some(6));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13247,13 +13243,13 @@ fn compile_source_runs_inferred_generic_class_constructor_function_value_runtime
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("inferred generic class constructor function value should codegen");
+        .must("inferred generic class constructor function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled inferred generic class constructor function value binary");
+        .must("run compiled inferred generic class constructor function value binary");
     assert_eq!(status.code(), Some(8));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13280,13 +13276,13 @@ fn compile_source_runs_imported_inferred_generic_class_constructor_function_valu
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported inferred generic class constructor function value should codegen");
+        .must("imported inferred generic class constructor function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported inferred generic class constructor function value binary");
+        .must("run compiled imported inferred generic class constructor function value binary");
     assert_eq!(status.code(), Some(8));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13318,11 +13314,11 @@ fn compile_source_runs_namespace_alias_inferred_generic_class_constructor_functi
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("namespace alias inferred generic class constructor function value should codegen");
+        .must("namespace alias inferred generic class constructor function value should codegen");
 
-    let status = std::process::Command::new(&output_path).status().expect(
+    let status = std::process::Command::new(&output_path).status().must(
         "run compiled namespace alias inferred generic class constructor function value binary",
     );
     assert_eq!(status.code(), Some(9));
@@ -13356,12 +13352,11 @@ fn compile_source_runs_wildcard_imported_inferred_generic_class_constructor_func
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
-    compile_source(source, &source_path, &output_path, false, true, None, None).expect(
-        "wildcard imported inferred generic class constructor function value should codegen",
-    );
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .must("wildcard imported inferred generic class constructor function value should codegen");
 
-    let status = std::process::Command::new(&output_path).status().expect(
+    let status = std::process::Command::new(&output_path).status().must(
         "run compiled wildcard imported inferred generic class constructor function value binary",
     );
     assert_eq!(status.code(), Some(17));
@@ -13387,13 +13382,13 @@ fn compile_source_runs_nested_generic_class_field_access_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("nested generic class field access should codegen");
+        .must("nested generic class field access should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled nested generic class field access binary");
+        .must("run compiled nested generic class field access binary");
     assert_eq!(status.code(), Some(6));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13418,13 +13413,13 @@ fn compile_source_runs_nested_generic_class_method_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("nested generic class method call should codegen");
+        .must("nested generic class method call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled nested generic class method call binary");
+        .must("run compiled nested generic class method call binary");
     assert_eq!(status.code(), Some(6));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13450,13 +13445,13 @@ fn compile_source_runs_wildcard_imported_nested_generic_class_field_access_runti
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("wildcard imported nested generic class field access should codegen");
+        .must("wildcard imported nested generic class field access should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled wildcard imported nested generic class field access binary");
+        .must("run compiled wildcard imported nested generic class field access binary");
     assert_eq!(status.code(), Some(13));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13483,13 +13478,13 @@ fn compile_source_runs_wildcard_imported_nested_generic_class_method_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("wildcard imported nested generic class method should codegen");
+        .must("wildcard imported nested generic class method should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled wildcard imported nested generic class method binary");
+        .must("run compiled wildcard imported nested generic class method binary");
     assert_eq!(status.code(), Some(13));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13511,13 +13506,13 @@ fn compile_source_runs_imported_enum_type_alias_variant_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported enum type alias variant should codegen");
+        .must("imported enum type alias variant should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported enum type alias variant binary");
+        .must("run compiled imported enum type alias variant binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13546,13 +13541,13 @@ fn compile_source_runs_namespace_alias_nested_generic_class_constructor_runtime(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("namespace alias nested generic class constructor should codegen");
+        .must("namespace alias nested generic class constructor should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled namespace alias nested generic class constructor binary");
+        .must("run compiled namespace alias nested generic class constructor binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13574,13 +13569,13 @@ fn compile_source_runs_namespace_alias_enum_variant_constructor_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("namespace alias enum variant constructor should codegen");
+        .must("namespace alias enum variant constructor should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled namespace alias enum variant constructor binary");
+        .must("run compiled namespace alias enum variant constructor binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13606,13 +13601,13 @@ fn compile_source_runs_namespace_alias_nested_enum_variant_constructor_runtime()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("namespace alias nested enum variant constructor should codegen");
+        .must("namespace alias nested enum variant constructor should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled namespace alias nested enum variant constructor binary");
+        .must("run compiled namespace alias nested enum variant constructor binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13641,13 +13636,13 @@ fn compile_source_runs_imported_generic_function_alias_returning_generic_class_r
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported generic function alias returning generic class should codegen");
+        .must("imported generic function alias returning generic class should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported generic function alias returning generic class binary");
+        .must("run compiled imported generic function alias returning generic class binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13668,13 +13663,13 @@ fn compile_source_runs_imported_generic_function_alias_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported generic function alias should codegen");
+        .must("imported generic function alias should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported generic function alias binary");
+        .must("run compiled imported generic function alias binary");
     assert_eq!(status.code(), Some(2));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13699,13 +13694,13 @@ fn compile_source_runs_exact_imported_module_named_main_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("exact-imported module named main should codegen");
+        .must("exact-imported module named main should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled exact-imported module named main binary");
+        .must("run compiled exact-imported module named main binary");
     assert_eq!(status.code(), Some(22));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13730,13 +13725,13 @@ fn compile_source_runs_wildcard_imported_module_named_main_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("wildcard-imported module named main should codegen");
+        .must("wildcard-imported module named main should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled wildcard-imported module named main binary");
+        .must("run compiled wildcard-imported module named main binary");
     assert_eq!(status.code(), Some(22));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13758,13 +13753,13 @@ fn compile_source_runs_if_expression_builtin_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("if-expression builtin function value should codegen");
+        .must("if-expression builtin function value should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled if-expression builtin function value binary");
+        .must("run compiled if-expression builtin function value binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -13794,13 +13789,13 @@ fn compile_source_runs_match_expression_builtin_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("match-expression builtin function value should codegen");
+        .must("match-expression builtin function value should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled match-expression builtin function value binary");
+        .must("run compiled match-expression builtin function value binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -13831,14 +13826,14 @@ fn compile_source_runs_if_expression_float_function_value_with_integer_argument_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
-    compile_source(source, &source_path, &output_path, false, true, None, None).expect(
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None).must(
         "if-expression Float function value should lower Integer arguments through expected types",
     );
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled if-expression Float function value binary");
+        .must("run compiled if-expression Float function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -13860,13 +13855,13 @@ fn compile_source_runs_option_some_builtin_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Option.some builtin function value should codegen");
+        .must("Option.some builtin function value should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled Option.some builtin function value binary");
+        .must("run compiled Option.some builtin function value binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -13897,13 +13892,13 @@ fn compile_source_runs_if_expression_option_some_builtin_function_value_runtime(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("if-expression Option.some builtin function value should codegen");
+        .must("if-expression Option.some builtin function value should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled if-expression Option.some builtin function value binary");
+        .must("run compiled if-expression Option.some builtin function value binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -13938,13 +13933,13 @@ fn compile_source_runs_match_expression_option_some_builtin_function_value_runti
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("match-expression Option.some builtin function value should codegen");
+        .must("match-expression Option.some builtin function value should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled match-expression Option.some builtin function value binary");
+        .must("run compiled match-expression Option.some builtin function value binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -13973,13 +13968,13 @@ fn compile_source_runs_result_ok_builtin_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Result.ok builtin function value should codegen");
+        .must("Result.ok builtin function value should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled Result.ok builtin function value binary");
+        .must("run compiled Result.ok builtin function value binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -14012,13 +14007,13 @@ fn compile_source_runs_result_error_builtin_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Result.error builtin function value should codegen");
+        .must("Result.error builtin function value should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled Result.error builtin function value binary");
+        .must("run compiled Result.error builtin function value binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -14044,13 +14039,13 @@ fn compile_source_runs_direct_option_some_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Option.some function value should codegen");
+        .must("direct Option.some function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Option.some function value binary");
+        .must("run compiled direct Option.some function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14069,13 +14064,13 @@ fn compile_source_runs_direct_option_none_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Option.none function value should codegen");
+        .must("direct Option.none function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Option.none function value binary");
+        .must("run compiled direct Option.none function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14094,13 +14089,13 @@ fn compile_source_runs_direct_result_ok_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Result.ok function value should codegen");
+        .must("direct Result.ok function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Result.ok function value binary");
+        .must("run compiled direct Result.ok function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14119,13 +14114,13 @@ fn compile_source_runs_direct_result_error_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Result.error function value should codegen");
+        .must("direct Result.error function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Result.error function value binary");
+        .must("run compiled direct Result.error function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14143,9 +14138,9 @@ fn compile_source_rejects_direct_option_some_function_value_type_mismatch() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("direct Option.some mismatch should fail");
+        .must_err("direct Option.some mismatch should fail");
     assert!(
         err.contains(
             "Type mismatch: expected (String) -> Option<Integer>, got (unknown) -> Option<unknown>"
@@ -14172,13 +14167,13 @@ fn compile_source_runs_direct_enum_payload_variant_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct enum payload variant function value should codegen");
+        .must("direct enum payload variant function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct enum payload variant function value binary");
+        .must("run compiled direct enum payload variant function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14197,13 +14192,13 @@ fn compile_source_runs_direct_enum_unit_variant_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct enum unit variant function value should codegen");
+        .must("direct enum unit variant function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct enum unit variant function value binary");
+        .must("run compiled direct enum unit variant function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14222,9 +14217,9 @@ fn compile_source_rejects_direct_enum_variant_function_value_type_mismatch() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("direct enum variant mismatch should fail");
+        .must_err("direct enum variant mismatch should fail");
     assert!(
         err.contains("Type mismatch: expected (String) -> Boxed, got (Integer) -> Boxed"),
         "unexpected error: {err}"
@@ -14252,9 +14247,9 @@ fn compile_source_no_check_rejects_module_local_enum_variant_function_value_type
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local enum variant function value mismatch should fail");
+        .must_err("module-local enum variant function value mismatch should fail");
     assert!(
         err.contains("Type mismatch: expected () -> M.Token, got (Integer) -> M.Token"),
         "{err}"
@@ -14287,9 +14282,9 @@ fn compile_source_no_check_rejects_specialized_constructor_wrong_arity_with_user
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("specialized constructor wrong arity should fail in codegen");
+        .must_err("specialized constructor wrong arity should fail in codegen");
     assert!(
         err.contains("Constructor M.Pair_Box<Integer, String> expects 2 argument(s), got 1"),
         "{err}"
@@ -14326,9 +14321,9 @@ fn compile_source_no_check_rejects_specialized_method_wrong_arity_with_user_faci
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("specialized method wrong arity should fail in codegen");
+        .must_err("specialized method wrong arity should fail in codegen");
     assert!(
         err.contains("M.Pair_Box<Integer, String>.first_value() expects 0 argument(s), got 1"),
         "{err}"
@@ -14361,9 +14356,9 @@ fn compile_source_no_check_rejects_unknown_specialized_class_field_access_with_u
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("missing specialized field access should fail in codegen");
+        .must_err("missing specialized field access should fail in codegen");
     assert!(
         err.contains("Unknown field 'missing' on class 'M.Pair_Box<Integer, String>'"),
         "{err}"
@@ -14391,9 +14386,9 @@ fn compile_source_no_check_rejects_module_local_missing_method_with_user_facing_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local missing method should fail in codegen");
+        .must_err("module-local missing method should fail in codegen");
     assert!(
         err.contains("Unknown method 'missing' for class 'M.Box'"),
         "{err}"
@@ -14425,9 +14420,9 @@ fn compile_source_no_check_rejects_bound_method_function_value_wrong_arity() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("bound method function value wrong arity should fail in codegen");
+        .must_err("bound method function value wrong arity should fail in codegen");
     assert!(
         err.contains("Function value () -> Integer expects 0 argument(s), got 1"),
         "{err}"
@@ -14463,9 +14458,9 @@ fn compile_source_no_check_rejects_generic_bound_method_function_value_signature
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("generic bound method signature mismatch should fail in codegen");
+        .must_err("generic bound method signature mismatch should fail in codegen");
     assert!(
         err.contains("Cannot use function value () -> Integer as (Integer) -> Integer"),
         "{err}"
@@ -14499,9 +14494,9 @@ fn compile_source_no_check_rejects_enum_missing_bound_method_value_with_user_fac
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("missing enum bound method value should fail in codegen");
+        .must_err("missing enum bound method value should fail in codegen");
     assert!(
         err.contains("Unknown field 'missing' on class 'Boxed'"),
         "{err}"
@@ -14527,9 +14522,9 @@ fn compile_source_no_check_rejects_enum_variant_function_value_field_access_with
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("enum variant function value field access should fail in codegen");
+        .must_err("enum variant function value field access should fail in codegen");
     assert!(
         err.contains("Unknown field 'Wrap' on class 'Boxed'"),
         "{err}"
@@ -14556,9 +14551,9 @@ fn compile_source_no_check_rejects_module_function_wrong_arity_instead_of_ignori
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module function wrong arity should fail in codegen");
+        .must_err("module function wrong arity should fail in codegen");
     assert!(
         err.contains("Function value (Integer) -> Integer expects 1 argument(s), got 2"),
         "{err}"
@@ -14580,9 +14575,9 @@ fn compile_source_rejects_enum_variant_function_value_type_args_cleanly() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("enum variant function value type args should fail");
+        .must_err("enum variant function value type args should fail");
     assert!(
         err.contains("Enum variant 'Boxed.Wrap' does not accept type arguments"),
         "unexpected error: {err}"
@@ -14603,9 +14598,9 @@ fn compile_source_rejects_builtin_constructor_function_value_type_args_cleanly()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("builtin constructor function value type args should fail");
+        .must_err("builtin constructor function value type args should fail");
     assert!(
         err.contains("Built-in function 'Option.some' does not accept type arguments"),
         "unexpected error: {err}"
@@ -14628,9 +14623,9 @@ fn compile_source_rejects_imported_enum_variant_function_value_type_args_cleanly
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("imported enum variant function value type args should fail");
+        .must_err("imported enum variant function value type args should fail");
     assert!(
         err.contains("Enum variant 'Boxed.Wrap' does not accept type arguments"),
         "unexpected error: {err}"
@@ -14652,9 +14647,9 @@ fn compile_source_rejects_imported_enum_variant_call_type_args_cleanly() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("imported enum variant call type args should fail");
+        .must_err("imported enum variant call type args should fail");
     assert!(
         err.contains("Enum variant 'Boxed.Wrap' does not accept type arguments"),
         "unexpected error: {err}"
@@ -14682,9 +14677,9 @@ fn compile_source_rejects_nested_imported_enum_variant_function_value_type_args_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("nested imported enum variant function value type args should fail");
+        .must_err("nested imported enum variant function value type args should fail");
     assert!(
         err.contains("Enum variant 'U.V.E.Wrap' does not accept type arguments"),
         "unexpected error: {err}"
@@ -14710,9 +14705,9 @@ fn compile_source_rejects_nested_imported_enum_variant_call_type_args_cleanly() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("nested imported enum variant call type args should fail");
+        .must_err("nested imported enum variant call type args should fail");
     assert!(
         err.contains("Enum variant 'U.V.E.Wrap' does not accept type arguments"),
         "unexpected error: {err}"
@@ -14734,9 +14729,9 @@ fn compile_source_rejects_builtin_constructor_function_value_type_args_nocheck()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("builtin constructor function value type args should fail in codegen");
+        .must_err("builtin constructor function value type args should fail in codegen");
     assert!(
         err.contains("Built-in function 'Result.ok' does not accept type arguments"),
         "unexpected error: {err}"
@@ -14760,13 +14755,13 @@ fn compile_source_runs_constructor_builtin_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("constructor builtin function value should codegen");
+        .must("constructor builtin function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled constructor builtin function value binary");
+        .must("run compiled constructor builtin function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14787,13 +14782,13 @@ fn compile_source_runs_generic_constructor_builtin_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("generic constructor builtin function value should codegen");
+        .must("generic constructor builtin function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled generic constructor builtin function value binary");
+        .must("run compiled generic constructor builtin function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14817,13 +14812,13 @@ fn compile_source_runs_generic_method_builtin_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("generic method builtin function value should codegen");
+        .must("generic method builtin function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled generic method builtin function value binary");
+        .must("run compiled generic method builtin function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14850,13 +14845,13 @@ fn compile_source_runs_user_defined_result_generic_method_builtin_function_value
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("user-defined Result generic method builtin function value should codegen");
+        .must("user-defined Result generic method builtin function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled user-defined Result generic method builtin function value binary");
+        .must("run compiled user-defined Result generic method builtin function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14885,13 +14880,13 @@ fn compile_source_runs_if_receiver_result_generic_method_builtin_function_value_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("if receiver Result generic method builtin function value should codegen");
+        .must("if receiver Result generic method builtin function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled if receiver Result generic method builtin function value binary");
+        .must("run compiled if receiver Result generic method builtin function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14918,13 +14913,13 @@ fn compile_source_runs_if_receiver_map_generic_method_builtin_function_value_run
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("if receiver Map generic method builtin function value should codegen");
+        .must("if receiver Map generic method builtin function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled if receiver Map generic method builtin function value binary");
+        .must("run compiled if receiver Map generic method builtin function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14947,13 +14942,13 @@ fn compile_source_runs_method_lambda_capturing_this_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("method lambda capturing this should codegen");
+        .must("method lambda capturing this should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled method lambda capturing this binary");
+        .must("run compiled method lambda capturing this binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -14976,13 +14971,13 @@ fn compile_source_runs_generic_method_lambda_capturing_this_and_builtin_callback
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("generic method lambda capturing this with builtin callback should codegen");
+        .must("generic method lambda capturing this with builtin callback should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled generic method lambda capturing this builtin callback binary");
+        .must("run compiled generic method lambda capturing this builtin callback binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15001,13 +14996,13 @@ fn compile_source_runs_lambda_if_expression_capture_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("lambda if-expression capture should codegen");
+        .must("lambda if-expression capture should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled lambda if-expression capture binary");
+        .must("run compiled lambda if-expression capture binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15026,13 +15021,13 @@ fn compile_source_runs_async_if_expression_capture_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("async if-expression capture should codegen");
+        .must("async if-expression capture should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled async if-expression capture binary");
+        .must("run compiled async if-expression capture binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15055,13 +15050,13 @@ fn compile_source_runs_async_shadowed_borrow_name_without_false_capture_runtime(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("async shadowed borrow name should codegen");
+        .must("async shadowed borrow name should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled async shadowed borrow name binary");
+        .must("run compiled async shadowed borrow name binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15084,13 +15079,13 @@ fn compile_source_runs_async_match_pattern_shadowed_borrow_name_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("async match pattern shadowed borrow name should codegen");
+        .must("async match pattern shadowed borrow name should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled async match pattern shadowed borrow name binary");
+        .must("run compiled async match pattern shadowed borrow name binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15109,13 +15104,13 @@ fn compile_source_runs_async_block_integer_tail_for_float_task_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("async block Integer tail for Task<Float> should codegen");
+        .must("async block Integer tail for Task<Float> should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled async Integer tail Float task binary");
+        .must("run compiled async Integer tail Float task binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15134,13 +15129,13 @@ fn compile_source_runs_integer_tail_lambda_for_float_return_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("lambda Integer tail for Float return should codegen");
+        .must("lambda Integer tail for Float return should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled lambda Integer tail Float return binary");
+        .must("run compiled lambda Integer tail Float return binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15163,13 +15158,13 @@ fn compile_source_runs_named_integer_function_value_for_float_return_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("named Integer function value for Float return should codegen");
+        .must("named Integer function value for Float return should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled named Integer function value Float return binary");
+        .must("run compiled named Integer function value Float return binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15191,13 +15186,13 @@ fn compile_source_runs_explicit_generic_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("explicit generic function value should codegen");
+        .must("explicit generic function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled explicit generic function value binary");
+        .must("run compiled explicit generic function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15221,13 +15216,13 @@ fn compile_source_runs_imported_alias_explicit_generic_function_value_runtime() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported alias explicit generic function value should codegen");
+        .must("imported alias explicit generic function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported alias explicit generic function value binary");
+        .must("run compiled imported alias explicit generic function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15247,13 +15242,13 @@ fn compile_source_runs_imported_option_some_alias_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported Option.Some alias should codegen");
+        .must("imported Option.Some alias should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported Option.Some alias binary");
+        .must("run compiled imported Option.Some alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15274,13 +15269,13 @@ fn compile_source_runs_imported_option_some_alias_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported Option.Some alias function value should codegen");
+        .must("imported Option.Some alias function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported Option.Some alias function value binary");
+        .must("run compiled imported Option.Some alias function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15304,13 +15299,13 @@ fn compile_source_runs_imported_option_alias_match_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported Option alias match should codegen");
+        .must("imported Option alias match should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported Option alias match binary");
+        .must("run compiled imported Option alias match binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15330,13 +15325,13 @@ fn compile_source_runs_imported_result_ok_alias_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("imported Result.Ok alias should codegen");
+        .must("imported Result.Ok alias should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled imported Result.Ok alias binary");
+        .must("run compiled imported Result.Ok alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15361,13 +15356,13 @@ fn compile_source_runs_exact_imported_nested_enum_variant_aliases_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("exact imported nested enum variant aliases should codegen");
+        .must("exact imported nested enum variant aliases should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled exact imported nested enum variant alias binary");
+        .must("run compiled exact imported nested enum variant alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15391,13 +15386,13 @@ fn compile_source_runs_function_variable_retyped_to_float_return_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("function variable retyped to Float return should codegen");
+        .must("function variable retyped to Float return should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled function variable retyped Float return binary");
+        .must("run compiled function variable retyped Float return binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15420,13 +15415,13 @@ fn compile_source_runs_named_function_value_retyped_to_integer_parameter_runtime
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("named function value retyped Integer parameter should codegen");
+        .must("named function value retyped Integer parameter should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled named function value retyped Integer parameter binary");
+        .must("run compiled named function value retyped Integer parameter binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15457,13 +15452,13 @@ fn compile_source_runs_named_function_value_with_interface_return_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("named function value with interface return should codegen");
+        .must("named function value with interface return should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled named function value interface return binary");
+        .must("run compiled named function value interface return binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15495,13 +15490,13 @@ fn compile_source_runs_named_function_value_with_interface_parameter_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("named function value with interface parameter should codegen");
+        .must("named function value with interface parameter should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled named function value interface parameter binary");
+        .must("run compiled named function value interface parameter binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15525,13 +15520,13 @@ fn compile_source_runs_function_variable_retyped_to_integer_parameter_runtime() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("function variable retyped Integer parameter should codegen");
+        .must("function variable retyped Integer parameter should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled function variable retyped Integer parameter binary");
+        .must("run compiled function variable retyped Integer parameter binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15553,9 +15548,9 @@ fn compile_source_rejects_function_value_retyped_to_narrower_integer_parameter()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("retyping function value to narrower Integer parameter should fail");
+        .must_err("retyping function value to narrower Integer parameter should fail");
     assert!(
         err.contains("Type mismatch") || err.contains("cannot assign"),
         "{err}"
@@ -15580,9 +15575,9 @@ fn compile_source_no_check_rejects_named_function_value_signature_mismatch_with_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("named function value signature mismatch should fail in codegen");
+        .must_err("named function value signature mismatch should fail in codegen");
     assert!(
         err.contains("Cannot use function value () -> Integer as (Integer) -> Integer"),
         "{err}"
@@ -15611,9 +15606,9 @@ fn compile_source_no_check_rejects_constructor_function_value_signature_mismatch
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("constructor function value signature mismatch should fail in codegen");
+        .must_err("constructor function value signature mismatch should fail in codegen");
     assert!(
         err.contains("Cannot use function value (Integer) -> Box as () -> Box"),
         "{err}"
@@ -15643,9 +15638,9 @@ fn compile_source_no_check_formats_specialized_constructor_function_value_signat
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err(
+        .must_err(
             "specialized constructor function value signature mismatch should fail in codegen",
         );
     assert!(
@@ -15676,9 +15671,9 @@ fn compile_source_no_check_formats_specialized_builtin_function_value_signature_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("specialized builtin function value signature mismatch should fail in codegen");
+        .must_err("specialized builtin function value signature mismatch should fail in codegen");
     assert!(
         err.contains(
             "Type mismatch: expected () -> Option<Box<Integer>>, got (unknown) -> Option<unknown>"
@@ -15707,9 +15702,9 @@ fn compile_source_no_check_formats_specialized_constructor_builtin_diagnostics()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("specialized constructor builtin diagnostic should fail in codegen");
+        .must_err("specialized constructor builtin diagnostic should fail in codegen");
     assert!(
         err.contains("Constructor Option<Box<Integer>> expects 0 arguments, got 1"),
         "{err}"
@@ -15736,9 +15731,9 @@ fn compile_source_no_check_formats_specialized_unknown_type_diagnostic() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("specialized unknown type diagnostic should fail in codegen");
+        .must_err("specialized unknown type diagnostic should fail in codegen");
     assert!(err.contains("Unknown type: Missing<Box<Integer>>"), "{err}");
     assert!(!err.contains("Box__spec__I64"), "{err}");
 
@@ -15763,13 +15758,13 @@ fn compile_source_runs_async_block_nested_integer_return_for_float_task_runtime(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("nested async Integer return for Task<Float> should codegen");
+        .must("nested async Integer return for Task<Float> should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled nested async Integer return Float task binary");
+        .must("run compiled nested async Integer return Float task binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15794,13 +15789,13 @@ fn compile_source_runs_async_block_nested_mixed_numeric_returns_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("nested async mixed numeric returns should codegen");
+        .must("nested async mixed numeric returns should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled nested async mixed numeric returns binary");
+        .must("run compiled nested async mixed numeric returns binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15821,13 +15816,13 @@ fn compile_source_runs_float_loop_variable_over_integer_range_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Float loop variable over Integer range should codegen");
+        .must("Float loop variable over Integer range should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Float loop variable Integer range binary");
+        .must("run compiled Float loop variable Integer range binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15854,13 +15849,13 @@ fn compile_source_runs_float_loop_variable_over_integer_list_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Float loop variable over Integer list should codegen");
+        .must("Float loop variable over Integer list should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Float loop variable Integer list binary");
+        .must("run compiled Float loop variable Integer list binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15880,13 +15875,13 @@ fn compile_source_runs_stdlib_function_alias_call_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("stdlib function alias call should codegen");
+        .must("stdlib function alias call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled stdlib function alias call binary");
+        .must("run compiled stdlib function alias call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15906,13 +15901,13 @@ fn compile_source_runs_args_count_alias_call_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Args.count alias call should codegen");
+        .must("Args.count alias call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Args.count alias call binary");
+        .must("run compiled Args.count alias call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15932,14 +15927,14 @@ fn compile_source_runs_capitalized_stdlib_function_alias_call_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("capitalized stdlib function alias call should codegen");
+        .must("capitalized stdlib function alias call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .arg("ok")
         .status()
-        .expect("run compiled capitalized stdlib alias call binary");
+        .must("run compiled capitalized stdlib alias call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15958,13 +15953,13 @@ fn compile_source_runs_capitalized_stdlib_numeric_alias_call_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("capitalized stdlib numeric alias call should codegen");
+        .must("capitalized stdlib numeric alias call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled capitalized stdlib numeric alias call binary");
+        .must("run compiled capitalized stdlib numeric alias call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -15984,14 +15979,14 @@ fn compile_source_no_check_runs_capitalized_stdlib_function_alias_call_runtime()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect("capitalized stdlib function alias call should codegen without checks");
+        .must("capitalized stdlib function alias call should codegen without checks");
 
     let status = std::process::Command::new(&output_path)
         .arg("ok")
         .status()
-        .expect("run compiled no-check capitalized stdlib alias call binary");
+        .must("run compiled no-check capitalized stdlib alias call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16011,13 +16006,13 @@ fn compile_source_runs_stdlib_function_alias_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("stdlib alias function value should codegen");
+        .must("stdlib alias function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled stdlib alias function value binary");
+        .must("run compiled stdlib alias function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16037,13 +16032,13 @@ fn compile_source_runs_stdlib_namespace_alias_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("stdlib namespace alias function value should codegen");
+        .must("stdlib namespace alias function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled stdlib namespace alias function value binary");
+        .must("run compiled stdlib namespace alias function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16066,13 +16061,13 @@ fn compile_source_runs_stdlib_function_alias_callback_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("stdlib alias callback should codegen");
+        .must("stdlib alias callback should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled stdlib alias callback binary");
+        .must("run compiled stdlib alias callback binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16091,13 +16086,13 @@ fn compile_source_runs_stdlib_math_min_alias_call_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Math.min alias call should codegen");
+        .must("Math.min alias call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Math.min alias call binary");
+        .must("run compiled Math.min alias call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16117,13 +16112,13 @@ fn compile_source_runs_stdlib_math_min_alias_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Math.min alias value should codegen");
+        .must("Math.min alias value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Math.min alias value binary");
+        .must("run compiled Math.min alias value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16143,13 +16138,13 @@ fn compile_source_runs_stdlib_math_min_mixed_numeric_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric Math.min function value should codegen");
+        .must("mixed numeric Math.min function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric Math.min function value binary");
+        .must("run compiled mixed numeric Math.min function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16169,13 +16164,13 @@ fn compile_source_runs_stdlib_math_max_mixed_numeric_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric Math.max function value should codegen");
+        .must("mixed numeric Math.max function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric Math.max function value binary");
+        .must("run compiled mixed numeric Math.max function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16195,13 +16190,13 @@ fn compile_source_runs_direct_math_abs_widened_return_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Math.abs widened return function value should codegen");
+        .must("Math.abs widened return function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Math.abs widened return function value binary");
+        .must("run compiled Math.abs widened return function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16220,13 +16215,13 @@ fn compile_source_runs_wildcard_imported_math_abs_call_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("wildcard imported Math.abs call should codegen");
+        .must("wildcard imported Math.abs call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled wildcard imported Math.abs call binary");
+        .must("run compiled wildcard imported Math.abs call binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16246,13 +16241,13 @@ fn compile_source_runs_wildcard_imported_math_abs_widened_return_function_value_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("wildcard imported Math.abs widened return function value should codegen");
+        .must("wildcard imported Math.abs widened return function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled wildcard imported Math.abs widened return function value binary");
+        .must("run compiled wildcard imported Math.abs widened return function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16272,13 +16267,13 @@ fn compile_source_runs_alias_math_abs_widened_return_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("alias Math.abs widened return function value should codegen");
+        .must("alias Math.abs widened return function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled alias Math.abs widened return function value binary");
+        .must("run compiled alias Math.abs widened return function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16300,13 +16295,13 @@ fn compile_source_runs_namespace_alias_math_abs_widened_return_function_value_ru
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("namespace alias Math.abs widened return function value should codegen");
+        .must("namespace alias Math.abs widened return function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled namespace alias Math.abs widened return function value binary");
+        .must("run compiled namespace alias Math.abs widened return function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16326,13 +16321,13 @@ fn compile_source_runs_direct_math_min_widened_return_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Math.min widened return function value should codegen");
+        .must("Math.min widened return function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Math.min widened return function value binary");
+        .must("run compiled Math.min widened return function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16352,13 +16347,13 @@ fn compile_source_runs_alias_math_min_widened_return_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("alias Math.min widened return function value should codegen");
+        .must("alias Math.min widened return function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled alias Math.min widened return function value binary");
+        .must("run compiled alias Math.min widened return function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16380,13 +16375,13 @@ fn compile_source_runs_namespace_alias_math_min_widened_return_function_value_ru
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("namespace alias Math.min widened return function value should codegen");
+        .must("namespace alias Math.min widened return function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled namespace alias Math.min widened return function value binary");
+        .must("run compiled namespace alias Math.min widened return function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16406,13 +16401,13 @@ fn compile_source_runs_direct_math_max_widened_return_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Math.max widened return function value should codegen");
+        .must("Math.max widened return function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Math.max widened return function value binary");
+        .must("run compiled Math.max widened return function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16432,13 +16427,13 @@ fn compile_source_runs_alias_math_max_widened_return_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("alias Math.max widened return function value should codegen");
+        .must("alias Math.max widened return function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled alias Math.max widened return function value binary");
+        .must("run compiled alias Math.max widened return function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16460,13 +16455,13 @@ fn compile_source_runs_namespace_alias_math_max_widened_return_function_value_ru
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("namespace alias Math.max widened return function value should codegen");
+        .must("namespace alias Math.max widened return function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled namespace alias Math.max widened return function value binary");
+        .must("run compiled namespace alias Math.max widened return function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16486,13 +16481,13 @@ fn compile_source_runs_builtin_math_pow_integer_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer Math.pow function value should codegen");
+        .must("integer Math.pow function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled integer Math.pow function value binary");
+        .must("run compiled integer Math.pow function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16512,13 +16507,13 @@ fn compile_source_runs_builtin_math_pow_mixed_numeric_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric Math.pow function value should codegen");
+        .must("mixed numeric Math.pow function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric Math.pow function value binary");
+        .must("run compiled mixed numeric Math.pow function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16536,13 +16531,13 @@ fn compile_source_runs_direct_math_random_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Math.random function value should codegen");
+        .must("direct Math.random function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Math.random function value binary");
+        .must("run compiled direct Math.random function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16560,13 +16555,13 @@ fn compile_source_runs_direct_math_pi_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Math.pi function value should codegen");
+        .must("direct Math.pi function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Math.pi function value binary");
+        .must("run compiled direct Math.pi function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16584,13 +16579,13 @@ fn compile_source_runs_direct_math_sqrt_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Math.sqrt function value should codegen");
+        .must("direct Math.sqrt function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Math.sqrt function value binary");
+        .must("run compiled direct Math.sqrt function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16608,13 +16603,13 @@ fn compile_source_runs_direct_system_cwd_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct System.cwd function value should codegen");
+        .must("direct System.cwd function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct System.cwd function value binary");
+        .must("run compiled direct System.cwd function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16632,13 +16627,13 @@ fn compile_source_runs_direct_system_os_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct System.os function value should codegen");
+        .must("direct System.os function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct System.os function value binary");
+        .must("run compiled direct System.os function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16656,13 +16651,13 @@ fn compile_source_runs_direct_time_unix_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Time.unix function value should codegen");
+        .must("direct Time.unix function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Time.unix function value binary");
+        .must("run compiled direct Time.unix function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16680,13 +16675,13 @@ fn compile_source_runs_direct_time_sleep_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Time.sleep function value should codegen");
+        .must("direct Time.sleep function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Time.sleep function value binary");
+        .must("run compiled direct Time.sleep function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16704,13 +16699,13 @@ fn compile_source_runs_direct_args_count_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Args.count function value should codegen");
+        .must("direct Args.count function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Args.count function value binary");
+        .must("run compiled direct Args.count function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16731,9 +16726,9 @@ fn compile_source_no_check_rejects_extern_function_values_even_with_adapter_sign
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("extern function values with adapter signatures should fail in codegen");
+        .must_err("extern function values with adapter signatures should fail in codegen");
     assert!(
         err.contains("extern function 'puts' cannot be used as a first-class value yet"),
         "{err}"
@@ -16767,9 +16762,9 @@ fn compile_source_no_check_rejects_function_value_adapter_between_unrelated_nomi
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated nominal return adapter should fail in codegen");
+        .must_err("unrelated nominal return adapter should fail in codegen");
     assert!(
         err.contains("Cannot use function value () -> A as () -> B"),
         "{err}"
@@ -16804,9 +16799,9 @@ fn compile_source_no_check_rejects_for_loop_binding_between_unrelated_nominal_ty
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated nominal for-loop binding should fail in codegen");
+        .must_err("unrelated nominal for-loop binding should fail in codegen");
     assert!(
         err.contains("unsupported for-loop binding conversion: Named(\"A\") -> Named(\"B\")"),
         "{err}"
@@ -16835,9 +16830,9 @@ fn compile_source_no_check_rejects_let_binding_between_unrelated_concrete_classe
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class let binding should fail in codegen");
+        .must_err("unrelated concrete class let binding should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16864,9 +16859,9 @@ fn compile_source_no_check_rejects_assignment_between_unrelated_concrete_classes
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class assignment should fail in codegen");
+        .must_err("unrelated concrete class assignment should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16893,9 +16888,9 @@ fn compile_source_no_check_rejects_list_push_between_unrelated_concrete_classes(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class list push should fail in codegen");
+        .must_err("unrelated concrete class list push should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16921,9 +16916,9 @@ fn compile_source_no_check_rejects_option_some_between_unrelated_concrete_classe
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class Option.some payload should fail in codegen");
+        .must_err("unrelated concrete class Option.some payload should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16949,9 +16944,9 @@ fn compile_source_no_check_rejects_result_ok_between_unrelated_concrete_classes(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class Result.ok payload should fail in codegen");
+        .must_err("unrelated concrete class Result.ok payload should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -16978,9 +16973,9 @@ fn compile_source_no_check_rejects_map_set_between_unrelated_concrete_classes() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class map set payload should fail in codegen");
+        .must_err("unrelated concrete class map set payload should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17007,9 +17002,9 @@ fn compile_source_no_check_rejects_map_key_between_unrelated_concrete_classes() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class map key should fail in codegen");
+        .must_err("unrelated concrete class map key should fail in codegen");
     assert!(err.contains("Type mismatch: expected K1, got K2"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17036,9 +17031,9 @@ fn compile_source_no_check_rejects_map_get_key_between_unrelated_concrete_classe
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class map get key should fail in codegen");
+        .must_err("unrelated concrete class map get key should fail in codegen");
     assert!(err.contains("Type mismatch: expected K1, got K2"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17066,9 +17061,9 @@ fn compile_source_no_check_rejects_list_set_between_unrelated_concrete_classes()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class list set payload should fail in codegen");
+        .must_err("unrelated concrete class list set payload should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17102,9 +17097,9 @@ fn compile_source_no_check_rejects_constructor_argument_between_unrelated_concre
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class constructor argument should fail in codegen");
+        .must_err("unrelated concrete class constructor argument should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17134,9 +17129,9 @@ fn compile_source_no_check_rejects_enum_variant_payload_between_unrelated_concre
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class enum payload should fail in codegen");
+        .must_err("unrelated concrete class enum payload should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17165,9 +17160,9 @@ fn compile_source_no_check_rejects_function_argument_between_unrelated_concrete_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class function argument should fail in codegen");
+        .must_err("unrelated concrete class function argument should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17201,9 +17196,9 @@ fn compile_source_no_check_rejects_method_argument_between_unrelated_concrete_cl
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class method argument should fail in codegen");
+        .must_err("unrelated concrete class method argument should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17242,9 +17237,9 @@ fn compile_source_no_check_rejects_field_function_value_argument_between_unrelat
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class field function argument should fail in codegen");
+        .must_err("unrelated concrete class field function argument should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17279,9 +17274,9 @@ fn compile_source_no_check_rejects_nested_enum_variant_payload_between_unrelated
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class nested enum payload should fail in codegen");
+        .must_err("unrelated concrete class nested enum payload should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17311,9 +17306,9 @@ fn compile_source_no_check_rejects_return_value_between_unrelated_concrete_class
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class return value should fail in codegen");
+        .must_err("unrelated concrete class return value should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17340,9 +17335,9 @@ fn compile_source_no_check_rejects_async_tail_between_unrelated_concrete_classes
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class async tail should fail in codegen");
+        .must_err("unrelated concrete class async tail should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17376,9 +17371,9 @@ fn compile_source_no_check_rejects_match_arm_between_unrelated_concrete_classes(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class match arm should fail in codegen");
+        .must_err("unrelated concrete class match arm should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17405,9 +17400,9 @@ fn compile_source_no_check_rejects_if_branch_between_unrelated_concrete_classes(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unrelated concrete class if branch should fail in codegen");
+        .must_err("unrelated concrete class if branch should fail in codegen");
     assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17430,9 +17425,9 @@ fn compile_source_no_check_rejects_if_branch_with_incompatible_non_class_type() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible if branch should fail in codegen");
+        .must_err("incompatible if branch should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Integer, got A"),
         "{err}"
@@ -17453,9 +17448,9 @@ fn compile_source_no_check_rejects_let_with_incompatible_non_class_type() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible let binding should fail in codegen");
+        .must_err("incompatible let binding should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Integer, got String"),
         "{err}"
@@ -17477,9 +17472,9 @@ fn compile_source_no_check_rejects_assign_with_incompatible_non_class_type() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible assignment should fail in codegen");
+        .must_err("incompatible assignment should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Integer, got String"),
         "{err}"
@@ -17501,9 +17496,9 @@ fn compile_source_no_check_rejects_list_push_with_incompatible_non_class_type() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible list push should fail in codegen");
+        .must_err("incompatible list push should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Integer, got String"),
         "{err}"
@@ -17524,9 +17519,9 @@ fn compile_source_no_check_rejects_option_some_with_incompatible_non_class_type(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible Option.Some payload should fail in codegen");
+        .must_err("incompatible Option.Some payload should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Integer, got String"),
         "{err}"
@@ -17547,9 +17542,9 @@ fn compile_source_no_check_rejects_result_ok_with_incompatible_non_class_type() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible Result.Ok payload should fail in codegen");
+        .must_err("incompatible Result.Ok payload should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Integer, got String"),
         "{err}"
@@ -17570,9 +17565,9 @@ fn compile_source_no_check_rejects_builtin_box_with_incompatible_payload_type() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible Box payload specialization should fail in codegen");
+        .must_err("incompatible Box payload specialization should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Box<Integer>, got Box<String>"),
         "{err}"
@@ -17593,9 +17588,9 @@ fn compile_source_no_check_rejects_builtin_rc_with_incompatible_payload_type() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible Rc payload specialization should fail in codegen");
+        .must_err("incompatible Rc payload specialization should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Rc<Integer>, got Rc<String>"),
         "{err}"
@@ -17616,9 +17611,9 @@ fn compile_source_no_check_rejects_builtin_arc_with_incompatible_payload_type() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible Arc payload specialization should fail in codegen");
+        .must_err("incompatible Arc payload specialization should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Arc<Integer>, got Arc<String>"),
         "{err}"
@@ -17642,9 +17637,9 @@ fn compile_source_no_check_rejects_builtin_box_argument_with_incompatible_payloa
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible Box argument specialization should fail in codegen");
+        .must_err("incompatible Box argument specialization should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Box<Integer>, got Box<String>"),
         "{err}"
@@ -17665,9 +17660,9 @@ fn compile_source_no_check_rejects_builtin_list_with_incompatible_specialization
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible List specialization should fail in codegen");
+        .must_err("incompatible List specialization should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected List<Option<Integer>>, got List<Option<String>>"),
         "{err}"
@@ -17688,9 +17683,9 @@ fn compile_source_no_check_rejects_builtin_map_with_incompatible_specialization(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible Map specialization should fail in codegen");
+        .must_err("incompatible Map specialization should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Map<String, Integer>, got Map<String, String>"),
         "{err}"
@@ -17711,9 +17706,9 @@ fn compile_source_no_check_rejects_builtin_option_with_incompatible_specializati
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible Option specialization should fail in codegen");
+        .must_err("incompatible Option specialization should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Option<List<Integer>>, got Option<List<String>>"),
         "{err}"
@@ -17736,9 +17731,9 @@ fn compile_source_no_check_rejects_if_block_binding_outside_scope() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("if-block locals should not leak outside their scope");
+        .must_err("if-block locals should not leak outside their scope");
     assert!(err.contains("Undefined variable: leaked"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17759,9 +17754,9 @@ fn compile_source_no_check_rejects_match_arm_binding_outside_scope() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("match-arm locals should not leak outside their scope");
+        .must_err("match-arm locals should not leak outside their scope");
     assert!(err.contains("Undefined variable: leaked"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17786,9 +17781,9 @@ fn compile_source_no_check_rejects_match_arm_with_incompatible_non_class_type() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("incompatible match arm should fail in codegen");
+        .must_err("incompatible match arm should fail in codegen");
     assert!(
         err.contains("Type mismatch: expected Integer, got A"),
         "{err}"
@@ -17810,9 +17805,9 @@ fn compile_source_no_check_rejects_integer_for_binding_outside_scope() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("integer for-loop binding should not leak outside its scope");
+        .must_err("integer for-loop binding should not leak outside its scope");
     assert!(err.contains("Undefined variable: i"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17833,9 +17828,9 @@ fn compile_source_no_check_rejects_list_for_binding_outside_scope() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("list for-loop binding should not leak outside its scope");
+        .must_err("list for-loop binding should not leak outside its scope");
     assert!(err.contains("Undefined variable: item"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17853,13 +17848,13 @@ fn compile_source_runs_builtin_to_float_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_float function value should codegen");
+        .must("to_float function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_float function value binary");
+        .must("run compiled to_float function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17877,13 +17872,13 @@ fn compile_source_runs_builtin_to_int_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_int function value should codegen");
+        .must("to_int function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_int function value binary");
+        .must("run compiled to_int function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17901,13 +17896,13 @@ fn compile_source_runs_builtin_to_string_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("to_string function value should codegen");
+        .must("to_string function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled to_string function value binary");
+        .must("run compiled to_string function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17926,13 +17921,13 @@ fn compile_source_runs_builtin_mixed_numeric_assert_eq_function_value_runtime() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric assert_eq function value should codegen");
+        .must("mixed numeric assert_eq function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric assert_eq function value binary");
+        .must("run compiled mixed numeric assert_eq function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17951,13 +17946,13 @@ fn compile_source_runs_builtin_mixed_numeric_assert_ne_function_value_runtime() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed numeric assert_ne function value should codegen");
+        .must("mixed numeric assert_ne function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mixed numeric assert_ne function value binary");
+        .must("run compiled mixed numeric assert_ne function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17976,13 +17971,13 @@ fn compile_source_runs_builtin_assert_eq_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("assert_eq function value should codegen");
+        .must("assert_eq function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled assert_eq function value binary");
+        .must("run compiled assert_eq function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18001,13 +17996,13 @@ fn compile_source_runs_builtin_assert_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("assert function value should codegen");
+        .must("assert function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled assert function value binary");
+        .must("run compiled assert function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18026,13 +18021,13 @@ fn compile_source_runs_builtin_assert_ne_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("assert_ne function value should codegen");
+        .must("assert_ne function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled assert_ne function value binary");
+        .must("run compiled assert_ne function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18051,13 +18046,13 @@ fn compile_source_runs_builtin_assert_true_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("assert_true function value should codegen");
+        .must("assert_true function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled assert_true function value binary");
+        .must("run compiled assert_true function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18076,13 +18071,13 @@ fn compile_source_runs_builtin_assert_false_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("assert_false function value should codegen");
+        .must("assert_false function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled assert_false function value binary");
+        .must("run compiled assert_false function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18100,13 +18095,13 @@ fn compile_source_runs_builtin_fail_no_arg_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("fail() no-arg function value should codegen");
+        .must("fail() no-arg function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled fail() no-arg function value binary");
+        .must("run compiled fail() no-arg function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18124,13 +18119,13 @@ fn compile_source_runs_builtin_fail_string_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("fail(String) function value should codegen");
+        .must("fail(String) function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled fail(String) function value binary");
+        .must("run compiled fail(String) function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18148,13 +18143,13 @@ fn compile_source_runs_builtin_exit_function_value_check_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("exit function value should codegen");
+        .must("exit function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled exit function value binary");
+        .must("run compiled exit function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18172,9 +18167,9 @@ fn compile_source_rejects_builtin_assert_function_value_with_string_parameter() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("assert(String) function value should fail");
+        .must_err("assert(String) function value should fail");
     assert!(
         err.contains("Type mismatch") || err.contains("assert"),
         "{err}"
@@ -18195,9 +18190,9 @@ fn compile_source_rejects_builtin_assert_function_value_with_integer_parameter()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("assert(Integer) function value should fail");
+        .must_err("assert(Integer) function value should fail");
     assert!(
         err.contains("Type mismatch") || err.contains("assert"),
         "{err}"
@@ -18218,9 +18213,9 @@ fn compile_source_rejects_builtin_fail_function_value_with_integer_parameter() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("fail(Integer) function value should fail");
+        .must_err("fail(Integer) function value should fail");
     assert!(
         err.contains("Type mismatch") || err.contains("fail"),
         "{err}"
@@ -18241,9 +18236,9 @@ fn compile_source_rejects_builtin_assert_true_function_value_with_integer_parame
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("assert_true(Integer) function value should fail");
+        .must_err("assert_true(Integer) function value should fail");
     assert!(
         err.contains("Type mismatch") || err.contains("assert_true"),
         "{err}"
@@ -18264,9 +18259,9 @@ fn compile_source_rejects_builtin_assert_false_function_value_with_integer_param
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("assert_false(Integer) function value should fail");
+        .must_err("assert_false(Integer) function value should fail");
     assert!(
         err.contains("Type mismatch") || err.contains("assert_false"),
         "{err}"
@@ -18292,13 +18287,13 @@ fn compile_source_runs_builtin_integer_range_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer range function value should codegen");
+        .must("integer range function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled integer range function value binary");
+        .must("run compiled integer range function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18321,13 +18316,13 @@ fn compile_source_runs_builtin_float_range_step_function_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("float range function value should codegen");
+        .must("float range function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled float range function value binary");
+        .must("run compiled float range function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18347,13 +18342,13 @@ fn compile_source_runs_read_line_alias_function_value_check_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("read_line alias function value should codegen");
+        .must("read_line alias function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled read_line alias function value binary");
+        .must("run compiled read_line alias function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18374,13 +18369,13 @@ fn compile_source_runs_args_get_alias_value_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Args.get alias function value should codegen");
+        .must("Args.get alias function value should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Args.get alias function value binary");
+        .must("run compiled Args.get alias function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18405,13 +18400,13 @@ fn compile_source_runs_borrowed_list_iteration_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed list iteration should codegen");
+        .must("borrowed list iteration should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed list iteration binary");
+        .must("run compiled borrowed list iteration binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18434,13 +18429,13 @@ fn compile_source_runs_borrowed_range_iteration_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed range iteration should codegen");
+        .must("borrowed range iteration should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed range iteration binary");
+        .must("run compiled borrowed range iteration binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18462,13 +18457,13 @@ fn compile_source_runs_string_iteration_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string iteration should codegen");
+        .must("string iteration should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string iteration binary");
+        .must("run compiled string iteration binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18491,13 +18486,13 @@ fn compile_source_runs_borrowed_string_iteration_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("borrowed string iteration should codegen");
+        .must("borrowed string iteration should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled borrowed string iteration binary");
+        .must("run compiled borrowed string iteration binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18520,13 +18515,13 @@ fn compile_source_runs_mutably_borrowed_string_iteration_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mutably borrowed string iteration should codegen");
+        .must("mutably borrowed string iteration should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled mutably borrowed string iteration binary");
+        .must("run compiled mutably borrowed string iteration binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18547,13 +18542,13 @@ fn compile_source_runs_integer_for_loop_sugar_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer for-loop sugar should codegen");
+        .must("integer for-loop sugar should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled integer for-loop sugar binary");
+        .must("run compiled integer for-loop sugar binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18574,13 +18569,13 @@ fn compile_source_runs_float_typed_integer_for_loop_sugar_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("typed integer for-loop sugar should codegen");
+        .must("typed integer for-loop sugar should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled typed integer for-loop sugar binary");
+        .must("run compiled typed integer for-loop sugar binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18601,13 +18596,13 @@ fn compile_source_runs_zero_length_integer_for_loop_sugar_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("zero-length integer for-loop sugar should codegen");
+        .must("zero-length integer for-loop sugar should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-length integer for-loop sugar binary");
+        .must("run compiled zero-length integer for-loop sugar binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18629,13 +18624,13 @@ fn compile_source_runs_integer_expression_for_loop_sugar_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer expression for-loop sugar should codegen");
+        .must("integer expression for-loop sugar should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled integer expression for-loop sugar binary");
+        .must("run compiled integer expression for-loop sugar binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18660,13 +18655,13 @@ fn compile_source_runs_integer_call_for_loop_sugar_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("integer call for-loop sugar should codegen");
+        .must("integer call for-loop sugar should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled integer call for-loop sugar binary");
+        .must("run compiled integer call for-loop sugar binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18684,9 +18679,9 @@ fn compile_source_rejects_range_integer_to_float_assignment() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("Range<Integer> should not typecheck as Range<Float>");
+        .must_err("Range<Integer> should not typecheck as Range<Float>");
     assert!(
         err.contains("Type mismatch"),
         "unexpected error output: {err}"
@@ -18711,9 +18706,9 @@ fn compile_source_rejects_option_integer_to_float_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("Option<Integer> should not typecheck as Option<Float>");
+        .must_err("Option<Integer> should not typecheck as Option<Float>");
     assert!(
         err.contains("Argument type mismatch"),
         "unexpected error output: {err}"
@@ -18744,9 +18739,9 @@ fn compile_source_rejects_task_integer_to_float_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("Task<Integer> should not typecheck as Task<Float>");
+        .must_err("Task<Integer> should not typecheck as Task<Float>");
     assert!(
         err.contains("Argument type mismatch"),
         "unexpected error output: {err}"
@@ -18773,9 +18768,9 @@ fn compile_source_rejects_map_integer_to_float_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("Map<String, Integer> should not typecheck as Map<String, Float>");
+        .must_err("Map<String, Integer> should not typecheck as Map<String, Float>");
     assert!(
         err.contains("Argument type mismatch"),
         "unexpected error output: {err}"
@@ -18802,9 +18797,9 @@ fn compile_source_rejects_list_integer_to_float_argument() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("List<Integer> should not typecheck as List<Float>");
+        .must_err("List<Integer> should not typecheck as List<Float>");
     assert!(
         err.contains("Argument type mismatch"),
         "unexpected error output: {err}"
@@ -18828,9 +18823,9 @@ fn compile_source_rejects_option_integer_to_float_return() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("Option<Integer> return should not typecheck as Option<Float>");
+        .must_err("Option<Integer> return should not typecheck as Option<Float>");
     assert!(
         err.contains("Return type mismatch"),
         "unexpected error output: {err}"
@@ -18852,9 +18847,9 @@ fn compile_source_rejects_if_expression_join_between_integer_and_float_ranges() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("Range<Integer> and Range<Float> branches should not join");
+        .must_err("Range<Integer> and Range<Float> branches should not join");
     assert!(
         err.contains("Type mismatch")
             || err.contains("Mismatched branch types")
@@ -18879,13 +18874,13 @@ fn compile_source_fails_fast_on_out_of_bounds_list_index_assignment() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("out-of-bounds list assignment should still codegen");
+        .must("out-of-bounds list assignment should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled list assignment oob binary");
+        .must("run compiled list assignment oob binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18906,13 +18901,13 @@ fn compile_source_fails_fast_on_negative_list_index_assignment() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("negative list assignment should still codegen");
+        .must("negative list assignment should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled negative list assignment binary");
+        .must("run compiled negative list assignment binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18935,13 +18930,13 @@ fn compile_source_fails_fast_on_missing_map_index_object_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("missing map index object result should still codegen");
+        .must("missing map index object result should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled missing map index object binary");
+        .must("run compiled missing map index object binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18964,13 +18959,13 @@ fn compile_source_fails_fast_on_empty_list_get_object_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("empty list.get object result should still codegen");
+        .must("empty list.get object result should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled empty list.get object binary");
+        .must("run compiled empty list.get object binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -18993,13 +18988,13 @@ fn compile_source_fails_fast_on_empty_list_pop_object_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("empty list.pop object result should still codegen");
+        .must("empty list.pop object result should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled empty list.pop object binary");
+        .must("run compiled empty list.pop object binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19019,13 +19014,13 @@ fn compile_source_fails_fast_on_negative_list_get_index() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("negative list.get index should still codegen");
+        .must("negative list.get index should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled negative list.get binary");
+        .must("run compiled negative list.get binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19045,13 +19040,13 @@ fn compile_source_fails_fast_on_negative_list_index_operator() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("negative list index operator should still codegen");
+        .must("negative list index operator should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled negative list index operator binary");
+        .must("run compiled negative list index operator binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19070,13 +19065,13 @@ fn compile_source_runs_string_index_operator() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string index operator should codegen");
+        .must("string index operator should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string index binary");
+        .must("run compiled string index binary");
     assert_eq!(status.code(), Some(19));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19093,9 +19088,9 @@ fn compile_source_rejects_main_with_string_return_type() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("main string return type should fail before codegen");
+        .must_err("main string return type should fail before codegen");
     assert!(
         err.to_string()
             .contains("main() must return None or Integer"),
@@ -19115,9 +19110,9 @@ fn compile_file_no_check_rejects_main_with_string_return_type_cleanly() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_file(&source_path, None, false, false, None, None)
-        .expect_err("unchecked main string return type should fail before codegen");
+        .must_err("unchecked main string return type should fail before codegen");
     assert!(err.contains("main() must return None or Integer"), "{err}");
     assert!(!err.contains("Clang failed"), "{err}");
 
@@ -19134,9 +19129,9 @@ fn compile_file_no_check_rejects_main_with_boolean_return_type_cleanly() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_file(&source_path, None, false, false, None, None)
-        .expect_err("unchecked main boolean return type should fail before codegen");
+        .must_err("unchecked main boolean return type should fail before codegen");
     assert!(
         err.contains("Type mismatch: expected Integer, got Boolean"),
         "{err}"
@@ -19161,9 +19156,9 @@ fn compile_source_no_check_rejects_function_with_boolean_return_type_cleanly() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("unchecked function boolean return type should fail before codegen");
+        .must_err("unchecked function boolean return type should fail before codegen");
     assert!(
         err.contains("Type mismatch: expected Integer, got Boolean"),
         "{err}"
@@ -19184,9 +19179,9 @@ fn compile_source_rejects_main_with_parameters() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("main parameters should fail before codegen");
+        .must_err("main parameters should fail before codegen");
     assert!(
         err.to_string().contains("main() cannot declare parameters"),
         "{err}"
@@ -19215,9 +19210,9 @@ fn compile_source_rejects_try_outside_result_or_option_return_context() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("invalid try return context should fail before codegen");
+        .must_err("invalid try return context should fail before codegen");
     assert!(
         err.contains("'?' on Result requires the enclosing function to return Result"),
         "{err}"
@@ -19246,9 +19241,9 @@ fn compile_source_rejects_try_inside_lambda_even_with_outer_result_return() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect_err("invalid try inside lambda should fail before codegen");
+        .must_err("invalid try inside lambda should fail before codegen");
     assert!(
         err.contains("'?' on Result requires the enclosing function to return Result"),
         "{err}"
@@ -19273,7 +19268,7 @@ fn compile_source_rejects_invalid_opt_level() {
         Some("turbo"),
         None,
     )
-    .expect_err("invalid opt level should be rejected");
+    .must_err("invalid opt level should be rejected");
 
     assert!(err.contains("Invalid optimization level"), "{err}");
 
@@ -19293,13 +19288,13 @@ fn compile_source_fails_fast_on_out_of_bounds_string_index_operator() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("out-of-bounds string index should still codegen");
+        .must("out-of-bounds string index should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string index oob binary");
+        .must("run compiled string index oob binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19317,13 +19312,13 @@ fn compile_source_runs_unicode_string_literal_index_operator() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("unicode string literal index should codegen");
+        .must("unicode string literal index should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unicode string index binary");
+        .must("run compiled unicode string index binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19342,13 +19337,13 @@ fn compile_source_runs_unicode_string_literal_index_operator_with_dynamic_index(
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("unicode string literal dynamic index should codegen");
+        .must("unicode string literal dynamic index should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unicode dynamic string index binary");
+        .must("run compiled unicode dynamic string index binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19367,13 +19362,13 @@ fn compile_source_fails_fast_on_unicode_string_literal_index_operator_past_char_
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("unicode string literal oob dynamic index should still codegen");
+        .must("unicode string literal oob dynamic index should still codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled unicode dynamic string index oob binary");
+        .must("run compiled unicode dynamic string index oob binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(stdout.contains("String index out of bounds\n"), "{stdout}");
@@ -19395,13 +19390,13 @@ fn compile_source_runs_unicode_string_variable_index_operator() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("unicode string variable index should codegen");
+        .must("unicode string variable index should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unicode string variable index binary");
+        .must("run compiled unicode string variable index binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19418,13 +19413,13 @@ fn compile_source_runs_unicode_string_literal_length() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("unicode string literal length should codegen");
+        .must("unicode string literal length should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unicode string literal length binary");
+        .must("run compiled unicode string literal length binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19442,13 +19437,13 @@ fn compile_source_runs_unicode_string_variable_length() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("unicode string variable length should codegen");
+        .must("unicode string variable length should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unicode string variable length binary");
+        .must("run compiled unicode string variable length binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19476,9 +19471,9 @@ fn compile_source_runs_system_exec_large_output() {
             "#
     );
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(
-        &fs::read_to_string(&source_path).expect("read source"),
+        &fs::read_to_string(&source_path).must("read source"),
         &source_path,
         &output_path,
         false,
@@ -19486,11 +19481,11 @@ fn compile_source_runs_system_exec_large_output() {
         None,
         None,
     )
-    .expect("large System.exec output should codegen");
+    .must("large System.exec output should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled large System.exec binary");
+        .must("run compiled large System.exec binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19511,13 +19506,13 @@ fn compile_source_fails_fast_on_system_exec_nul_bytes() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("System.exec NUL-byte failure path should codegen");
+        .must("System.exec NUL-byte failure path should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled System.exec NUL-byte binary");
+        .must("run compiled System.exec NUL-byte binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -19543,13 +19538,13 @@ fn compile_source_fails_fast_on_system_exec_invalid_utf8() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("System.exec invalid UTF-8 failure path should codegen");
+        .must("System.exec invalid UTF-8 failure path should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled System.exec invalid UTF-8 binary");
+        .must("run compiled System.exec invalid UTF-8 binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -19575,9 +19570,9 @@ fn compile_source_fails_fast_on_system_getenv_invalid_utf8() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("System.getenv invalid UTF-8 failure path should codegen");
+        .must("System.getenv invalid UTF-8 failure path should codegen");
 
     let output = std::process::Command::new(&output_path)
         .env(
@@ -19585,7 +19580,7 @@ fn compile_source_fails_fast_on_system_getenv_invalid_utf8() {
             std::ffi::OsString::from_vec(vec![0xff]),
         )
         .output()
-        .expect("run compiled System.getenv invalid UTF-8 binary");
+        .must("run compiled System.getenv invalid UTF-8 binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -19611,13 +19606,13 @@ fn compile_source_runs_system_shell_with_decoded_exit_code() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("System.shell decoded exit code should codegen");
+        .must("System.shell decoded exit code should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled System.shell decoded exit code binary");
+        .must("run compiled System.shell decoded exit code binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19637,14 +19632,14 @@ fn compile_source_fails_fast_on_file_read_missing_path() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("File.read missing-path failure path should codegen");
+        .must("File.read missing-path failure path should codegen");
 
     let output = std::process::Command::new(&output_path)
         .current_dir(&temp_root)
         .output()
-        .expect("run compiled File.read missing-path binary");
+        .must("run compiled File.read missing-path binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(
@@ -19669,13 +19664,13 @@ fn compile_source_runs_time_now_with_long_format() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Time.now long format should codegen");
+        .must("Time.now long format should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Time.now long format binary");
+        .must("run compiled Time.now long format binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19697,22 +19692,22 @@ fn compile_source_runs_system_cwd_with_long_working_directory() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("System.cwd deep path runtime should codegen");
+        .must("System.cwd deep path runtime should codegen");
 
     let mut deep_dir = temp_root.join("cwd-depth-root");
-    fs::create_dir_all(&deep_dir).expect("create deep root");
+    fs::create_dir_all(&deep_dir).must("create deep root");
     let segment = "a".repeat(60);
     for index in 0..18 {
         deep_dir = deep_dir.join(format!("{segment}{index}"));
-        fs::create_dir_all(&deep_dir).expect("create deep segment");
+        fs::create_dir_all(&deep_dir).must("create deep segment");
     }
 
     let status = std::process::Command::new(&output_path)
         .current_dir(&deep_dir)
         .status()
-        .expect("run compiled System.cwd binary");
+        .must("run compiled System.cwd binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19733,21 +19728,21 @@ fn compile_source_runs_read_line_with_long_input() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("read_line long input should codegen");
+        .must("read_line long input should codegen");
 
     let mut child = std::process::Command::new(&output_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
         .spawn()
-        .expect("spawn read_line binary");
+        .must("spawn read_line binary");
     {
         use std::io::Write as _;
-        let stdin = child.stdin.as_mut().expect("child stdin");
-        writeln!(stdin, "{}", "x".repeat(2000)).expect("write long stdin");
+        let stdin = child.stdin.as_mut().must("child stdin");
+        writeln!(stdin, "{}", "x".repeat(2000)).must("write long stdin");
     }
-    let status = child.wait().expect("wait for read_line binary");
+    let status = child.wait().must("wait for read_line binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19767,13 +19762,13 @@ fn compile_source_runs_unicode_str_len() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("unicode Str.len should codegen");
+        .must("unicode Str.len should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled unicode Str.len binary");
+        .must("run compiled unicode Str.len binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19793,13 +19788,13 @@ fn compile_source_fails_fast_on_unicode_string_variable_index_operator_past_char
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("unicode string variable oob index should still codegen");
+        .must("unicode string variable oob index should still codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled unicode string variable index oob binary");
+        .must("run compiled unicode string variable index oob binary");
     assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
     assert!(stdout.contains("String index out of bounds\n"), "{stdout}");
@@ -19819,13 +19814,13 @@ fn compile_source_runs_string_equality_on_literals() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string literal equality should codegen");
+        .must("string literal equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string equality literal binary");
+        .must("run compiled string equality literal binary");
     assert_eq!(status.code(), Some(32));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19844,13 +19839,13 @@ fn compile_source_runs_string_equality_on_expression_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string expression equality should codegen");
+        .must("string expression equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string equality expression binary");
+        .must("run compiled string equality expression binary");
     assert_eq!(status.code(), Some(33));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19870,13 +19865,13 @@ fn compile_source_runs_list_identity_equality() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("list identity equality should codegen");
+        .must("list identity equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled list equality binary");
+        .must("run compiled list equality binary");
     assert_eq!(status.code(), Some(34));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19900,13 +19895,13 @@ fn compile_source_runs_list_constructor_with_preallocated_integer_capacity() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("list constructor with integer capacity should codegen");
+        .must("list constructor with integer capacity should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled list capacity binary");
+        .must("run compiled list capacity binary");
     assert_eq!(status.code(), Some(80));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19929,13 +19924,13 @@ fn compile_source_runs_list_constructor_with_preallocated_option_capacity() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("list constructor with option capacity should codegen");
+        .must("list constructor with option capacity should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled option list capacity binary");
+        .must("run compiled option list capacity binary");
     assert_eq!(status.code(), Some(81));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19954,13 +19949,13 @@ fn compile_source_fails_runtime_on_negative_list_constructor_capacity_expression
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("negative runtime list capacity source should codegen");
+        .must("negative runtime list capacity source should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled negative list capacity binary");
+        .must("run compiled negative list capacity binary");
     assert_eq!(output.status.code(), Some(1));
     assert!(
         String::from_utf8_lossy(&output.stdout)
@@ -19992,13 +19987,13 @@ fn compile_source_runs_typed_option_constructor_through_function_return() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("typed option constructor return should codegen");
+        .must("typed option constructor return should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled typed option constructor binary");
+        .must("run compiled typed option constructor binary");
     assert_eq!(status.code(), Some(82));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20023,13 +20018,13 @@ fn compile_source_runs_typed_result_constructor_through_function_return() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("typed result constructor return should codegen");
+        .must("typed result constructor return should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled typed result constructor binary");
+        .must("run compiled typed result constructor binary");
     assert_eq!(status.code(), Some(83));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20049,12 +20044,12 @@ fn compile_source_uses_typed_heap_sizes_for_builtin_smart_pointer_constructors()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("typed smart pointer constructors should codegen");
+        .must("typed smart pointer constructors should codegen");
 
     let ir_path = output_path.with_extension("ll");
-    let ir = fs::read_to_string(&ir_path).expect("read generated llvm ir");
+    let ir = fs::read_to_string(&ir_path).must("read generated llvm ir");
     let malloc_24_count = ir.matches("call ptr @malloc(i64 24)").count();
     assert!(
             malloc_24_count >= 3,
@@ -20088,9 +20083,9 @@ fn compile_source_supports_raw_ptr_deref_with_float_payloads() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("raw Ptr<Float> deref should codegen");
+        .must("raw Ptr<Float> deref should codegen");
     assert!(output_path.with_extension("ll").exists());
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20108,13 +20103,13 @@ fn compile_source_runs_async_block_await_timeout_method_chain() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("async block await_timeout chain should codegen");
+        .must("async block await_timeout chain should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled async block await_timeout binary");
+        .must("run compiled async block await_timeout binary");
     assert_eq!(status.code(), Some(84));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20141,13 +20136,13 @@ fn compile_source_runs_await_timeout_zero_pending_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("await_timeout(0) on pending task should codegen");
+        .must("await_timeout(0) on pending task should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled await_timeout zero pending binary");
+        .must("run compiled await_timeout zero pending binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20165,9 +20160,9 @@ fn compile_source_supports_async_block_is_done_method_chain() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("async block is_done chain should codegen");
+        .must("async block is_done chain should codegen");
     assert!(output_path.with_extension("ll").exists());
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20192,13 +20187,13 @@ fn compile_source_runs_map_identity_equality() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("map identity equality should codegen");
+        .must("map identity equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled map equality binary");
+        .must("run compiled map equality binary");
     assert_eq!(status.code(), Some(35));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20222,13 +20217,13 @@ fn compile_source_runs_class_identity_equality() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("class identity equality should codegen");
+        .must("class identity equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled class equality binary");
+        .must("run compiled class equality binary");
     assert_eq!(status.code(), Some(36));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20253,13 +20248,13 @@ fn compile_source_runs_option_unwrap_object_identity_equality() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Option.unwrap object identity equality should codegen");
+        .must("Option.unwrap object identity equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Option.unwrap object equality binary");
+        .must("run compiled Option.unwrap object equality binary");
     assert_eq!(status.code(), Some(37));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20285,13 +20280,13 @@ fn compile_source_runs_map_get_object_identity_equality() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("Map.get object identity equality should codegen");
+        .must("Map.get object identity equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled Map.get object equality binary");
+        .must("run compiled Map.get object equality binary");
     assert_eq!(status.code(), Some(38));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20319,13 +20314,13 @@ fn compile_source_runs_await_timeout_unwrap_object_identity_equality() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("await_timeout unwrap object identity equality should codegen");
+        .must("await_timeout unwrap object identity equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled await_timeout unwrap object equality binary");
+        .must("run compiled await_timeout unwrap object equality binary");
     assert_eq!(status.code(), Some(39));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20343,13 +20338,13 @@ fn compile_source_runs_direct_range_method_calls() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct range method call should codegen");
+        .must("direct range method call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct range method binary");
+        .must("run compiled direct range method binary");
     assert_eq!(status.code(), Some(40));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20367,13 +20362,13 @@ fn compile_source_runs_direct_option_some_method_chains() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Option.some method chain should codegen");
+        .must("direct Option.some method chain should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Option.some method binary");
+        .must("run compiled direct Option.some method binary");
     assert_eq!(status.code(), Some(41));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20395,13 +20390,13 @@ fn compile_source_runs_direct_option_some_object_method_chains() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Option.some object method chain should codegen");
+        .must("direct Option.some object method chain should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Option.some object method binary");
+        .must("run compiled direct Option.some object method binary");
     assert_eq!(status.code(), Some(14));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20419,13 +20414,13 @@ fn compile_source_runs_direct_result_ok_method_chains() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Result.ok method chain should codegen");
+        .must("direct Result.ok method chain should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Result.ok method binary");
+        .must("run compiled direct Result.ok method binary");
     assert_eq!(status.code(), Some(42));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20447,13 +20442,13 @@ fn compile_source_runs_direct_result_ok_object_method_chains() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Result.ok object method chain should codegen");
+        .must("direct Result.ok object method chain should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Result.ok object method binary");
+        .must("run compiled direct Result.ok object method binary");
     assert_eq!(status.code(), Some(15));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20476,13 +20471,13 @@ fn compile_source_runs_direct_constructor_method_calls() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct constructor method call should codegen");
+        .must("direct constructor method call should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct constructor method binary");
+        .must("run compiled direct constructor method binary");
     assert_eq!(status.code(), Some(23));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20501,13 +20496,13 @@ fn compile_source_runs_direct_result_error_integer_equality() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Result.error integer equality should codegen");
+        .must("direct Result.error integer equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Result.error integer equality binary");
+        .must("run compiled direct Result.error integer equality binary");
     assert_eq!(status.code(), Some(43));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20531,13 +20526,13 @@ fn compile_source_runs_direct_result_error_object_identity_equality() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("direct Result.error object equality should codegen");
+        .must("direct Result.error object equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled direct Result.error object equality binary");
+        .must("run compiled direct Result.error object equality binary");
     assert_eq!(status.code(), Some(44));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20566,13 +20561,13 @@ fn compile_source_runs_match_result_error_equality_against_static_constructor() 
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("match-result static equality should codegen");
+        .must("match-result static equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled match-result static equality binary");
+        .must("run compiled match-result static equality binary");
     assert_eq!(status.code(), Some(45));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20608,13 +20603,13 @@ fn compile_source_runs_ultra_nested_option_result_static_equality() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("ultra-nested option/result static equality should codegen");
+        .must("ultra-nested option/result static equality should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled ultra-nested option/result static equality binary");
+        .must("run compiled ultra-nested option/result static equality binary");
     assert_eq!(status.code(), Some(46));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20641,13 +20636,13 @@ fn compile_source_runs_if_merge_option_none_method_chain() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("if-merge option none method chain should codegen");
+        .must("if-merge option none method chain should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled if-merge option none method binary");
+        .must("run compiled if-merge option none method binary");
     assert_eq!(status.code(), Some(47));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20681,13 +20676,13 @@ fn compile_source_runs_nested_if_match_if_tagged_merge_method_chain() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("nested if-match-if tagged merge should codegen");
+        .must("nested if-match-if tagged merge should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled nested if-match-if tagged merge binary");
+        .must("run compiled nested if-match-if tagged merge binary");
     assert_eq!(status.code(), Some(48));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20723,13 +20718,13 @@ fn compile_source_runs_chaotic_unreachable_tagged_branch_chain() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("chaotic unreachable tagged branch chain should codegen");
+        .must("chaotic unreachable tagged branch chain should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled chaotic unreachable tagged branch binary");
+        .must("run compiled chaotic unreachable tagged branch binary");
     assert_eq!(status.code(), Some(49));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20752,13 +20747,13 @@ fn compile_source_fails_fast_on_empty_list_index_object_results() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("empty list index object result should still codegen");
+        .must("empty list index object result should still codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled empty list index object binary");
+        .must("run compiled empty list index object binary");
     assert_eq!(status.code(), Some(1));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20776,9 +20771,9 @@ fn compile_source_supports_lambda_callee_calls() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("lambda callee codegen should succeed");
+        .must("lambda callee codegen should succeed");
     assert!(output_path.with_extension("ll").exists());
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20802,9 +20797,9 @@ fn compile_source_supports_indexed_function_value_callees() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("indexed function-value callee should codegen");
+        .must("indexed function-value callee should codegen");
     assert!(output_path.with_extension("ll").exists());
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20825,9 +20820,9 @@ fn compile_source_supports_if_expression_function_value_callees() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("if-expression function-value callee should codegen");
+        .must("if-expression function-value callee should codegen");
     assert!(output_path.with_extension("ll").exists());
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20847,8 +20842,8 @@ fn formatted_async_block_tail_expression_preserves_runtime_behavior() {
             }
         "#;
 
-    let formatted = formatter::format_source(source).expect("format source");
-    fs::write(&source_path, &formatted).expect("write formatted source");
+    let formatted = formatter::format_source(source).must("format source");
+    fs::write(&source_path, &formatted).must("write formatted source");
     compile_source(
         &formatted,
         &source_path,
@@ -20858,11 +20853,11 @@ fn formatted_async_block_tail_expression_preserves_runtime_behavior() {
         None,
         None,
     )
-    .expect("formatted async tail-expression source should codegen");
+    .must("formatted async tail-expression source should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run formatted async tail-expression binary");
+        .must("run formatted async tail-expression binary");
     assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20886,9 +20881,9 @@ fn compile_source_supports_function_valued_field_calls() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("function-valued field calls should codegen");
+        .must("function-valued field calls should codegen");
     assert!(output_path.with_extension("ll").exists());
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20912,9 +20907,9 @@ fn compile_source_supports_generic_method_returning_lambda() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, true, true, None, None)
-        .expect("generic method returning lambda should codegen");
+        .must("generic method returning lambda should codegen");
     assert!(output_path.with_extension("ll").exists());
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20934,13 +20929,13 @@ fn compile_source_runs_zero_arg_pipe_lambda_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("zero-arg pipe lambda should codegen");
+        .must("zero-arg pipe lambda should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg pipe lambda binary");
+        .must("run compiled zero-arg pipe lambda binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20965,13 +20960,13 @@ fn compile_source_runs_generic_method_returning_zero_arg_pipe_lambda_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("generic method returning zero-arg pipe lambda should codegen");
+        .must("generic method returning zero-arg pipe lambda should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled generic method zero-arg pipe lambda binary");
+        .must("run compiled generic method zero-arg pipe lambda binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -20994,13 +20989,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("entry namespace module named main should compile");
+        .must("entry namespace module named main should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled entry namespace module named main binary");
+        .must("run compiled entry namespace module named main binary");
     assert_eq!(
         output.status.code(),
         Some(22),
@@ -21032,13 +21027,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("entry namespace class named main should compile");
+        .must("entry namespace class named main should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled entry namespace class named main binary");
+        .must("run compiled entry namespace class named main binary");
     assert_eq!(
         output.status.code(),
         Some(22),
@@ -21073,13 +21068,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("package-qualified builtin Option variant aliases should compile");
+        .must("package-qualified builtin Option variant aliases should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled package-qualified builtin Option alias binary");
+        .must("run compiled package-qualified builtin Option alias binary");
     assert_eq!(
         output.status.code(),
         Some(4),
@@ -21114,13 +21109,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("package-qualified builtin Result variant aliases should compile");
+        .must("package-qualified builtin Result variant aliases should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled package-qualified builtin Result alias binary");
+        .must("run compiled package-qualified builtin Result alias binary");
     assert_eq!(
         output.status.code(),
         Some(4),
@@ -21146,13 +21141,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("package-qualified direct Option constructor should compile");
+        .must("package-qualified direct Option constructor should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled package-qualified direct Option constructor binary");
+        .must("run compiled package-qualified direct Option constructor binary");
     assert_eq!(
         output.status.code(),
         Some(4),
@@ -21183,13 +21178,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("package-qualified direct Option.None constructor should compile");
+        .must("package-qualified direct Option.None constructor should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled package-qualified direct Option.None constructor binary");
+        .must("run compiled package-qualified direct Option.None constructor binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -21215,13 +21210,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("package-qualified direct Result constructor should compile");
+        .must("package-qualified direct Result constructor should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled package-qualified direct Result constructor binary");
+        .must("run compiled package-qualified direct Result constructor binary");
     assert_eq!(
         output.status.code(),
         Some(4),
@@ -21248,13 +21243,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("package-qualified inline Option constructor method chain should compile");
+        .must("package-qualified inline Option constructor method chain should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled package-qualified inline Option constructor binary");
+        .must("run compiled package-qualified inline Option constructor binary");
     assert_eq!(
         output.status.code(),
         Some(4),
@@ -21281,13 +21276,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("package-qualified inline Result constructor method chain should compile");
+        .must("package-qualified inline Result constructor method chain should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled package-qualified inline Result constructor binary");
+        .must("run compiled package-qualified inline Result constructor binary");
     assert_eq!(
         output.status.code(),
         Some(4),
@@ -21315,13 +21310,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("root namespace alias builtin Option constructor should compile");
+        .must("root namespace alias builtin Option constructor should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled root alias Option constructor binary");
+        .must("run compiled root alias Option constructor binary");
     assert_eq!(
         output.status.code(),
         Some(4),
@@ -21352,13 +21347,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("root namespace alias builtin Option.None constructor should compile");
+        .must("root namespace alias builtin Option.None constructor should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled root alias Option.None constructor binary");
+        .must("run compiled root alias Option.None constructor binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -21386,13 +21381,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("package-qualified Option.None pattern should compile");
+        .must("package-qualified Option.None pattern should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled package-qualified Option.None pattern binary");
+        .must("run compiled package-qualified Option.None pattern binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -21422,13 +21417,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("root namespace alias Option.None pattern should compile");
+        .must("root namespace alias Option.None pattern should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled root alias Option.None pattern binary");
+        .must("run compiled root alias Option.None pattern binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -21457,13 +21452,13 @@ function main(): Integer {
 }
 "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("root namespace alias inline Result constructor chain should compile");
+        .must("root namespace alias inline Result constructor chain should compile");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled root alias Result constructor chain binary");
+        .must("run compiled root alias Result constructor chain binary");
     assert_eq!(
         output.status.code(),
         Some(4),

@@ -12,11 +12,53 @@ use crate::{
     RewriteFingerprintContext, RewrittenProjectUnit,
 };
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+pub(crate) trait TestExpectExt<T> {
+    fn must(self, message: &str) -> T;
+}
+
+pub(crate) trait TestExpectErrExt<E> {
+    fn must_err(self, message: &str) -> E;
+}
+
+impl<T, E> TestExpectExt<T> for Result<T, E>
+where
+    E: Debug,
+{
+    fn must(self, message: &str) -> T {
+        match self {
+            Ok(value) => value,
+            Err(error) => panic!("{message}: {error:?}"),
+        }
+    }
+}
+
+impl<T> TestExpectExt<T> for Option<T> {
+    fn must(self, message: &str) -> T {
+        match self {
+            Some(value) => value,
+            None => panic!("{message}"),
+        }
+    }
+}
+
+impl<T, E> TestExpectErrExt<E> for Result<T, E>
+where
+    T: Debug,
+{
+    fn must_err(self, message: &str) -> E {
+        match self {
+            Ok(value) => panic!("{message}: {value:?}"),
+            Err(error) => error,
+        }
+    }
+}
 
 pub(crate) struct ProjectSymbolMaps {
     pub(crate) namespace_files_map: HashMap<String, Vec<PathBuf>>,
@@ -187,9 +229,9 @@ pub(crate) fn compute_rewrite_context_fingerprint_for_unit(
 }
 
 pub(crate) fn parse_program(source: &str) -> Program {
-    let tokens = crate::lexer::tokenize(source).expect("tokenize");
+    let tokens = crate::lexer::tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    parser.parse_program().expect("parse")
+    parser.parse_program().must("parse")
 }
 
 pub(crate) fn fingerprint_for(source: &str) -> String {
@@ -270,7 +312,7 @@ pub(crate) fn rewrite_fingerprint_for_test_unit(
     let target_unit = parsed_files
         .iter()
         .find(|u| u.file == target_file)
-        .expect("target unit");
+        .must("target unit");
     compute_rewrite_context_fingerprint_for_unit(target_unit, entry_namespace, &rewrite_ctx)
 }
 
@@ -335,10 +377,10 @@ pub(crate) fn make_temp_project_root(tag: &str) -> PathBuf {
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("time")
+            .must("time")
             .as_nanos()
     ));
-    fs::create_dir_all(temp_root.join("src")).expect("create temp project src dir");
+    fs::create_dir_all(temp_root.join("src")).must("create temp project src dir");
     temp_root
 }
 
@@ -348,7 +390,7 @@ pub(crate) fn normalize_output(bytes: &[u8]) -> String {
 
 pub(crate) fn with_current_dir<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
     crate::cli::paths::with_process_current_dir(dir, || Ok::<T, String>(f()))
-        .expect("set current dir")
+        .must("set current dir")
 }
 
 pub(crate) fn normalize_nested_cargo_linker_env(command: &mut Command) {
@@ -381,7 +423,7 @@ pub(crate) fn write_test_project_config(root: &Path, files: &[&str], entry: &str
         "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"{}\"\nfiles = [{}]\noutput = \"{}\"\n",
         entry, files_toml, output
     );
-    fs::write(root.join("arden.toml"), config).expect("write arden.toml");
+    fs::write(root.join("arden.toml"), config).must("write arden.toml");
 }
 
 pub(crate) fn collect_project_symbol_maps(parsed_files: &[ParsedProjectUnit]) -> ProjectSymbolMaps {

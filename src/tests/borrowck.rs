@@ -1,11 +1,12 @@
+use super::{TestExpectErrExt, TestExpectExt};
 use crate::borrowck::{format_borrow_errors, BorrowChecker, BorrowError};
 use crate::parser::Parser;
 use crate::{ast::Program, lexer};
 
 fn parse_program(source: &str) -> Program {
-    let tokens = lexer::tokenize(source).expect("tokenization should succeed");
+    let tokens = lexer::tokenize(source).must("tokenization should succeed");
     let mut parser = Parser::new(tokens);
-    parser.parse_program().expect("parse should succeed")
+    parser.parse_program().must("parse should succeed")
 }
 
 fn borrow_errors(source: &str) -> Vec<String> {
@@ -13,7 +14,7 @@ fn borrow_errors(source: &str) -> Vec<String> {
     let mut checker = BorrowChecker::new();
     checker
         .check(&program)
-        .expect_err("borrow check should fail")
+        .must_err("borrow check should fail")
         .into_iter()
         .map(|e| e.message)
         .collect()
@@ -22,7 +23,7 @@ fn borrow_errors(source: &str) -> Vec<String> {
 fn borrow_ok(source: &str) {
     let program = parse_program(source);
     let mut checker = BorrowChecker::new();
-    checker.check(&program).expect("borrow check should pass");
+    checker.check(&program).must("borrow check should pass");
 }
 
 #[test]

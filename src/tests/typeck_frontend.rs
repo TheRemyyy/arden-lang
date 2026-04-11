@@ -202,7 +202,7 @@ function classify(result: Result<Integer, String>): Integer {
     let mut type_checker = TypeChecker::new();
     type_checker
         .check(&program)
-        .expect("Ok/Error Result match should be exhaustive");
+        .must("Ok/Error Result match should be exhaustive");
 }
 
 #[test]
@@ -220,7 +220,7 @@ function classify(result: Result<Integer, String>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("Err pattern should be rejected");
+        .must_err("Err pattern should be rejected");
     let joined = errors
         .into_iter()
         .map(|e| e.message)
@@ -251,7 +251,7 @@ function classify(result: Result<Integer, String>): Integer {
     let mut type_checker = TypeChecker::new();
     type_checker
         .check(&program)
-        .expect("alias-based Ok/Error Result match should be exhaustive");
+        .must("alias-based Ok/Error Result match should be exhaustive");
 }
 
 #[test]
@@ -272,7 +272,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     type_checker
         .check(&program)
-        .expect("alias-based Some/None Option match should be exhaustive");
+        .must("alias-based Some/None Option match should be exhaustive");
 }
 
 #[test]
@@ -438,7 +438,7 @@ function classify(flag: Boolean): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("local type mismatch should fail");
+        .must_err("local type mismatch should fail");
     let joined = errors
         .into_iter()
         .map(|e| e.message)
@@ -473,7 +473,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("generic arity mismatch should fail");
+        .must_err("generic arity mismatch should fail");
     let joined = errors
         .into_iter()
         .map(|e| e.message)
@@ -505,7 +505,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("constructor-like generic misuse should fail");
+        .must_err("constructor-like generic misuse should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -538,7 +538,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("valid-type generic misuse should fail");
+        .must_err("valid-type generic misuse should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -568,7 +568,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("free-function generic misuse should fail");
+        .must_err("free-function generic misuse should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -603,7 +603,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("chained generic misuse should fail");
+        .must_err("chained generic misuse should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -635,7 +635,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("module generic misuse should fail");
+        .must_err("module generic misuse should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -668,7 +668,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("non-generic method type args should fail");
+        .must_err("non-generic method type args should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -701,7 +701,7 @@ function classify(value: Option<Integer>, holder: Holder): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("function-valued field type args should fail");
+        .must_err("function-valued field type args should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -733,7 +733,7 @@ function classify(value: Option<Integer>, counter: Counter): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("interface method type args should fail");
+        .must_err("interface method type args should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -766,7 +766,7 @@ function classify(value: Option<Integer>, holder: Holder): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("interface field nested type args should fail");
+        .must_err("interface field nested type args should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -806,7 +806,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("nested module generic misuse should fail");
+        .must_err("nested module generic misuse should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -843,7 +843,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("nested module method generic misuse should fail");
+        .must_err("nested module method generic misuse should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -875,7 +875,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("static path type args should fail");
+        .must_err("static path type args should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     let joined = messages.join("\n");
     assert!(
@@ -915,7 +915,7 @@ function classify(result: Result<Option<Integer>, String>): None {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("local type mismatch should fail");
+        .must_err("local type mismatch should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -958,7 +958,7 @@ function classify(result: Result<Option<Integer>, String>, cond: Boolean): Integ
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("nested alias if-match branch type mismatch should fail");
+        .must_err("nested alias if-match branch type mismatch should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages.iter().any(|m| m.contains("Type mismatch")
@@ -989,7 +989,7 @@ function classify(value: Option<Integer>): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("branch type mismatch should fail");
+        .must_err("branch type mismatch should fail");
     let joined = errors
         .into_iter()
         .map(|e| e.message)
@@ -1086,13 +1086,13 @@ fn data_pipeline_tagged_container_growth_chains_survive_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("data pipeline tagged container runtime should codegen");
+        .must("data pipeline tagged container runtime should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled data pipeline tagged container binary");
+        .must("run compiled data pipeline tagged container binary");
     assert_eq!(status.code(), Some(41));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1128,13 +1128,13 @@ fn batch_style_tagged_container_mutation_chain_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("batch-style tagged mutation runtime should codegen");
+        .must("batch-style tagged mutation runtime should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled batch-style tagged mutation binary");
+        .must("run compiled batch-style tagged mutation binary");
     assert_eq!(status.code(), Some(51));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1166,13 +1166,13 @@ fn forward_declared_generic_class_enum_payload_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("forward-declared generic enum payload runtime should codegen");
+        .must("forward-declared generic enum payload runtime should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled forward-declared generic enum payload binary");
+        .must("run compiled forward-declared generic enum payload binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1206,13 +1206,13 @@ fn forward_declared_generic_class_method_chain_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("forward-declared generic method chain runtime should codegen");
+        .must("forward-declared generic method chain runtime should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled forward-declared generic method chain binary");
+        .must("run compiled forward-declared generic method chain binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1237,13 +1237,13 @@ fn bound_generic_method_value_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("bound generic method value runtime should codegen");
+        .must("bound generic method value runtime should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled bound generic method value binary");
+        .must("run compiled bound generic method value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1432,13 +1432,13 @@ fn unicode_string_keyed_tagged_container_updates_survive_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("unicode tagged container update runtime should codegen");
+        .must("unicode tagged container update runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled unicode tagged container update binary");
+        .must("run compiled unicode tagged container update binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -1470,13 +1470,13 @@ fn string_keyed_tagged_set_growth_remove_contains_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("string-keyed tagged set runtime should codegen");
+        .must("string-keyed tagged set runtime should codegen");
 
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled string-keyed tagged set binary");
+        .must("run compiled string-keyed tagged set binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1507,13 +1507,13 @@ fn mixed_unicode_ascii_string_error_keys_survive_map_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed unicode/ascii string error map runtime should codegen");
+        .must("mixed unicode/ascii string error map runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled mixed unicode/ascii string error map binary");
+        .must("run compiled mixed unicode/ascii string error map binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -1553,13 +1553,13 @@ fn mixed_ascii_unicode_string_error_object_values_survive_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("mixed ascii/unicode string error object runtime should codegen");
+        .must("mixed ascii/unicode string error object runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled mixed ascii/unicode string error object binary");
+        .must("run compiled mixed ascii/unicode string error object binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -1650,13 +1650,13 @@ fn nested_tagged_updates_match_values_and_chains_survive_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("nested tagged updates + match values runtime should codegen");
+        .must("nested tagged updates + match values runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled nested tagged updates + match values binary");
+        .must("run compiled nested tagged updates + match values binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -1712,7 +1712,7 @@ function classify(value: Result<Option<Integer>, String>, cond: Boolean): Intege
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid paired source should fail");
+        .must_err("invalid paired source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -1763,13 +1763,13 @@ fn nested_tagged_match_get_chain_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("nested tagged match/get chain runtime should codegen");
+        .must("nested tagged match/get chain runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled nested tagged match/get chain binary");
+        .must("run compiled nested tagged match/get chain binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -1842,7 +1842,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid nested tagged source should fail");
+        .must_err("invalid nested tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -1892,13 +1892,13 @@ fn repeated_update_tagged_pipeline_match_get_equality_and_chain_survives_runtime
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("repeated update tagged pipeline runtime should codegen");
+        .must("repeated update tagged pipeline runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled repeated update tagged pipeline binary");
+        .must("run compiled repeated update tagged pipeline binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -1951,13 +1951,13 @@ fn repeated_update_tagged_match_value_chain_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("repeated update tagged match value runtime should codegen");
+        .must("repeated update tagged match value runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled repeated update tagged match value binary");
+        .must("run compiled repeated update tagged match value binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -2030,7 +2030,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid repeated-update tagged source should fail");
+        .must_err("invalid repeated-update tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -2084,13 +2084,13 @@ fn repeated_update_match_receiver_equality_chain_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("repeated-update match receiver equality runtime should codegen");
+        .must("repeated-update match receiver equality runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled repeated-update match receiver equality binary");
+        .must("run compiled repeated-update match receiver equality binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -2143,13 +2143,13 @@ fn repeated_update_boolean_join_match_receiver_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("repeated update boolean join runtime should codegen");
+        .must("repeated update boolean join runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled repeated update boolean join binary");
+        .must("run compiled repeated update boolean join binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -2202,13 +2202,13 @@ fn repeated_update_tagged_set_boolean_join_chain_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("repeated-update tagged set boolean join runtime should codegen");
+        .must("repeated-update tagged set boolean join runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled repeated-update tagged set boolean join binary");
+        .must("run compiled repeated-update tagged set boolean join binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -2282,7 +2282,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid tagged set pair should fail");
+        .must_err("invalid tagged set pair should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -2337,13 +2337,13 @@ fn combined_map_set_tagged_pipeline_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("combined map/set tagged runtime should codegen");
+        .must("combined map/set tagged runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled combined map/set tagged runtime binary");
+        .must("run compiled combined map/set tagged runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -2401,13 +2401,13 @@ fn combined_map_set_repeated_update_equality_chain_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("combined map/set repeated update equality runtime should codegen");
+        .must("combined map/set repeated update equality runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled combined map/set repeated update equality binary");
+        .must("run compiled combined map/set repeated update equality binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -2465,13 +2465,13 @@ fn tagged_membership_branch_match_value_equality_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("tagged membership branch match value runtime should codegen");
+        .must("tagged membership branch match value runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled tagged membership branch match value binary");
+        .must("run compiled tagged membership branch match value binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -2528,13 +2528,13 @@ fn multi_function_tagged_pipeline_returned_values_and_chains_survive_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("multi-function tagged pipeline runtime should codegen");
+        .must("multi-function tagged pipeline runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled multi-function tagged pipeline binary");
+        .must("run compiled multi-function tagged pipeline binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -2619,7 +2619,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid multi-function tagged source should fail");
+        .must_err("invalid multi-function tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -2678,13 +2678,13 @@ fn multi_helper_tagged_runtime_pipeline_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("multi-helper tagged runtime should codegen");
+        .must("multi-helper tagged runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled multi-helper tagged runtime binary");
+        .must("run compiled multi-helper tagged runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -2769,7 +2769,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid multi-helper tagged source should fail");
+        .must_err("invalid multi-helper tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -2823,13 +2823,13 @@ fn fresh_nested_tagged_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("fresh nested tagged runtime should codegen");
+        .must("fresh nested tagged runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled fresh nested tagged runtime binary");
+        .must("run compiled fresh nested tagged runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -2909,7 +2909,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid nested tagged value-flow source should fail");
+        .must_err("invalid nested tagged value-flow source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -2970,13 +2970,13 @@ fn deeper_multi_helper_nested_tagged_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("deeper multi-helper nested tagged runtime should codegen");
+        .must("deeper multi-helper nested tagged runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled deeper multi-helper nested tagged runtime binary");
+        .must("run compiled deeper multi-helper nested tagged runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -3066,7 +3066,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid deeper multi-helper tagged source should fail");
+        .must_err("invalid deeper multi-helper tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -3131,13 +3131,13 @@ fn fresh_multi_stage_tagged_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("fresh multi-stage tagged runtime should codegen");
+        .must("fresh multi-stage tagged runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled fresh multi-stage tagged runtime binary");
+        .must("run compiled fresh multi-stage tagged runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -3192,13 +3192,13 @@ fn scalar_observation_nested_tagged_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("scalar observation nested tagged runtime should codegen");
+        .must("scalar observation nested tagged runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled scalar observation nested tagged runtime binary");
+        .must("run compiled scalar observation nested tagged runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -3278,7 +3278,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid scalar-only tagged source should fail");
+        .must_err("invalid scalar-only tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -3331,13 +3331,13 @@ fn fresh_scalar_join_tagged_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("fresh scalar join tagged runtime should codegen");
+        .must("fresh scalar join tagged runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled fresh scalar join tagged runtime binary");
+        .must("run compiled fresh scalar join tagged runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -3417,7 +3417,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid scalar-only multi-helper tagged source should fail");
+        .must_err("invalid scalar-only multi-helper tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -3477,13 +3477,13 @@ fn three_helper_scalar_tagged_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("three-helper scalar tagged runtime should codegen");
+        .must("three-helper scalar tagged runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled three-helper scalar tagged runtime binary");
+        .must("run compiled three-helper scalar tagged runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -3571,7 +3571,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid three-helper scalar tagged source should fail");
+        .must_err("invalid three-helper scalar tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -3632,13 +3632,13 @@ fn fresh_three_helper_repeated_update_scalar_runtime_stressor_survives_codegen()
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("fresh three-helper repeated-update scalar runtime should codegen");
+        .must("fresh three-helper repeated-update scalar runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled fresh three-helper repeated-update scalar runtime binary");
+        .must("run compiled fresh three-helper repeated-update scalar runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -3726,7 +3726,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid three-helper repeated-update scalar source should fail");
+        .must_err("invalid three-helper repeated-update scalar source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -3783,13 +3783,13 @@ fn independent_lookup_nested_tagged_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("independent lookup nested tagged runtime should codegen");
+        .must("independent lookup nested tagged runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled independent lookup nested tagged runtime binary");
+        .must("run compiled independent lookup nested tagged runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -3871,7 +3871,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid parameterized lookup tagged source should fail");
+        .must_err("invalid parameterized lookup tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -3928,13 +3928,13 @@ fn parameterized_scalar_lookup_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("parameterized scalar lookup runtime should codegen");
+        .must("parameterized scalar lookup runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled parameterized scalar lookup binary");
+        .must("run compiled parameterized scalar lookup binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -4016,7 +4016,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid parameterized multi-key tagged source should fail");
+        .must_err("invalid parameterized multi-key tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -4073,13 +4073,13 @@ fn parameterized_multi_key_scalar_join_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("parameterized multi-key scalar join runtime should codegen");
+        .must("parameterized multi-key scalar join runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled parameterized multi-key scalar join binary");
+        .must("run compiled parameterized multi-key scalar join binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -4161,7 +4161,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid parameterized multi-key scalar source should fail");
+        .must_err("invalid parameterized multi-key scalar source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -4218,13 +4218,13 @@ fn fresh_multi_key_repeated_update_scalar_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("fresh multi-key repeated-update scalar runtime should codegen");
+        .must("fresh multi-key repeated-update scalar runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled fresh multi-key repeated-update scalar runtime binary");
+        .must("run compiled fresh multi-key repeated-update scalar runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -4306,7 +4306,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid fresh multi-key scalar source should fail");
+        .must_err("invalid fresh multi-key scalar source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -4366,13 +4366,13 @@ fn new_multi_key_nested_join_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("new multi-key nested join runtime should codegen");
+        .must("new multi-key nested join runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled new multi-key nested join binary");
+        .must("run compiled new multi-key nested join binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -4454,7 +4454,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid multi-key joined tagged source should fail");
+        .must_err("invalid multi-key joined tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -4509,13 +4509,13 @@ fn static_constructor_comparison_multi_key_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("static constructor comparison multi-key runtime should codegen");
+        .must("static constructor comparison multi-key runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled static constructor comparison multi-key binary");
+        .must("run compiled static constructor comparison multi-key binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -4578,13 +4578,13 @@ fn fresh_scalar_only_tagged_runtime_stressor_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("fresh scalar-only tagged runtime should codegen");
+        .must("fresh scalar-only tagged runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled fresh scalar-only tagged runtime binary");
+        .must("run compiled fresh scalar-only tagged runtime binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -4670,7 +4670,7 @@ function main(): Integer {
     let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
-        .expect_err("invalid scalarized nested tagged source should fail");
+        .must_err("invalid scalarized nested tagged source should fail");
     let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
     assert!(
         messages
@@ -4729,13 +4729,13 @@ fn source_driven_nested_tagged_storage_path_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("source-driven nested tagged storage runtime should codegen");
+        .must("source-driven nested tagged storage runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled source-driven nested tagged storage binary");
+        .must("run compiled source-driven nested tagged storage binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -4771,13 +4771,13 @@ fn source_driven_set_remove_shift_scalar_observation_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("source-driven set remove shift runtime should codegen");
+        .must("source-driven set remove shift runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled source-driven set remove shift binary");
+        .must("run compiled source-driven set remove shift binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -4836,13 +4836,13 @@ fn source_driven_multi_overwrite_tagged_map_runtime_survives_codegen() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("source-driven multi-overwrite tagged map runtime should codegen");
+        .must("source-driven multi-overwrite tagged map runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled source-driven multi-overwrite tagged map binary");
+        .must("run compiled source-driven multi-overwrite tagged map binary");
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -4877,13 +4877,13 @@ fn source_driven_set_add_remove_readd_scalar_observation_survives_runtime() {
             }
         "#;
 
-    fs::write(&source_path, source).expect("write source");
+    fs::write(&source_path, source).must("write source");
     compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("source-driven set readd runtime should codegen");
+        .must("source-driven set readd runtime should codegen");
 
     let output = std::process::Command::new(&output_path)
         .output()
-        .expect("run compiled source-driven set readd binary");
+        .must("run compiled source-driven set readd binary");
     assert_eq!(
         output.status.code(),
         Some(0),

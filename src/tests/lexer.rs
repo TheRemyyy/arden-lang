@@ -1,8 +1,9 @@
+use super::{TestExpectErrExt, TestExpectExt};
 use crate::lexer::{tokenize, Token};
 
 fn token_kinds(source: &str) -> Vec<Token<'_>> {
     tokenize(source)
-        .expect("tokenization succeeds")
+        .must("tokenization succeeds")
         .into_iter()
         .map(|(token, _)| token)
         .collect()
@@ -11,26 +12,23 @@ fn token_kinds(source: &str) -> Vec<Token<'_>> {
 #[test]
 fn skips_unix_shebang_line() {
     let tokens = tokenize("#!/usr/bin/env arden\nfunction main(): None { return None; }")
-        .expect("tokenization succeeds");
+        .must("tokenization succeeds");
     assert!(matches!(tokens.first(), Some((Token::Function, _))));
 }
 
 #[test]
 fn preserves_absolute_spans_after_shebang() {
     let source = "#!/usr/bin/env arden\nfunction main(): None { return None; }";
-    let tokens = tokenize(source).expect("tokenization succeeds");
-    let (token, span) = tokens.first().expect("function token should exist");
+    let tokens = tokenize(source).must("tokenization succeeds");
+    let (token, span) = tokens.first().must("function token should exist");
     assert!(matches!(token, Token::Function));
     assert_eq!(&source[span.clone()], "function");
-    assert_eq!(
-        span.start,
-        source.find("function").expect("function keyword")
-    );
+    assert_eq!(span.start, source.find("function").must("function keyword"));
 }
 
 #[test]
 fn decodes_escaped_char_literals() {
-    let tokens = tokenize("'\\n' '\\t' '\\\\' '\\''").expect("tokenization succeeds");
+    let tokens = tokenize("'\\n' '\\t' '\\\\' '\\''").must("tokenization succeeds");
     assert!(matches!(tokens[0].0, Token::Char('\n')));
     assert!(matches!(tokens[1].0, Token::Char('\t')));
     assert!(matches!(tokens[2].0, Token::Char('\\')));
@@ -61,34 +59,34 @@ fn malformed_lexer_corpus_never_panics() {
 
 #[test]
 fn rejects_unterminated_string_literal() {
-    let err = tokenize("\"unterminated").expect_err("unterminated string should fail");
+    let err = tokenize("\"unterminated").must_err("unterminated string should fail");
     assert!(err.contains("Unknown token"), "{err}");
 }
 
 #[test]
 fn rejects_invalid_char_escape_sequence() {
-    let err = tokenize("'\\q'").expect_err("invalid char escape should fail");
+    let err = tokenize("'\\q'").must_err("invalid char escape should fail");
     assert!(err.contains("Unknown token"), "{err}");
 }
 
 #[test]
 fn rejects_unterminated_block_comment() {
     let err =
-        tokenize("/* unterminated comment").expect_err("unterminated block comment should fail");
+        tokenize("/* unterminated comment").must_err("unterminated block comment should fail");
     assert!(err.contains("Unknown token"), "{err}");
 }
 
 #[test]
 fn rejects_overflowing_integer_literal_with_specific_error() {
     let err = tokenize("9999999999999999999999999999999999999999")
-        .expect_err("overflowing integer literal should fail");
+        .must_err("overflowing integer literal should fail");
     assert!(err.contains("Invalid integer literal"), "{err}");
 }
 
 #[test]
 fn rejects_overflowing_float_literal_with_specific_error() {
     let source = format!("{}.0", "9".repeat(500));
-    let err = tokenize(&source).expect_err("overflowing float literal should fail");
+    let err = tokenize(&source).must_err("overflowing float literal should fail");
     assert!(err.contains("Invalid float literal"), "{err}");
 }
 
@@ -121,7 +119,7 @@ fn tokenizes_string_and_char_escape_corpus() {
 
 #[test]
 fn tokenizes_string_interpolation_with_nested_string_literal() {
-    let tokens = tokenize(r#"s: String = "{m["x"]}";"#).expect("tokenization succeeds");
+    let tokens = tokenize(r#"s: String = "{m["x"]}";"#).must("tokenization succeeds");
     assert!(matches!(tokens[0].0, Token::Ident("s")));
     assert!(matches!(tokens[1].0, Token::Colon));
     assert!(matches!(tokens[2].0, Token::TyString));

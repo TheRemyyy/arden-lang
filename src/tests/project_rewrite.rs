@@ -1,4 +1,5 @@
 use super::*;
+use crate::tests::TestExpectExt;
 
 fn sp<T>(node: T) -> ast::Spanned<T> {
     ast::Spanned::new(node, 0..0)
@@ -321,7 +322,7 @@ fn rewrites_namespace_alias_class_constructor_calls() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Expr(expr_stmt) = &func.body[0].node else {
         panic!("expected expr statement");
     };
@@ -386,7 +387,7 @@ fn rewrites_exact_imported_class_alias_constructor_calls() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Expr(expr_stmt) = &func.body[0].node else {
         panic!("expected expr statement");
     };
@@ -457,7 +458,7 @@ fn rewrites_namespace_alias_enum_variant_calls() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Expr(expr_stmt) = &func.body[0].node else {
         panic!("expected expr statement");
     };
@@ -533,7 +534,7 @@ fn rewrites_exact_imported_enum_alias_variant_calls() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Expr(expr_stmt) = &func.body[0].node else {
         panic!("expected expr statement");
     };
@@ -613,11 +614,11 @@ fn rewrites_exact_imported_enum_alias_types() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Let { ty, value, .. } = &func.body[0].node else {
         panic!("expected let statement");
     };
-    assert_eq!(ty, &ast::Type::Named("util__E".to_string()));
+    assert_eq!(*ty, ast::Type::Named("util__E".to_string()));
     let Expr::Call { callee, .. } = &value.node else {
         panic!("expected enum variant call expression");
     };
@@ -686,7 +687,7 @@ fn rewrites_exact_imported_enum_variant_alias_calls() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Expr(expr_stmt) = &func.body[0].node else {
         panic!("expected expr statement");
     };
@@ -768,7 +769,7 @@ fn rewrites_exact_imported_enum_variant_alias_patterns() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Match { arms, .. } = &func.body[0].node else {
         panic!("expected match statement");
     };
@@ -841,7 +842,7 @@ fn rewrites_namespace_alias_enum_variant_patterns() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Match { arms, .. } = &func.body[0].node else {
         panic!("expected match statement");
     };
@@ -914,7 +915,7 @@ fn rewrites_root_namespace_alias_builtin_variant_patterns() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Match { arms, .. } = &func.body[0].node else {
         panic!("expected match statement");
     };
@@ -1020,7 +1021,7 @@ fn rewrites_local_enum_types_and_variant_calls_inside_function_bodies() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
 
     let Stmt::Let { ty, value, .. } = &func.body[0].node else {
         panic!("expected enum let statement");
@@ -1135,7 +1136,7 @@ fn rewrites_namespace_alias_qualified_types() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
 
     let Stmt::Let { ty, .. } = &func.body[0].node else {
         panic!("expected first let statement");
@@ -1211,7 +1212,7 @@ fn rewrites_namespace_alias_qualified_call_type_args() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
 
     let Stmt::Let { ty, value, .. } = &func.body[0].node else {
         panic!("expected let statement");
@@ -1296,7 +1297,7 @@ fn rewrites_namespace_alias_nested_module_function_call_type_args() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
 
     let Stmt::Expr(expr_stmt) = &func.body[0].node else {
         panic!("expected expression statement");
@@ -1402,7 +1403,7 @@ fn rewrites_local_module_function_call_type_args() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
 
     let Stmt::Expr(expr_stmt) = &func.body[0].node else {
         panic!("expected expression statement");
@@ -1479,7 +1480,7 @@ fn rewrites_namespace_alias_qualified_construct_type_strings() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
 
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("expected let statement");
@@ -1555,7 +1556,7 @@ fn rewrites_namespace_alias_nested_function_interface_types_inside_construct_str
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
 
     let Stmt::Let { ty, value, .. } = &func.body[0].node else {
         panic!("expected let statement");
@@ -2511,7 +2512,7 @@ fn rewrites_function_value_identifiers_outside_call_positions() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("expected let statement");
     };
@@ -2619,7 +2620,7 @@ fn rewrites_if_expression_function_value_branches() {
             Decl::Function(func) if func.name == "app__main" || func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected rewritten main function");
+        .must("expected rewritten main function");
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("expected let statement");
     };
@@ -2638,7 +2639,7 @@ fn rewrites_if_expression_function_value_branches() {
         panic!("expected rewritten then branch function ident");
     };
     assert_eq!(name, "app__inc");
-    let else_branch = else_branch.as_ref().expect("expected else branch");
+    let else_branch = else_branch.as_ref().must("expected else branch");
     let Stmt::Expr(expr) = &else_branch[0].node else {
         panic!("expected else branch expr");
     };
@@ -2713,7 +2714,7 @@ fn rewrites_module_alias_function_values_outside_call_positions() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("expected let statement");
     };
@@ -2788,7 +2789,7 @@ fn rewrites_nested_module_alias_function_values_outside_call_positions() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("expected let statement");
     };
@@ -2864,7 +2865,7 @@ fn rewrites_namespace_alias_nested_module_generic_class_types_and_constructors()
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected main function declaration");
+        .must("expected main function declaration");
     let Stmt::Let { ty, value, .. } = &func.body[0].node else {
         panic!("expected let statement");
     };
@@ -3103,7 +3104,7 @@ fn rewrites_program_for_project_module_local_nested_module_members() {
             Decl::Module(module) if module.name == "app__M" => Some(module),
             _ => None,
         })
-        .expect("expected rewritten module declaration");
+        .must("expected rewritten module declaration");
     let run = module
         .declarations
         .iter()
@@ -3111,7 +3112,7 @@ fn rewrites_program_for_project_module_local_nested_module_members() {
             Decl::Function(func) if func.name == "run" => Some(func),
             _ => None,
         })
-        .expect("expected run function");
+        .must("expected run function");
 
     let Stmt::Let { value, .. } = &run.body[0].node else {
         panic!("expected constructor let statement");
@@ -3252,7 +3253,7 @@ fn rewrites_root_namespace_alias_builtin_static_constructor_calls() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected function declaration");
+        .must("expected function declaration");
     let Stmt::Expr(call_stmt) = &func.body[0].node else {
         panic!("expected expr statement");
     };
@@ -3338,7 +3339,7 @@ fn preserves_root_namespace_alias_builtin_function_values() {
             Decl::Function(func) if func.name == "main" => Some(func),
             _ => None,
         })
-        .expect("expected function declaration");
+        .must("expected function declaration");
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("expected let statement");
     };
@@ -3416,7 +3417,7 @@ fn rewrites_top_level_generic_classes_that_shadow_builtin_names() {
             Decl::Function(func) if func.name.ends_with("mk") => Some(func),
             _ => None,
         })
-        .expect("expected mk function declaration");
+        .must("expected mk function declaration");
     assert_eq!(
         func.return_type,
         ast::Type::Generic("app__Box".to_string(), vec![ast::Type::Integer])
@@ -3479,7 +3480,7 @@ fn rewrites_class_extends_namespace_alias_types() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(class.extends.as_deref(), Some("util__Base"));
 }
 
@@ -3531,7 +3532,7 @@ fn rewrites_class_extends_nested_namespace_alias_types() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(class.extends.as_deref(), Some("util__Api__Base"));
 }
 
@@ -3583,7 +3584,7 @@ fn rewrites_class_implements_namespace_alias_types() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(class.implements, vec!["util__Printable".to_string()]);
 }
 
@@ -3638,7 +3639,7 @@ fn rewrites_class_implements_nested_namespace_alias_types() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(class.implements, vec!["util__Api__Printable".to_string()]);
 }
 
@@ -3696,7 +3697,7 @@ fn rewrites_class_implements_multiple_namespace_alias_types() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(
         class.implements,
         vec!["util__Named".to_string(), "util__Printable".to_string()]
@@ -3747,7 +3748,7 @@ fn rewrites_interface_extends_namespace_alias_types() {
             Decl::Interface(interface) => Some(interface),
             _ => None,
         })
-        .expect("expected interface declaration");
+        .must("expected interface declaration");
     assert_eq!(interface.extends, vec!["util__Named".to_string()]);
 }
 
@@ -3798,7 +3799,7 @@ fn rewrites_interface_extends_nested_namespace_alias_types() {
             Decl::Interface(interface) => Some(interface),
             _ => None,
         })
-        .expect("expected interface declaration");
+        .must("expected interface declaration");
     assert_eq!(interface.extends, vec!["util__Api__Named".to_string()]);
 }
 
@@ -3849,7 +3850,7 @@ fn rewrites_interface_extends_generic_namespace_alias_types() {
             Decl::Interface(interface) => Some(interface),
             _ => None,
         })
-        .expect("expected interface declaration");
+        .must("expected interface declaration");
     assert_eq!(
         interface.extends,
         vec!["util__Api__Reader<String>".to_string()]
@@ -3903,7 +3904,7 @@ fn rewrites_interface_extends_generic_exact_import_alias_types() {
             Decl::Interface(interface) => Some(interface),
             _ => None,
         })
-        .expect("expected interface declaration");
+        .must("expected interface declaration");
     assert_eq!(
         interface.extends,
         vec!["util__Api__Reader<String>".to_string()]
@@ -3960,7 +3961,7 @@ fn rewrites_interface_extends_multiple_namespace_alias_types() {
             Decl::Interface(interface) => Some(interface),
             _ => None,
         })
-        .expect("expected interface declaration");
+        .must("expected interface declaration");
     assert_eq!(
         interface.extends,
         vec!["util__Named".to_string(), "util__Printable".to_string()]
@@ -4018,7 +4019,7 @@ fn rewrites_nested_module_class_extends_namespace_alias_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let Decl::Class(class) = &module.declarations[0].node else {
         panic!("expected nested class declaration");
     };
@@ -4072,7 +4073,7 @@ fn rewrites_nested_module_interface_extends_namespace_alias_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let Decl::Interface(interface) = &module.declarations[0].node else {
         panic!("expected nested interface declaration");
     };
@@ -4149,7 +4150,7 @@ fn rewrites_nested_module_construct_type_strings_with_local_function_interface_t
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let function = module
         .declarations
         .iter()
@@ -4157,7 +4158,7 @@ fn rewrites_nested_module_construct_type_strings_with_local_function_interface_t
             Decl::Function(func) if func.name == "make" => Some(func),
             _ => None,
         })
-        .expect("expected nested function declaration");
+        .must("expected nested function declaration");
     let Stmt::Let { ty, value, .. } = &function.body[0].node else {
         panic!("expected let statement");
     };
@@ -4257,7 +4258,7 @@ fn rewrites_nested_module_constructor_type_args_with_local_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let function = module
         .declarations
         .iter()
@@ -4265,7 +4266,7 @@ fn rewrites_nested_module_constructor_type_args_with_local_interface_types() {
             Decl::Function(func) if func.name == "make" => Some(func),
             _ => None,
         })
-        .expect("expected nested function declaration");
+        .must("expected nested function declaration");
     let Stmt::Expr(expr) = &function.body[0].node else {
         panic!("expected expression statement");
     };
@@ -4326,7 +4327,7 @@ fn rewrites_module_class_implements_local_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let class = module
         .declarations
         .iter()
@@ -4334,7 +4335,7 @@ fn rewrites_module_class_implements_local_interface_types() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(class.implements, vec!["app__M__Named".to_string()]);
 }
 
@@ -4385,7 +4386,7 @@ fn rewrites_module_interface_extends_local_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let interface = module
         .declarations
         .iter()
@@ -4393,7 +4394,7 @@ fn rewrites_module_interface_extends_local_interface_types() {
             Decl::Interface(interface) if interface.name == "Child" => Some(interface),
             _ => None,
         })
-        .expect("expected child interface declaration");
+        .must("expected child interface declaration");
     assert_eq!(interface.extends, vec!["app__M__Named".to_string()]);
 }
 
@@ -4462,7 +4463,7 @@ fn rewrites_module_class_implements_local_generic_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let class = module
         .declarations
         .iter()
@@ -4470,7 +4471,7 @@ fn rewrites_module_class_implements_local_generic_interface_types() {
             Decl::Class(class) if class.name == "Child" => Some(class),
             _ => None,
         })
-        .expect("expected child class declaration");
+        .must("expected child class declaration");
     assert_eq!(
         class.implements,
         vec!["app__M__Named<app__M__Payload>".to_string()]
@@ -4538,7 +4539,7 @@ fn rewrites_module_interface_extends_local_generic_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let interface = module
         .declarations
         .iter()
@@ -4546,7 +4547,7 @@ fn rewrites_module_interface_extends_local_generic_interface_types() {
             Decl::Interface(interface) if interface.name == "Child" => Some(interface),
             _ => None,
         })
-        .expect("expected child interface declaration");
+        .must("expected child interface declaration");
     assert_eq!(
         interface.extends,
         vec!["app__M__Named<app__M__Payload>".to_string()]
@@ -4607,7 +4608,7 @@ fn rewrites_module_class_implements_local_nested_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let class = module
         .declarations
         .iter()
@@ -4615,7 +4616,7 @@ fn rewrites_module_class_implements_local_nested_interface_types() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(class.implements, vec!["app__M__Api__Named".to_string()]);
 }
 
@@ -4669,7 +4670,7 @@ fn rewrites_module_interface_extends_local_nested_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let interface = module
         .declarations
         .iter()
@@ -4677,7 +4678,7 @@ fn rewrites_module_interface_extends_local_nested_interface_types() {
             Decl::Interface(interface) if interface.name == "Child" => Some(interface),
             _ => None,
         })
-        .expect("expected child interface declaration");
+        .must("expected child interface declaration");
     assert_eq!(interface.extends, vec!["app__M__Api__Named".to_string()]);
 }
 
@@ -4739,7 +4740,7 @@ fn rewrites_module_class_implements_multiple_local_interfaces() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let class = module
         .declarations
         .iter()
@@ -4747,7 +4748,7 @@ fn rewrites_module_class_implements_multiple_local_interfaces() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(
         class.implements,
         vec!["app__M__Named".to_string(), "app__M__Printable".to_string()]
@@ -4808,7 +4809,7 @@ fn rewrites_module_interface_extends_multiple_local_interfaces() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let interface = module
         .declarations
         .iter()
@@ -4816,7 +4817,7 @@ fn rewrites_module_interface_extends_multiple_local_interfaces() {
             Decl::Interface(interface) if interface.name == "Child" => Some(interface),
             _ => None,
         })
-        .expect("expected child interface declaration");
+        .must("expected child interface declaration");
     assert_eq!(
         interface.extends,
         vec!["app__M__Named".to_string(), "app__M__Printable".to_string()]
@@ -4877,7 +4878,7 @@ fn rewrites_nested_module_class_implements_local_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected outer module declaration");
+        .must("expected outer module declaration");
     let inner = outer
         .declarations
         .iter()
@@ -4885,7 +4886,7 @@ fn rewrites_nested_module_class_implements_local_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected inner module declaration");
+        .must("expected inner module declaration");
     let class = inner
         .declarations
         .iter()
@@ -4893,7 +4894,7 @@ fn rewrites_nested_module_class_implements_local_interface_types() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(
         class.implements,
         vec!["app__Outer__Inner__Named".to_string()]
@@ -4950,7 +4951,7 @@ fn rewrites_nested_module_interface_extends_local_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected outer module declaration");
+        .must("expected outer module declaration");
     let inner = outer
         .declarations
         .iter()
@@ -4958,7 +4959,7 @@ fn rewrites_nested_module_interface_extends_local_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected inner module declaration");
+        .must("expected inner module declaration");
     let interface = inner
         .declarations
         .iter()
@@ -4966,7 +4967,7 @@ fn rewrites_nested_module_interface_extends_local_interface_types() {
             Decl::Interface(interface) if interface.name == "Child" => Some(interface),
             _ => None,
         })
-        .expect("expected child interface declaration");
+        .must("expected child interface declaration");
     assert_eq!(
         interface.extends,
         vec!["app__Outer__Inner__Named".to_string()]
@@ -5030,7 +5031,7 @@ fn rewrites_nested_module_class_implements_local_nested_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected outer module declaration");
+        .must("expected outer module declaration");
     let inner = outer
         .declarations
         .iter()
@@ -5038,7 +5039,7 @@ fn rewrites_nested_module_class_implements_local_nested_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected inner module declaration");
+        .must("expected inner module declaration");
     let class = inner
         .declarations
         .iter()
@@ -5046,7 +5047,7 @@ fn rewrites_nested_module_class_implements_local_nested_interface_types() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(
         class.implements,
         vec!["app__Outer__Inner__Api__Named".to_string()]
@@ -5106,7 +5107,7 @@ fn rewrites_nested_module_interface_extends_local_nested_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected outer module declaration");
+        .must("expected outer module declaration");
     let inner = outer
         .declarations
         .iter()
@@ -5114,7 +5115,7 @@ fn rewrites_nested_module_interface_extends_local_nested_interface_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected inner module declaration");
+        .must("expected inner module declaration");
     let interface = inner
         .declarations
         .iter()
@@ -5122,7 +5123,7 @@ fn rewrites_nested_module_interface_extends_local_nested_interface_types() {
             Decl::Interface(interface) if interface.name == "Child" => Some(interface),
             _ => None,
         })
-        .expect("expected child interface declaration");
+        .must("expected child interface declaration");
     assert_eq!(
         interface.extends,
         vec!["app__Outer__Inner__Api__Named".to_string()]
@@ -5190,7 +5191,7 @@ fn rewrites_nested_module_class_implements_multiple_local_interfaces() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected outer module declaration");
+        .must("expected outer module declaration");
     let inner = outer
         .declarations
         .iter()
@@ -5198,7 +5199,7 @@ fn rewrites_nested_module_class_implements_multiple_local_interfaces() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected inner module declaration");
+        .must("expected inner module declaration");
     let class = inner
         .declarations
         .iter()
@@ -5206,7 +5207,7 @@ fn rewrites_nested_module_class_implements_multiple_local_interfaces() {
             Decl::Class(class) => Some(class),
             _ => None,
         })
-        .expect("expected class declaration");
+        .must("expected class declaration");
     assert_eq!(
         class.implements,
         vec![
@@ -5273,7 +5274,7 @@ fn rewrites_nested_module_interface_extends_multiple_local_interfaces() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected outer module declaration");
+        .must("expected outer module declaration");
     let inner = outer
         .declarations
         .iter()
@@ -5281,7 +5282,7 @@ fn rewrites_nested_module_interface_extends_multiple_local_interfaces() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected inner module declaration");
+        .must("expected inner module declaration");
     let interface = inner
         .declarations
         .iter()
@@ -5289,7 +5290,7 @@ fn rewrites_nested_module_interface_extends_multiple_local_interfaces() {
             Decl::Interface(interface) if interface.name == "Child" => Some(interface),
             _ => None,
         })
-        .expect("expected child interface declaration");
+        .must("expected child interface declaration");
     assert_eq!(
         interface.extends,
         vec![
@@ -5351,7 +5352,7 @@ fn rewrites_module_enum_field_namespace_alias_class_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let en = module
         .declarations
         .iter()
@@ -5359,7 +5360,7 @@ fn rewrites_module_enum_field_namespace_alias_class_types() {
             Decl::Enum(en) => Some(en),
             _ => None,
         })
-        .expect("expected enum declaration");
+        .must("expected enum declaration");
     assert_eq!(
         en.variants[0].fields[0].ty,
         ast::Type::Named("util__Box".to_string())
@@ -5418,7 +5419,7 @@ fn rewrites_module_enum_field_namespace_alias_nested_class_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let en = module
         .declarations
         .iter()
@@ -5426,7 +5427,7 @@ fn rewrites_module_enum_field_namespace_alias_nested_class_types() {
             Decl::Enum(en) => Some(en),
             _ => None,
         })
-        .expect("expected enum declaration");
+        .must("expected enum declaration");
     assert_eq!(
         en.variants[0].fields[0].ty,
         ast::Type::Named("util__Api__Box".to_string())
@@ -5485,7 +5486,7 @@ fn rewrites_module_enum_field_namespace_alias_enum_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let en = module
         .declarations
         .iter()
@@ -5493,7 +5494,7 @@ fn rewrites_module_enum_field_namespace_alias_enum_types() {
             Decl::Enum(en) => Some(en),
             _ => None,
         })
-        .expect("expected enum declaration");
+        .must("expected enum declaration");
     assert_eq!(
         en.variants[0].fields[0].ty,
         ast::Type::Named("util__Result".to_string())
@@ -5559,7 +5560,7 @@ fn rewrites_module_enum_field_local_nested_class_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let en = module
         .declarations
         .iter()
@@ -5567,7 +5568,7 @@ fn rewrites_module_enum_field_local_nested_class_types() {
             Decl::Enum(en) => Some(en),
             _ => None,
         })
-        .expect("expected enum declaration");
+        .must("expected enum declaration");
     assert_eq!(
         en.variants[0].fields[0].ty,
         ast::Type::Named("app__M__Api__Box".to_string())
@@ -5628,7 +5629,7 @@ fn rewrites_module_enum_field_local_nested_enum_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let en = module
         .declarations
         .iter()
@@ -5636,7 +5637,7 @@ fn rewrites_module_enum_field_local_nested_enum_types() {
             Decl::Enum(en) => Some(en),
             _ => None,
         })
-        .expect("expected enum declaration");
+        .must("expected enum declaration");
     assert_eq!(
         en.variants[0].fields[0].ty,
         ast::Type::Named("app__M__Api__Result".to_string())
@@ -5698,7 +5699,7 @@ fn rewrites_module_enum_field_generic_namespace_alias_class_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let en = module
         .declarations
         .iter()
@@ -5706,7 +5707,7 @@ fn rewrites_module_enum_field_generic_namespace_alias_class_types() {
             Decl::Enum(en) => Some(en),
             _ => None,
         })
-        .expect("expected enum declaration");
+        .must("expected enum declaration");
     let ast::Type::Generic(_, args) = &en.variants[0].fields[0].ty else {
         panic!("expected generic type");
     };
@@ -5765,7 +5766,7 @@ fn rewrites_module_enum_named_field_namespace_alias_class_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let en = module
         .declarations
         .iter()
@@ -5773,7 +5774,7 @@ fn rewrites_module_enum_named_field_namespace_alias_class_types() {
             Decl::Enum(en) => Some(en),
             _ => None,
         })
-        .expect("expected enum declaration");
+        .must("expected enum declaration");
     assert_eq!(
         en.variants[0].fields[0].ty,
         ast::Type::Named("util__Box".to_string())
@@ -5841,7 +5842,7 @@ fn rewrites_module_enum_multiple_variant_field_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let en = module
         .declarations
         .iter()
@@ -5849,7 +5850,7 @@ fn rewrites_module_enum_multiple_variant_field_types() {
             Decl::Enum(en) => Some(en),
             _ => None,
         })
-        .expect("expected enum declaration");
+        .must("expected enum declaration");
     assert_eq!(
         en.variants[0].fields[0].ty,
         ast::Type::Named("util__Box".to_string())
@@ -5915,7 +5916,7 @@ fn rewrites_nested_module_enum_field_namespace_alias_class_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected outer module declaration");
+        .must("expected outer module declaration");
     let inner = outer
         .declarations
         .iter()
@@ -5923,7 +5924,7 @@ fn rewrites_nested_module_enum_field_namespace_alias_class_types() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected inner module declaration");
+        .must("expected inner module declaration");
     let en = inner
         .declarations
         .iter()
@@ -5931,7 +5932,7 @@ fn rewrites_nested_module_enum_field_namespace_alias_class_types() {
             Decl::Enum(en) => Some(en),
             _ => None,
         })
-        .expect("expected enum declaration");
+        .must("expected enum declaration");
     assert_eq!(
         en.variants[0].fields[0].ty,
         ast::Type::Named("util__Box".to_string())
@@ -6004,7 +6005,7 @@ fn renames_module_local_exact_import_alias_shadow_in_return() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let function = module
         .declarations
         .iter()
@@ -6012,7 +6013,7 @@ fn renames_module_local_exact_import_alias_shadow_in_return() {
             Decl::Function(func) if func.name == "keep" => Some(func),
             _ => None,
         })
-        .expect("expected nested function declaration");
+        .must("expected nested function declaration");
     let Stmt::Let { name, .. } = &function.body[0].node else {
         panic!("expected let statement");
     };
@@ -6082,7 +6083,7 @@ fn renames_module_local_exact_import_alias_shadowed_param_in_return() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let function = module
         .declarations
         .iter()
@@ -6090,7 +6091,7 @@ fn renames_module_local_exact_import_alias_shadowed_param_in_return() {
             Decl::Function(func) if func.name == "keep" => Some(func),
             _ => None,
         })
-        .expect("expected nested function declaration");
+        .must("expected nested function declaration");
     assert_eq!(function.params[0].name, "__module_local_Empty");
     let Stmt::Return(Some(expr)) = &function.body[0].node else {
         panic!("expected return statement");
@@ -6180,7 +6181,7 @@ fn renames_module_local_exact_import_alias_shadowed_for_var_in_lambda() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let function = module
         .declarations
         .iter()
@@ -6188,7 +6189,7 @@ fn renames_module_local_exact_import_alias_shadowed_for_var_in_lambda() {
             Decl::Function(func) if func.name == "keep" => Some(func),
             _ => None,
         })
-        .expect("expected nested function declaration");
+        .must("expected nested function declaration");
     let Stmt::For { var, body, .. } = &function.body[0].node else {
         panic!("expected for statement");
     };
@@ -6281,7 +6282,7 @@ fn renames_module_local_exact_import_alias_shadowed_match_binding_in_lambda() {
             Decl::Module(module) => Some(module),
             _ => None,
         })
-        .expect("expected module declaration");
+        .must("expected module declaration");
     let function = module
         .declarations
         .iter()
@@ -6289,7 +6290,7 @@ fn renames_module_local_exact_import_alias_shadowed_match_binding_in_lambda() {
             Decl::Function(func) if func.name == "keep" => Some(func),
             _ => None,
         })
-        .expect("expected nested function declaration");
+        .must("expected nested function declaration");
     let Stmt::Return(Some(expr)) = &function.body[0].node else {
         panic!("expected return statement");
     };

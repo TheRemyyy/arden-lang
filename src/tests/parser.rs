@@ -1,3 +1,4 @@
+use super::{TestExpectErrExt, TestExpectExt};
 use crate::ast::*;
 use crate::formatter::format_program_canonical;
 use crate::lexer::tokenize;
@@ -20,7 +21,7 @@ fn test_parse_test_attribute() {
         }
     "#;
 
-    let program = parse_source(source).expect("Should parse successfully");
+    let program = parse_source(source).must("Should parse successfully");
     assert_eq!(program.declarations.len(), 1);
 
     match &program.declarations[0].node {
@@ -45,7 +46,7 @@ fn test_parse_ignore_attribute_with_reason() {
         }
     "#;
 
-    let program = parse_source(source).expect("Should parse successfully");
+    let program = parse_source(source).must("Should parse successfully");
 
     match &program.declarations[0].node {
         Decl::Function(func) => {
@@ -68,7 +69,7 @@ fn parses_builtin_option_none_static_constructor_call() {
         }
     "#;
 
-    parse_source(source).expect("Option.None() should parse");
+    parse_source(source).must("Option.None() should parse");
 }
 
 #[test]
@@ -82,7 +83,7 @@ fn parses_root_namespace_alias_builtin_option_none_static_constructor_call() {
         }
     "#;
 
-    parse_source(source).expect("root.Option.None() should parse");
+    parse_source(source).must("root.Option.None() should parse");
 }
 
 #[test]
@@ -96,7 +97,7 @@ fn parses_builtin_option_none_variant_pattern() {
         }
     "#;
 
-    parse_source(source).expect("Option.None pattern should parse");
+    parse_source(source).must("Option.None pattern should parse");
 }
 
 #[test]
@@ -113,7 +114,7 @@ fn parses_root_namespace_alias_builtin_option_none_variant_pattern() {
         }
     "#;
 
-    parse_source(source).expect("root.Option.None pattern should parse");
+    parse_source(source).must("root.Option.None pattern should parse");
 }
 
 #[test]
@@ -126,7 +127,7 @@ fn test_parse_function_without_attributes() {
         }
     "#;
 
-    let program = parse_source(source).expect("Should parse successfully");
+    let program = parse_source(source).must("Should parse successfully");
 
     match &program.declarations[0].node {
         Decl::Function(func) => {
@@ -145,7 +146,7 @@ fn test_parse_public_top_level_function() {
         }
     "#;
 
-    let program = parse_source(source).expect("Should parse public top-level function");
+    let program = parse_source(source).must("Should parse public top-level function");
     match &program.declarations[0].node {
         Decl::Function(func) => {
             assert_eq!(func.name, "exported");
@@ -168,7 +169,7 @@ fn test_unknown_attribute_error() {
 
     let result = parse_source(source);
     assert!(result.is_err());
-    let err = result.unwrap_err();
+    let err = result.must_err("unknown attribute should fail");
     assert!(err.message.contains("Unknown attribute"));
 }
 
@@ -180,7 +181,7 @@ fn test_parse_import_with_alias() {
             return 0;
         }
     "#;
-    let program = parse_source(source).expect("Should parse import alias");
+    let program = parse_source(source).must("Should parse import alias");
     match &program.declarations[0].node {
         Decl::Import(import) => {
             assert_eq!(import.path, "std.math");
@@ -196,7 +197,7 @@ fn test_reject_import_wildcard_with_alias() {
         import std.io.* as io;
         function main(): None { return None; }
     "#;
-    let err = parse_source(source).expect_err("wildcard alias import should fail");
+    let err = parse_source(source).must_err("wildcard alias import should fail");
     assert!(
         err.message
             .contains("Cannot use alias with wildcard import"),
@@ -211,7 +212,7 @@ fn test_reject_import_alias_without_identifier() {
         import std.math as ;
         function main(): None { return None; }
     "#;
-    let err = parse_source(source).expect_err("import alias without identifier should fail");
+    let err = parse_source(source).must_err("import alias without identifier should fail");
     assert!(
         err.message.contains("Expected identifier")
             || err.message.contains("Expected an identifier"),
@@ -226,7 +227,7 @@ fn test_reject_import_with_empty_path_segment() {
         import std..math;
         function main(): None { return None; }
     "#;
-    let err = parse_source(source).expect_err("empty import path segment should fail");
+    let err = parse_source(source).must_err("empty import path segment should fail");
     assert!(
         err.message
             .contains("Import path cannot contain an empty segment"),
@@ -244,8 +245,7 @@ fn parser_reports_first_error_for_keyword_alias_plus_generic_tail() {
             return None;
         }
     "#;
-    let err =
-        parse_source(source).expect_err("parser should stop at malformed keyword alias import");
+    let err = parse_source(source).must_err("parser should stop at malformed keyword alias import");
     assert!(
         err.message.contains("Expected identifier")
             || err.message.contains("Expected an identifier"),
@@ -260,7 +260,7 @@ fn test_reject_import_with_leading_dot() {
         import .std.math;
         function main(): None { return None; }
     "#;
-    let err = parse_source(source).expect_err("leading-dot import should fail");
+    let err = parse_source(source).must_err("leading-dot import should fail");
     assert!(
         err.message.contains("Import path cannot start with '.'"),
         "{}",
@@ -274,7 +274,7 @@ fn test_reject_package_with_empty_path_segment() {
         package app..core;
         function main(): None { return None; }
     "#;
-    let err = parse_source(source).expect_err("empty package path segment should fail");
+    let err = parse_source(source).must_err("empty package path segment should fail");
     assert!(
         err.message
             .contains("Package path cannot contain an empty segment"),
@@ -289,7 +289,7 @@ fn test_reject_package_with_leading_dot() {
         package .app.core;
         function main(): None { return None; }
     "#;
-    let err = parse_source(source).expect_err("leading-dot package should fail");
+    let err = parse_source(source).must_err("leading-dot package should fail");
     assert!(
         err.message.contains("Package path cannot start with '.'"),
         "{}",
@@ -303,7 +303,7 @@ fn test_reject_package_with_trailing_dot() {
         package app.;
         function main(): None { return None; }
     "#;
-    let err = parse_source(source).expect_err("package trailing dot should fail");
+    let err = parse_source(source).must_err("package trailing dot should fail");
     assert!(
         err.message.contains("Package path cannot end with '.'"),
         "{}",
@@ -320,7 +320,7 @@ fn test_parse_compound_assign_ident() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse compound assignment");
+    let program = parse_source(source).must("Should parse compound assignment");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -356,7 +356,7 @@ fn test_parse_compound_assign_index_target() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse index compound assignment");
+    let program = parse_source(source).must("Should parse index compound assignment");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -398,7 +398,7 @@ fn test_parse_compound_assign_mod_target() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse modulo compound assignment");
+    let program = parse_source(source).must("Should parse modulo compound assignment");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -437,7 +437,7 @@ fn parser_reports_nested_match_error_before_outer_value_flow_noise() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("nested malformed match should fail");
+    let err = parse_source(source).must_err("nested malformed match should fail");
     assert!(
         err.message.contains("Expected RBrace")
             || err.message.contains("Expected pattern")
@@ -460,7 +460,7 @@ fn test_reject_nested_match_generic_tail_before_fatarrow_noise() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("malformed nested generic tail should fail");
+    let err = parse_source(source).must_err("malformed nested generic tail should fail");
     assert!(
         err.message.contains("Expected pattern")
             || err.message.contains("Expected RBrace")
@@ -485,7 +485,7 @@ fn test_reject_pipe_lambda_syntax() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("pipe lambda syntax should fail");
+    let err = parse_source(source).must_err("pipe lambda syntax should fail");
     assert!(
         err.message.contains("Expected expression")
             || err.message.contains("Expected an expression")
@@ -503,7 +503,7 @@ fn test_reject_zero_arg_pipe_lambda_syntax() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("zero-arg pipe lambda syntax should fail");
+    let err = parse_source(source).must_err("zero-arg pipe lambda syntax should fail");
     assert!(
         err.message.contains("Expected expression")
             || err.message.contains("Expected an expression")
@@ -539,8 +539,7 @@ fn parser_reports_rest_style_alias_nested_match_noise_with_single_primary_error(
             };
         }
     "#;
-    let err =
-        parse_source(source).expect_err("rest-style malformed nested generic tail should fail");
+    let err = parse_source(source).must_err("rest-style malformed nested generic tail should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic call type arguments")
@@ -576,7 +575,7 @@ fn parser_reports_batch_style_tagged_map_noise_without_fatarrow_cascade() {
         }
     "#;
     let err =
-        parse_source(source).expect_err("batch-style malformed generic method tail should fail");
+        parse_source(source).must_err("batch-style malformed generic method tail should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic call type arguments")
@@ -616,7 +615,7 @@ fn parser_reports_unicode_tagged_pipeline_noise_without_fatarrow_cascade() {
             };
         }
     "#;
-    let err = parse_source(source).expect_err("unicode malformed generic method tail should fail");
+    let err = parse_source(source).must_err("unicode malformed generic method tail should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic call type arguments")
@@ -662,8 +661,8 @@ fn parser_reports_repeated_update_tagged_pipeline_noise_without_fatarrow_cascade
             };
         }
     "#;
-    let err = parse_source(source)
-        .expect_err("repeated-update malformed generic method tail should fail");
+    let err =
+        parse_source(source).must_err("repeated-update malformed generic method tail should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic call type arguments")
@@ -710,7 +709,7 @@ fn parser_reports_repeated_update_receiver_equality_noise_without_fatarrow_casca
         }
     "#;
     let err = parse_source(source)
-        .expect_err("repeated-update receiver/equality malformed generic tail should fail");
+        .must_err("repeated-update receiver/equality malformed generic tail should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic call type arguments")
@@ -756,7 +755,7 @@ fn parser_reports_boolean_join_tagged_pipeline_noise_without_fatarrow_cascade() 
             };
         }
     "#;
-    let err = parse_source(source).expect_err("boolean-join malformed generic tail should fail");
+    let err = parse_source(source).must_err("boolean-join malformed generic tail should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic call type arguments")
@@ -804,8 +803,7 @@ fn parser_reports_combined_map_set_noise_without_fatarrow_cascade() {
             };
         }
     "#;
-    let err =
-        parse_source(source).expect_err("combined map/set malformed generic tail should fail");
+    let err = parse_source(source).must_err("combined map/set malformed generic tail should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic call type arguments")
@@ -854,7 +852,7 @@ fn parser_reports_combined_map_set_equality_noise_without_fatarrow_cascade() {
         }
     "#;
     let err = parse_source(source)
-        .expect_err("combined map/set equality malformed generic tail should fail");
+        .must_err("combined map/set equality malformed generic tail should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic call type arguments")
@@ -902,8 +900,7 @@ fn parser_reports_membership_branch_tagged_noise_without_fatarrow_cascade() {
             };
         }
     "#;
-    let err =
-        parse_source(source).expect_err("membership-branch malformed generic tail should fail");
+    let err = parse_source(source).must_err("membership-branch malformed generic tail should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic call type arguments")
@@ -927,7 +924,7 @@ fn test_reject_visibility_modifier_on_constructor() {
             private constructor() { }
         }
     "#;
-    let err = parse_source(source).expect_err("private constructor modifier should fail");
+    let err = parse_source(source).must_err("private constructor modifier should fail");
     assert!(
         err.message
             .contains("Visibility modifiers are not supported on constructors"),
@@ -947,7 +944,7 @@ fn test_match_arm_expression_keeps_expr_span() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse match statement");
+    let program = parse_source(source).must("Should parse match statement");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -967,7 +964,7 @@ fn test_parse_if_expression() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse if-expression initializer");
+    let program = parse_source(source).must("Should parse if-expression initializer");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -998,7 +995,7 @@ fn test_parse_if_expression_without_else() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse if-expression without else");
+    let program = parse_source(source).must("Should parse if-expression without else");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -1024,16 +1021,14 @@ fn test_parse_if_statement_with_else_if() {
             }
         }
     "#;
-    let program = parse_source(source).expect("else-if statement should parse");
+    let program = parse_source(source).must("else-if statement should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
     let Stmt::If { else_block, .. } = &func.body[0].node else {
         panic!("Expected if statement");
     };
-    let else_block = else_block
-        .as_ref()
-        .expect("else-if should build else block");
+    let else_block = else_block.as_ref().must("else-if should build else block");
     assert!(matches!(else_block[0].node, Stmt::If { .. }));
 }
 
@@ -1045,7 +1040,7 @@ fn test_parse_if_expression_with_else_if() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("else-if expression should parse");
+    let program = parse_source(source).must("else-if expression should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -1057,7 +1052,7 @@ fn test_parse_if_expression_with_else_if() {
     };
     let else_branch = else_branch
         .as_ref()
-        .expect("else-if should build else branch");
+        .must("else-if should build else branch");
     assert!(matches!(
         else_branch[0].node,
         Stmt::Expr(Spanned {
@@ -1079,7 +1074,7 @@ fn test_parse_if_expression_generic_constructor_branches() {
         }
     "#;
     let program =
-        parse_source(source).expect("generic constructors in if-expression branches should parse");
+        parse_source(source).must("generic constructors in if-expression branches should parse");
     let Decl::Function(func) = &program.declarations[1].node else {
         panic!("Expected make function declaration");
     };
@@ -1101,7 +1096,7 @@ fn test_parse_if_expression_generic_constructor_branches() {
             ..
         })
     ));
-    let else_branch = else_branch.as_ref().expect("expected else branch");
+    let else_branch = else_branch.as_ref().must("expected else branch");
     assert!(matches!(
         else_branch[0].node,
         Stmt::Expr(Spanned {
@@ -1122,7 +1117,7 @@ fn test_parse_match_statement_with_trailing_semicolon() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse match statement with semicolon");
+    let program = parse_source(source).must("Should parse match statement with semicolon");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -1138,7 +1133,7 @@ fn test_reject_empty_match_statement() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("empty match statement should fail");
+    let err = parse_source(source).must_err("empty match statement should fail");
     assert!(
         err.message
             .contains("match statements must contain at least one arm"),
@@ -1156,7 +1151,7 @@ fn test_reject_empty_match_expression() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("empty match expression should fail");
+    let err = parse_source(source).must_err("empty match expression should fail");
     assert!(
         err.message
             .contains("match expressions must contain at least one arm"),
@@ -1180,7 +1175,7 @@ fn test_parse_if_expression_branch_match_statement_with_semicolon() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse if-expression with match statement");
+    let program = parse_source(source).must("Should parse if-expression with match statement");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -1211,7 +1206,7 @@ fn test_parse_if_expression_branch_tail_expressions_without_semicolons() {
         }
     "#;
     parse_source(source)
-        .expect("if-expression branches should accept trailing expressions without semicolons");
+        .must("if-expression branches should accept trailing expressions without semicolons");
 }
 
 #[test]
@@ -1223,7 +1218,7 @@ fn test_uppercase_function_call_is_not_forced_constructor() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse uppercase function call");
+    let program = parse_source(source).must("Should parse uppercase function call");
     let Decl::Function(func) = &program.declarations[1].node else {
         panic!("Expected main function declaration");
     };
@@ -1253,7 +1248,7 @@ fn test_forward_uppercase_function_call_is_call() {
         }
         function Foo(): Integer { return 7; }
     "#;
-    let program = parse_source(source).expect("Should parse forward uppercase function call");
+    let program = parse_source(source).must("Should parse forward uppercase function call");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected main function declaration");
     };
@@ -1278,7 +1273,7 @@ fn test_parse_explicit_generic_method_call() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse explicit generic method call");
+    let program = parse_source(source).must("Should parse explicit generic method call");
     let Decl::Function(func) = &program.declarations[1].node else {
         panic!("Expected main function declaration");
     };
@@ -1300,7 +1295,7 @@ fn test_parse_explicit_generic_module_call() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse explicit generic module call");
+    let program = parse_source(source).must("Should parse explicit generic module call");
     let Decl::Function(func) = &program.declarations[1].node else {
         panic!("Expected main function declaration");
     };
@@ -1322,7 +1317,7 @@ fn test_parse_explicit_generic_function_call() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse explicit generic call");
+    let program = parse_source(source).must("Should parse explicit generic call");
     let Decl::Function(func) = &program.declarations[1].node else {
         panic!("Expected main function declaration");
     };
@@ -1344,7 +1339,7 @@ fn test_parse_explicit_generic_function_value() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse explicit generic function value");
+    let program = parse_source(source).must("Should parse explicit generic function value");
     let Decl::Function(func) = &program.declarations[1].node else {
         panic!("Expected main function declaration");
     };
@@ -1368,7 +1363,7 @@ fn test_parse_generic_interface_reference_in_implements_clause() {
             function get(): String { return "ok"; }
         }
     "#;
-    let program = parse_source(source).expect("Should parse generic interface implements clause");
+    let program = parse_source(source).must("Should parse generic interface implements clause");
     let Decl::Class(class_decl) = &program.declarations[1].node else {
         panic!("Expected class declaration");
     };
@@ -1382,7 +1377,7 @@ fn test_parse_await_expression_then_method_call() {
             return await(make()).get();
         }
     "#;
-    let program = parse_source(source).expect("Should parse await expression method chain");
+    let program = parse_source(source).must("Should parse await expression method chain");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -1419,7 +1414,7 @@ fn test_reject_function_type_trailing_comma() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("function type trailing comma should fail");
+    let err = parse_source(source).must_err("function type trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in function type parameters"),
@@ -1435,7 +1430,7 @@ fn test_parse_zero_arg_function_type() {
             return None;
         }
     "#;
-    parse_source(source).expect("zero-arg function type should remain valid");
+    parse_source(source).must("zero-arg function type should remain valid");
 }
 
 #[test]
@@ -1447,7 +1442,7 @@ fn test_reject_explicit_generic_function_call_with_trailing_comma() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("generic call trailing comma should fail");
+    let err = parse_source(source).must_err("generic call trailing comma should fail");
     assert!(
         err.message.contains("Trailing comma") || err.message.contains("Expected"),
         "{}",
@@ -1464,8 +1459,7 @@ fn test_reject_explicit_generic_method_call_with_trailing_comma() {
             return None;
         }
     "#;
-    let err =
-        parse_source(source).expect_err("method generic call with trailing comma should fail");
+    let err = parse_source(source).must_err("method generic call with trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic call type arguments"),
@@ -1488,7 +1482,7 @@ fn test_reject_explicit_generic_module_call_with_trailing_comma() {
         }
     "#;
     let err =
-        parse_source(source).expect_err("nested module generic call trailing comma should fail");
+        parse_source(source).must_err("nested module generic call trailing comma should fail");
     assert!(
         err.message.contains("Trailing comma") || err.message.contains("Expected"),
         "{}",
@@ -1503,7 +1497,7 @@ fn test_reject_empty_generic_parameter_list() {
             return 1;
         }
     "#;
-    let err = parse_source(source).expect_err("empty generic parameter list should fail");
+    let err = parse_source(source).must_err("empty generic parameter list should fail");
     assert!(
         err.message
             .contains("Generic parameter list cannot be empty"),
@@ -1519,7 +1513,7 @@ fn test_reject_trailing_comma_in_generic_parameter_list() {
             return x;
         }
     "#;
-    let err = parse_source(source).expect_err("generic parameter trailing comma should fail");
+    let err = parse_source(source).must_err("generic parameter trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in generic parameter lists"),
@@ -1535,7 +1529,7 @@ fn test_parse_qualified_generic_parameter_bound() {
             return value;
         }
     "#;
-    let program = parse_source(source).expect("qualified generic bound should parse");
+    let program = parse_source(source).must("qualified generic bound should parse");
     match &program.declarations[0].node {
         Decl::Function(func) => {
             assert_eq!(func.generic_params.len(), 1);
@@ -1552,7 +1546,7 @@ fn test_parse_multiple_qualified_generic_parameter_bounds() {
             value: T;
         }
     "#;
-    let program = parse_source(source).expect("multiple qualified generic bounds should parse");
+    let program = parse_source(source).must("multiple qualified generic bounds should parse");
     match &program.declarations[0].node {
         Decl::Class(class) => {
             assert_eq!(class.generic_params.len(), 1);
@@ -1572,7 +1566,7 @@ fn test_reject_trailing_comma_in_parameter_list() {
             return x;
         }
     "#;
-    let err = parse_source(source).expect_err("parameter trailing comma should fail");
+    let err = parse_source(source).must_err("parameter trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in parameter lists"),
@@ -1586,7 +1580,7 @@ fn test_reject_trailing_comma_in_extern_parameter_list() {
     let source = r#"
         extern(c) function puts(msg: String,): Integer;
     "#;
-    let err = parse_source(source).expect_err("extern parameter trailing comma should fail");
+    let err = parse_source(source).must_err("extern parameter trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in extern parameter lists"),
@@ -1604,7 +1598,7 @@ fn test_reject_trailing_comma_in_argument_list() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("argument trailing comma should fail");
+    let err = parse_source(source).must_err("argument trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in argument lists"),
@@ -1619,7 +1613,7 @@ fn test_reject_trailing_comma_in_implements_list() {
         class C implements A, {
         }
     "#;
-    let err = parse_source(source).expect_err("implements trailing comma should fail");
+    let err = parse_source(source).must_err("implements trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in implements lists"),
@@ -1634,7 +1628,7 @@ fn test_reject_empty_implements_list() {
         class C implements {
         }
     "#;
-    let err = parse_source(source).expect_err("empty implements list should fail");
+    let err = parse_source(source).must_err("empty implements list should fail");
     assert!(
         err.message.contains("implements list cannot be empty"),
         "{}",
@@ -1648,7 +1642,7 @@ fn test_reject_empty_class_extends_clause() {
         class Child extends {
         }
     "#;
-    let err = parse_source(source).expect_err("empty class extends should fail");
+    let err = parse_source(source).must_err("empty class extends should fail");
     assert!(
         err.message.contains("Class extends clause cannot be empty"),
         "{}",
@@ -1663,7 +1657,7 @@ fn test_reject_trailing_comma_in_interface_extends_list() {
             function run(): None;
         }
     "#;
-    let err = parse_source(source).expect_err("interface extends trailing comma should fail");
+    let err = parse_source(source).must_err("interface extends trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in interface extends lists"),
@@ -1679,7 +1673,7 @@ fn test_reject_empty_interface_extends_list() {
             function run(): None;
         }
     "#;
-    let err = parse_source(source).expect_err("empty interface extends list should fail");
+    let err = parse_source(source).must_err("empty interface extends list should fail");
     assert!(
         err.message
             .contains("interface extends list cannot be empty"),
@@ -1694,7 +1688,7 @@ fn test_reject_visibility_modifier_on_module() {
         public module Tools {
         }
     "#;
-    let err = parse_source(source).expect_err("module visibility modifier should fail");
+    let err = parse_source(source).must_err("module visibility modifier should fail");
     assert!(
         err.message
             .contains("Visibility modifiers are not supported on modules"),
@@ -1709,7 +1703,7 @@ fn test_reject_visibility_modifier_on_import() {
         public import std.io.*;
         function main(): None { return None; }
     "#;
-    let err = parse_source(source).expect_err("import visibility modifier should fail");
+    let err = parse_source(source).must_err("import visibility modifier should fail");
     assert!(
         err.message
             .contains("Visibility modifiers are not supported on imports"),
@@ -1724,7 +1718,7 @@ fn test_reject_visibility_modifier_on_package() {
         public package app;
         function main(): None { return None; }
     "#;
-    let err = parse_source(source).expect_err("package visibility modifier should fail");
+    let err = parse_source(source).must_err("package visibility modifier should fail");
     assert!(
         err.message
             .contains("Visibility modifiers are not supported on package declarations"),
@@ -1739,7 +1733,7 @@ fn test_reject_class_extends_trailing_comma() {
         class Child extends Base, {
         }
     "#;
-    let err = parse_source(source).expect_err("class extends trailing comma should fail");
+    let err = parse_source(source).must_err("class extends trailing comma should fail");
     assert!(
         err.message
             .contains("Class extends clause accepts exactly one base class"),
@@ -1755,7 +1749,7 @@ fn test_reject_trailing_comma_in_enum_field_list() {
             One(Integer,),
         }
     "#;
-    let err = parse_source(source).expect_err("enum field trailing comma should fail");
+    let err = parse_source(source).must_err("enum field trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in enum field lists"),
@@ -1771,7 +1765,7 @@ fn test_reject_trailing_comma_in_enum_variant_list() {
             One,
         }
     "#;
-    let err = parse_source(source).expect_err("enum variant trailing comma should fail");
+    let err = parse_source(source).must_err("enum variant trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in enum variant lists"),
@@ -1794,7 +1788,7 @@ fn test_reject_trailing_comma_in_pattern_binding_list() {
             }
         }
     "#;
-    let err = parse_source(source).expect_err("pattern binding trailing comma should fail");
+    let err = parse_source(source).must_err("pattern binding trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in pattern binding lists"),
@@ -1813,7 +1807,7 @@ fn test_reject_none_pattern_with_empty_binding_list() {
             }
         }
     "#;
-    let err = parse_source(source).expect_err("None() pattern should fail");
+    let err = parse_source(source).must_err("None() pattern should fail");
     assert!(
         err.message
             .contains("`None` pattern must not use an empty binding list"),
@@ -1832,7 +1826,7 @@ fn test_parse_none_pattern_without_binding_list() {
             }
         }
     "#;
-    let program = parse_source(source).expect("None pattern should parse without ()");
+    let program = parse_source(source).must("None pattern should parse without ()");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -1854,7 +1848,7 @@ fn test_parse_qualified_enum_patterns() {
             }
         }
     "#;
-    let program = parse_source(source).expect("qualified enum patterns should parse");
+    let program = parse_source(source).must("qualified enum patterns should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("expected function declaration");
     };
@@ -1880,7 +1874,7 @@ fn test_parse_qualified_enum_patterns_without_bindings() {
         }
     "#;
     let program =
-        parse_source(source).expect("qualified enum patterns without bindings should parse");
+        parse_source(source).must("qualified enum patterns without bindings should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("expected function declaration");
     };
@@ -1900,7 +1894,7 @@ fn test_reject_empty_extern_options() {
     let source = r#"
         extern() function puts(msg: String): Integer;
     "#;
-    let err = parse_source(source).expect_err("empty extern options should fail");
+    let err = parse_source(source).must_err("empty extern options should fail");
     assert!(
         err.message.contains("extern(...) options cannot be empty"),
         "{}",
@@ -1913,7 +1907,7 @@ fn test_reject_trailing_comma_in_extern_options() {
     let source = r#"
         extern(c,) function puts(msg: String): Integer;
     "#;
-    let err = parse_source(source).expect_err("extern options trailing comma should fail");
+    let err = parse_source(source).must_err("extern options trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in extern options"),
@@ -1927,7 +1921,7 @@ fn test_reject_extra_extern_option_argument() {
     let source = r#"
         extern(c, "puts", "extra") function puts(msg: String): Integer;
     "#;
-    let err = parse_source(source).expect_err("extra extern option should fail");
+    let err = parse_source(source).must_err("extra extern option should fail");
     assert!(
         err.message
             .contains("extern(...) accepts at most ABI and optional link name"),
@@ -1944,7 +1938,7 @@ fn test_reject_trailing_comma_in_lambda_parameter_list() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("lambda parameter trailing comma should fail");
+    let err = parse_source(source).must_err("lambda parameter trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in lambda parameter lists"),
@@ -1962,7 +1956,7 @@ fn test_parse_zero_arg_lambda() {
         }
     "#;
 
-    parse_source(source).expect("zero-arg lambda should parse");
+    parse_source(source).must("zero-arg lambda should parse");
 }
 
 #[test]
@@ -1973,7 +1967,7 @@ fn test_reject_trailing_comma_in_require_call() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("require trailing comma should fail");
+    let err = parse_source(source).must_err("require trailing comma should fail");
     assert!(
         err.message
             .contains("Trailing comma is not allowed in require(...)"),
@@ -1995,7 +1989,7 @@ fn test_parse_float_char_and_negative_match_patterns() {
             return None;
         }
     "#;
-    parse_source(source).expect("Should parse float/char/negative patterns");
+    parse_source(source).must("Should parse float/char/negative patterns");
 }
 
 #[test]
@@ -2005,7 +1999,7 @@ fn test_parse_enum_named_field_with_ptr_type() {
             Raw(ptr: Ptr<Char>)
         }
     "#;
-    let program = parse_source(source).expect("Should parse Ptr in named enum fields");
+    let program = parse_source(source).must("Should parse Ptr in named enum fields");
     let Decl::Enum(en) = &program.declarations[0].node else {
         panic!("Expected enum declaration");
     };
@@ -2023,7 +2017,7 @@ fn test_parse_class_method_attributes_before_visibility() {
             }
         }
     "#;
-    let program = parse_source(source).expect("class method attributes should parse");
+    let program = parse_source(source).must("class method attributes should parse");
     let Decl::Class(class_decl) = &program.declarations[0].node else {
         panic!("Expected class declaration");
     };
@@ -2041,7 +2035,7 @@ fn test_parse_class_method_attributes_after_visibility() {
             }
         }
     "#;
-    let program = parse_source(source).expect("mixed method modifiers should parse");
+    let program = parse_source(source).must("mixed method modifiers should parse");
     let Decl::Class(class_decl) = &program.declarations[0].node else {
         panic!("Expected class declaration");
     };
@@ -2058,7 +2052,7 @@ fn test_reject_duplicate_class_constructor() {
             constructor() { }
         }
     "#;
-    let err = parse_source(source).expect_err("duplicate constructor should fail");
+    let err = parse_source(source).must_err("duplicate constructor should fail");
     assert!(
         err.message
             .contains("Classes cannot declare more than one constructor"),
@@ -2075,7 +2069,7 @@ fn test_reject_duplicate_class_destructor() {
             destructor() { }
         }
     "#;
-    let err = parse_source(source).expect_err("duplicate destructor should fail");
+    let err = parse_source(source).must_err("duplicate destructor should fail");
     assert!(
         err.message
             .contains("Classes cannot declare more than one destructor"),
@@ -2094,7 +2088,7 @@ fn test_parse_match_expression_block_tail_without_semicolon() {
             };
         }
     "#;
-    let program = parse_source(source).expect("match expression block tails should parse");
+    let program = parse_source(source).must("match expression block tails should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -2120,7 +2114,7 @@ fn test_parse_async_block_tail_without_semicolon() {
             return async { 1 };
         }
     "#;
-    let program = parse_source(source).expect("async block tail expressions should parse");
+    let program = parse_source(source).must("async block tail expressions should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -2150,8 +2144,7 @@ fn test_parse_forward_public_uppercase_function_call_as_call() {
             return value;
         }
     "#;
-    let program =
-        parse_source(source).expect("public uppercase forward function call should parse");
+    let program = parse_source(source).must("public uppercase forward function call should parse");
     let Decl::Function(main) = &program.declarations[0].node else {
         panic!("Expected main function");
     };
@@ -2176,7 +2169,7 @@ fn test_parse_forward_public_async_uppercase_function_call_as_call() {
         }
     "#;
     let program =
-        parse_source(source).expect("public async uppercase forward function call should parse");
+        parse_source(source).must("public async uppercase forward function call should parse");
     let Decl::Function(main) = &program.declarations[0].node else {
         panic!("Expected main function");
     };
@@ -2197,7 +2190,7 @@ fn test_direct_call_callee_span_starts_at_identifier() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse direct function call");
+    let program = parse_source(source).must("Should parse direct function call");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -2222,7 +2215,7 @@ fn test_string_interp_empty_braces_stay_literal() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse");
+    let program = parse_source(source).must("Should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -2243,7 +2236,7 @@ fn test_string_interp_unclosed_brace_stays_literal() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse");
+    let program = parse_source(source).must("Should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -2264,7 +2257,7 @@ fn test_string_literal_decodes_common_escapes() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse");
+    let program = parse_source(source).must("Should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -2285,7 +2278,7 @@ fn test_string_literal_rejects_invalid_escape_sequences() {
             return None;
         }
     "#;
-    let err = parse_source(source).expect_err("invalid string escape should fail");
+    let err = parse_source(source).must_err("invalid string escape should fail");
     assert!(err.message.contains("Invalid escape sequence"), "{err:?}");
 }
 
@@ -2297,7 +2290,7 @@ fn test_string_interp_escaped_braces_stay_literal() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse");
+    let program = parse_source(source).must("Should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -2318,7 +2311,7 @@ fn test_string_interp_invalid_expression_stays_literal() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse");
+    let program = parse_source(source).must("Should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -2339,7 +2332,7 @@ fn test_string_interp_nested_braces_invalid_expr_stays_literal() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse");
+    let program = parse_source(source).must("Should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -2360,7 +2353,7 @@ fn test_string_interp_stray_closing_brace_stays_literal() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("Should parse");
+    let program = parse_source(source).must("Should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("Expected function declaration");
     };
@@ -2380,7 +2373,7 @@ fn test_builtin_generic_type_rejects_wrong_arity() {
             return 0;
         }
     "#;
-    let err = parse_source(source).expect_err("Map with one type arg should fail to parse");
+    let err = parse_source(source).must_err("Map with one type arg should fail to parse");
     assert!(err
         .message
         .contains("Built-in type 'Map' expects 2 type arguments"));
@@ -2393,7 +2386,7 @@ fn test_builtin_generic_type_rejects_empty_args() {
             return 0;
         }
     "#;
-    let err = parse_source(source).expect_err("Ptr<> should fail to parse");
+    let err = parse_source(source).must_err("Ptr<> should fail to parse");
     assert!(err
         .message
         .contains("Generic type argument list cannot be empty"));
@@ -2406,7 +2399,7 @@ fn test_builtin_generic_type_rejects_trailing_comma() {
             return 0;
         }
     "#;
-    let err = parse_source(source).expect_err("Trailing comma in type args should fail");
+    let err = parse_source(source).must_err("Trailing comma in type args should fail");
     assert!(err
         .message
         .contains("Trailing comma is not allowed in generic type arguments"));
@@ -2422,7 +2415,7 @@ fn test_qualified_types_parse_in_type_positions() {
             return None;
         }
     "#;
-    let program = parse_source(source).expect("qualified types should parse");
+    let program = parse_source(source).must("qualified types should parse");
     let Decl::Function(func) = &program.declarations[0].node else {
         panic!("expected function declaration");
     };
@@ -2529,9 +2522,9 @@ fn test_valid_syntax_corpus_roundtrips_through_canonical_formatter() {
     ];
 
     for source in valid_cases {
-        let program = parse_source(source).expect("valid corpus should parse");
+        let program = parse_source(source).must("valid corpus should parse");
         let formatted = format_program_canonical(&program);
-        parse_source(&formatted).expect("canonical formatted corpus should still parse");
+        parse_source(&formatted).must("canonical formatted corpus should still parse");
     }
 }
 
@@ -2609,9 +2602,9 @@ fn missing_semicolon_reports_human_readable_token_names() {
         }
     "#;
 
-    let tokens = tokenize(source).expect("tokenization succeeds");
+    let tokens = tokenize(source).must("tokenization succeeds");
     let mut parser = Parser::new(tokens);
-    let error = parser.parse_program().expect_err("parse should fail");
+    let error = parser.parse_program().must_err("parse should fail");
 
     assert!(error.message.contains("Expected `;`"), "{}", error.message);
     assert!(
@@ -2619,7 +2612,8 @@ fn missing_semicolon_reports_human_readable_token_names() {
         "{}",
         error.message
     );
-    let insertion_offset = source.find("println(\"a\")").unwrap() + "println(\"a\")".len();
+    let insertion_offset =
+        source.find("println(\"a\")").must("println call offset") + "println(\"a\")".len();
     assert_eq!(error.span.start, insertion_offset, "{:?}", error.span);
     assert_eq!(error.span.end, insertion_offset, "{:?}", error.span);
 }

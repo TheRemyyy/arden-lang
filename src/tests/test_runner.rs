@@ -2,6 +2,7 @@ use super::{
     discover_tests, ensure_test_runner_imports, escape_arden_string_literal, escape_display_text,
     generate_test_runner_with_source, TestDiscovery, TestSuite,
 };
+use crate::tests::TestExpectExt;
 use crate::{lexer::tokenize, parser::Parser};
 
 fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
@@ -224,9 +225,9 @@ function skipped(): None {
 return None;
 }
 "#;
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
 
     let discovery = discover_tests(&program);
     assert_eq!(discovery.ignored_tests, 1);
@@ -244,9 +245,9 @@ fail("should not run");
 return None;
 }
 "#;
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let discovery = discover_tests(&program);
 
     let generated = generate_test_runner_with_source(&discovery, source);
@@ -269,9 +270,9 @@ function skipped(): None {
 return None;
 }
 "#;
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let discovery = discover_tests(&program);
 
     let generated = generate_test_runner_with_source(&discovery, source);
@@ -285,9 +286,9 @@ return None;
 fn generated_runner_escapes_ignore_reason_control_chars() {
     let source =
         "@Test\n@Ignore(\"c:\\\\tmp\\\\foo\\nline2\")\nfunction skipped(): None { return None; }\n";
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let discovery = discover_tests(&program);
 
     let generated = generate_test_runner_with_source(&discovery, source);
@@ -313,9 +314,9 @@ function setup(): None { return None; }
 function works(): None { return None; }
 }
 "#;
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let discovery = discover_tests(&program);
 
     assert_eq!(discovery.total_tests, 1);
@@ -324,7 +325,7 @@ function works(): None { return None; }
         discovery.suites[0]
             .before_each
             .as_ref()
-            .expect("before hook")
+            .must("before hook")
             .name,
         "Tests__setup"
     );
@@ -349,9 +350,9 @@ function setup(): None { return None; }
 function works(): None { return None; }
 }
 "#;
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let discovery = discover_tests(&program);
 
     assert_eq!(discovery.suites.len(), 2, "{discovery:#?}");
@@ -360,7 +361,7 @@ function works(): None { return None; }
         discovery.suites[0]
             .before_each
             .as_ref()
-            .expect("alpha before hook")
+            .must("alpha before hook")
             .name,
         "Alpha__setup"
     );
@@ -369,7 +370,7 @@ function works(): None { return None; }
         discovery.suites[1]
             .before_each
             .as_ref()
-            .expect("beta before hook")
+            .must("beta before hook")
             .name,
         "Beta__setup"
     );
@@ -521,9 +522,9 @@ function helper(): None { return None; }
 #[test]
 fn generated_runner_escapes_ignore_reason_braces() {
     let source = "@Test\n@Ignore(\"\\{danger\\}\")\nfunction skipped(): None { return None; }\n";
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let discovery = discover_tests(&program);
 
     let generated = generate_test_runner_with_source(&discovery, source);
@@ -546,9 +547,9 @@ function teardown(): None { return None; }
 @Ignore("later")
 function skipped(): None { return None; }
 "#;
-    let tokens = tokenize(source).expect("tokenize");
+    let tokens = tokenize(source).must("tokenize");
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().expect("parse");
+    let program = parser.parse_program().must("parse");
     let discovery = discover_tests(&program);
 
     let generated = generate_test_runner_with_source(&discovery, source);
