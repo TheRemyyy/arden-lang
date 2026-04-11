@@ -82,14 +82,9 @@ export function Home() {
                     <div className="relative z-10">
                         <div className="overflow-hidden rounded-[2rem] border border-[rgba(57,52,46,0.14)] bg-[#1f1d1a] text-white shadow-[0_36px_80px_rgba(31,29,26,0.22)]">
                             <div className="border-b border-white/10 px-6 py-5">
-                                <div className="flex items-center justify-between gap-4">
-                                    <div>
-                                        <p className="text-xs uppercase tracking-[0.24em] text-white/60">Repository-first workflow</p>
-                                        <p className="mt-2 text-lg font-semibold">Fast path from zero to project mode</p>
-                                    </div>
-                                    <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/55">
-                                        Native workflow
-                                    </span>
+                                <div>
+                                    <p className="text-xs uppercase tracking-[0.24em] text-white/60">Repository-first workflow</p>
+                                    <p className="mt-2 text-lg font-semibold">Fast path from zero to project mode</p>
                                 </div>
                             </div>
                             <div className="grid gap-0 lg:grid-cols-[0.92fr_1.08fr]">

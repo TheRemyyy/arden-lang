@@ -2,7 +2,6 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
-import { slugifyRss } from '../src/lib/rss.ts';
 
 const siteUrl = 'https://www.arden-lang.dev';
 const indexNowKey = '5f16d52efed72638de1a80329fd512fb';
@@ -11,10 +10,41 @@ const docsRoot = path.join(projectRoot, 'docs');
 const publicRoot = path.join(process.cwd(), 'public');
 const publicDocsRoot = path.join(publicRoot, 'docs');
 const changelogPath = path.join(projectRoot, 'CHANGELOG.md');
+const cargoTomlPath = path.join(projectRoot, 'Cargo.toml');
 const logoPath = path.join(projectRoot, 'LOGO.png');
 const generatedDocsManifestPath = path.join(process.cwd(), 'src', 'lib', 'generated-docs.json');
 const generatedOgManifestPath = path.join(process.cwd(), 'src', 'lib', 'generated-og-images.ts');
+const generatedVersionPath = path.join(process.cwd(), 'src', 'lib', 'generated-version.ts');
 const execFileAsync = promisify(execFile);
+
+function slugifyRss(value) {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '') || 'release'
+  );
+}
+
+function readCargoPackageVersion(cargoToml) {
+  const packageBlockMatch = cargoToml.match(/\[package\][\s\S]*?(?=\n\[|$)/);
+  const packageBlock = packageBlockMatch?.[0] ?? cargoToml;
+  const versionMatch = packageBlock.match(/^\s*version\s*=\s*"([^"]+)"\s*$/m);
+
+  if (!versionMatch) {
+    throw new Error('[seo] Failed to read package.version from root Cargo.toml');
+  }
+
+  return versionMatch[1];
+}
+
+function buildGeneratedVersionSource(packageVersion) {
+  return [
+    `export const PACKAGE_VERSION = '${packageVersion}';`,
+    'export const CURRENT_VERSION = `v${PACKAGE_VERSION}`;',
+    '',
+  ].join('\n');
+}
 
 const SECTION_LABELS = {
   basics: 'Basics',
@@ -646,6 +676,8 @@ async function main() {
   const docRoutes = await collectDocMetadata(docsRoot);
   const docsNavigation = buildDocsNavigation(docRoutes);
   const changelogMarkdown = await fs.readFile(changelogPath, 'utf8');
+  const cargoToml = await fs.readFile(cargoTomlPath, 'utf8');
+  const packageVersion = readCargoPackageVersion(cargoToml);
   const [rootStat, changelogStat, logoStat] = await Promise.all([
     fs.stat(path.join(projectRoot, 'README.md')),
     fs.stat(changelogPath),
@@ -676,6 +708,7 @@ async function main() {
   await fs.writeFile(path.join(publicRoot, 'humans.txt'), humansTxt, 'utf8');
   await fs.writeFile(path.join(publicRoot, `${indexNowKey}.txt`), `${indexNowKey}\n`, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'rss.xml'), rss, 'utf8');
+  await fs.writeFile(generatedVersionPath, buildGeneratedVersionSource(packageVersion), 'utf8');
   await fs.copyFile(changelogPath, path.join(publicRoot, 'CHANGELOG.md'));
   await generateLogoAssets();
   await generateOgCard();

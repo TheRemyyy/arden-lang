@@ -1,3 +1,5 @@
+import { CURRENT_VERSION, PACKAGE_VERSION } from './generated-version';
+
 export const SITE_NAME = 'Arden';
 export const SITE_TITLE = 'Arden | Systems Programming Language';
 export const SITE_ORGANIZATION_NAME = 'Arden';
@@ -8,7 +10,6 @@ export const SITE_URL = 'https://www.arden-lang.dev';
 export const SITE_CREATOR_URL = 'https://www.theremyyy.dev/';
 export const GITHUB_REPO_URL = 'https://github.com/TheRemyyy/arden-lang';
 export const LICENSE_URL = 'https://github.com/TheRemyyy/arden-lang/blob/main/LICENSE';
-export const CURRENT_VERSION = 'v1.3.7';
 export const SITE_LOCALE = 'en_US';
 export const SITE_TWITTER_HANDLE = '@TheRemyyy';
 export const SITE_CREATOR_NAME = 'TheRemyyy';
@@ -30,3 +31,5 @@ export const FAVICON_SRC = '/favicon-32.png';
 export const APPLE_TOUCH_ICON_SRC = '/apple-touch-icon.png';
 export const WEB_MANIFEST_SRC = '/site.webmanifest';
 export const RSS_FEED_SRC = '/rss.xml';
+
+export { CURRENT_VERSION, PACKAGE_VERSION };
