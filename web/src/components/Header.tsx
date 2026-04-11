@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react';
+import Search from 'lucide-react/dist/esm/icons/search';
 import { useState } from 'react';
 import { openSiteSearch } from '../lib/search-events';
 import { GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
@@ -24,6 +24,7 @@ export function Header() {
                             width="32"
                             height="32"
                             decoding="async"
+                            fetchPriority="high"
                             className="h-8 w-8 rounded-xl border border-white/10"
                         />
                         <span>Arden</span>
@@ -69,8 +70,10 @@ export function Header() {
                         Search
                     </button>
                     <button
+                        type="button"
                         className="text-white/65 transition-colors hover:text-white"
                         onClick={() => setIsMenuOpen(!isMenuOpen)}
+                        aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
                     >
                         {isMenuOpen ? (
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>

@@ -1,4 +1,11 @@
-import { Apple, Download, ExternalLink, Github, MonitorDown, MonitorSmartphone, ShieldCheck, TerminalSquare } from 'lucide-react';
+import Apple from 'lucide-react/dist/esm/icons/apple';
+import Download from 'lucide-react/dist/esm/icons/download';
+import ExternalLink from 'lucide-react/dist/esm/icons/external-link';
+import Github from 'lucide-react/dist/esm/icons/github';
+import MonitorDown from 'lucide-react/dist/esm/icons/monitor-down';
+import MonitorSmartphone from 'lucide-react/dist/esm/icons/monitor-smartphone';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
+import TerminalSquare from 'lucide-react/dist/esm/icons/terminal-square';
 import { useEffect, useState } from 'react';
 import { CURRENT_VERSION } from '../lib/site';
 import {

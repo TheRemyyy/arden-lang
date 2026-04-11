@@ -176,6 +176,11 @@ a {
   box-shadow: 0 18px 60px rgba(31, 29, 26, 0.08);
 }
 
+.content-auto-section {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 900px;
+}
+
 .custom-scrollbar {
   scrollbar-width: none;
 }

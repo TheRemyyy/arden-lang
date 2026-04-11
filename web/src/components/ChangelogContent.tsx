@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { motion } from 'framer-motion';
+import { CreatorAttribution } from './CreatorAttribution';
 import type { ChangelogRelease } from '../lib/changelog';
 
 const categoryThemes: Record<string, string> = {
@@ -90,6 +91,7 @@ function ReleaseSidebar({
     const [railLeft, setRailLeft] = useState<number | null>(null);
 
     useEffect(() => {
+        let frameId = 0;
         const syncPosition = () => {
             const boundary = boundaryRef.current;
             const rail = railRef.current;
@@ -112,12 +114,23 @@ function ReleaseSidebar({
             setRailLeft((current) => (current === nextLeft ? current : nextLeft));
         };
 
+        const requestSync = () => {
+            if (frameId !== 0) return;
+            frameId = window.requestAnimationFrame(() => {
+                frameId = 0;
+                syncPosition();
+            });
+        };
+
         syncPosition();
-        window.addEventListener('scroll', syncPosition, { passive: true });
-        window.addEventListener('resize', syncPosition);
+        window.addEventListener('scroll', requestSync, { passive: true });
+        window.addEventListener('resize', requestSync);
         return () => {
-            window.removeEventListener('scroll', syncPosition);
-            window.removeEventListener('resize', syncPosition);
+            if (frameId !== 0) {
+                window.cancelAnimationFrame(frameId);
+            }
+            window.removeEventListener('scroll', requestSync);
+            window.removeEventListener('resize', requestSync);
         };
     }, [boundaryRef]);
 
@@ -477,6 +490,7 @@ export function ChangelogContent({ releases }: { releases: ChangelogRelease[] })
                         {releases.map((release, index) => (
                             <ReleaseCard key={release.id} release={release} index={index} />
                         ))}
+                        <CreatorAttribution />
                     </div>
                 </div>
             </div>

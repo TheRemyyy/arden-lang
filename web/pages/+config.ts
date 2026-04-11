@@ -7,6 +7,7 @@ import {
     SITE_KEYWORDS,
     SITE_NAME,
     SITE_TITLE,
+    SITE_CREATOR_NAME,
     SITE_URL,
     WEB_MANIFEST_SRC,
 } from '../src/lib/site';
@@ -23,7 +24,10 @@ export default {
     headHtmlEnd: `
       <meta name="theme-color" content="#0a0a0a" />
       <meta name="keywords" content="${SITE_KEYWORDS.join(', ')}" />
-      <meta name="author" content="${SITE_NAME}" />
+      <meta name="author" content="${SITE_CREATOR_NAME}" />
+      <meta name="creator" content="${SITE_CREATOR_NAME}" />
+      <meta name="publisher" content="${SITE_CREATOR_NAME}" />
+      <meta name="copyright" content="${SITE_CREATOR_NAME}" />
       <meta name="application-name" content="${SITE_NAME}" />
       <meta name="apple-mobile-web-app-title" content="${SITE_NAME}" />
       <meta name="format-detection" content="telephone=no" />

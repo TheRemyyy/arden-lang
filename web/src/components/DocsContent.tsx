@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CreatorAttribution } from './CreatorAttribution';
 import { NAV_ITEMS, getCurrentSectionTitle, searchDocs } from '../lib/docs';
 import type { DocsPageData, PageHeading } from '../lib/content.server';
 
@@ -32,7 +33,7 @@ function TableOfContents({ headings }: { headings: PageHeading[] }) {
 
     return (
         <div className="custom-scrollbar fixed right-0 top-0 hidden h-full w-64 overflow-y-auto border-l border-white/10 bg-[#1f1d1a] p-8 pt-24 xl:block">
-            <h5 className="mb-4 text-xs font-bold uppercase tracking-widest text-white/45">On This Page</h5>
+            <h5 className="mb-4 text-xs font-bold uppercase tracking-widest text-white/60">On This Page</h5>
             <ul className="space-y-3">
                 {headings.map((heading) => (
                     <li key={heading.id}>
@@ -127,7 +128,7 @@ export function DocsContent({
                         <section key={section.title}>
                             {'items' in section ? (
                                 <>
-                                    <h3 className="mb-3 pl-2 text-[11px] font-bold uppercase tracking-widest text-white/45">
+                                    <h3 className="mb-3 pl-2 text-[11px] font-bold uppercase tracking-widest text-white/60">
                                         {section.title}
                                     </h3>
                                     <ul className="space-y-0.5">
@@ -182,7 +183,7 @@ export function DocsContent({
                         <section className="mb-12 grid gap-4 md:grid-cols-2">
                             {OVERVIEW_HIGHLIGHTS.map((group) => (
                                 <article key={group.label} className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6">
-                                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/40">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/60">
                                         {group.label}
                                     </p>
                                     <h2 className="mt-4 text-2xl font-semibold tracking-[-0.03em] text-white">
@@ -231,7 +232,7 @@ export function DocsContent({
                                     href={prevDoc.path}
                                     className="group flex w-full flex-col items-start gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition-all hover:border-[var(--accent-soft)] hover:bg-white/[0.07] sm:w-auto"
                                 >
-                                    <span className="text-left text-xs font-medium uppercase tracking-wider text-white/45 group-hover:text-[var(--accent-soft)]">
+                                    <span className="text-left text-xs font-medium uppercase tracking-wider text-white/60 group-hover:text-[var(--accent-soft)]">
                                         Previous
                                     </span>
                                     <span className="text-left font-medium text-white">
@@ -246,7 +247,7 @@ export function DocsContent({
                                     href={nextDoc.path}
                                     className="group flex w-full flex-col items-end gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition-all hover:border-[var(--accent-soft)] hover:bg-white/[0.07] sm:w-auto"
                                 >
-                                    <span className="text-right text-xs font-medium uppercase tracking-wider text-white/45 group-hover:text-[var(--accent-soft)]">
+                                    <span className="text-right text-xs font-medium uppercase tracking-wider text-white/60 group-hover:text-[var(--accent-soft)]">
                                         Next
                                     </span>
                                     <span className="text-right font-medium text-white">
@@ -256,6 +257,8 @@ export function DocsContent({
                             )}
                         </div>
                     </div>
+
+                    <CreatorAttribution className="mt-8" />
 
                     <TableOfContents headings={headings} />
                 </main>

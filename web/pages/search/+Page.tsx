@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react';
+import Search from 'lucide-react/dist/esm/icons/search';
 import { useEffect, useMemo, useState } from 'react';
 import { usePageContext } from 'vike-react/usePageContext';
 import { searchSite } from '../../src/lib/site-search';
@@ -46,7 +46,7 @@ export default function Page() {
                 </p>
 
                 <div className="mt-8 flex items-center gap-3 rounded-[1.5rem] border border-white/10 bg-[#11100d] px-4 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
-                    <Search className="h-5 w-5 shrink-0 text-white/45" />
+                    <Search className="h-5 w-5 shrink-0 text-white/60" />
                     <input
                         autoFocus
                         value={query}

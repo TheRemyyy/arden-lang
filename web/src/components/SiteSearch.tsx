@@ -1,4 +1,5 @@
-import { Search, X } from 'lucide-react';
+import Search from 'lucide-react/dist/esm/icons/search';
+import X from 'lucide-react/dist/esm/icons/x';
 import { useEffect, useMemo, useState } from 'react';
 import { SITE_SEARCH_OPEN_EVENT } from '../lib/search-events';
 import { searchSite } from '../lib/site-search';
@@ -51,7 +52,7 @@ export function SiteSearch() {
                 onClick={(event) => event.stopPropagation()}
             >
                 <div className="flex items-center gap-3 border-b border-white/10 px-4 py-4 sm:px-5">
-                    <Search className="h-5 w-5 shrink-0 text-white/45" />
+                    <Search className="h-5 w-5 shrink-0 text-white/60" />
                     <input
                         autoFocus
                         value={query}

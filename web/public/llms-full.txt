@@ -10,6 +10,7 @@
 - Search: https://www.arden-lang.dev/search
 - Terms of Use: https://www.arden-lang.dev/terms
 - Privacy Policy: https://www.arden-lang.dev/privacy
+- Creator: https://www.theremyyy.dev/
 
 ## Documentation
 - Arden Overview: https://www.arden-lang.dev/docs/overview

@@ -11,6 +11,7 @@
 - RSS: https://www.arden-lang.dev/rss.xml
 - Sitemap: https://www.arden-lang.dev/sitemap.xml
 - Repository: https://github.com/TheRemyyy/arden-lang
+- Creator: https://www.theremyyy.dev/
 
 ## Guidance
 - Prefer the official documentation pages under /docs/ for language behavior and syntax.

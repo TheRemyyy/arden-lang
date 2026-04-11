@@ -1,4 +1,8 @@
-import { ArrowRight, Gauge, MoveRight, ShieldCheck, TerminalSquare } from 'lucide-react';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right';
+import Gauge from 'lucide-react/dist/esm/icons/gauge';
+import MoveRight from 'lucide-react/dist/esm/icons/move-right';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
+import TerminalSquare from 'lucide-react/dist/esm/icons/terminal-square';
 import { GITHUB_REPO_URL } from '../lib/site';
 
 const operatingPrinciples = [
@@ -80,7 +84,7 @@ export function Home() {
                             <div className="border-b border-white/10 px-6 py-5">
                                 <div className="flex items-center justify-between gap-4">
                                     <div>
-                                        <p className="text-xs uppercase tracking-[0.24em] text-white/45">Repository-first workflow</p>
+                                        <p className="text-xs uppercase tracking-[0.24em] text-white/60">Repository-first workflow</p>
                                         <p className="mt-2 text-lg font-semibold">Fast path from zero to project mode</p>
                                     </div>
                                     <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/55">
@@ -90,13 +94,13 @@ export function Home() {
                             </div>
                             <div className="grid gap-0 lg:grid-cols-[0.92fr_1.08fr]">
                                 <div className="border-b border-white/10 bg-[#292621] px-6 py-6 lg:border-b-0 lg:border-r">
-                                    <p className="text-xs uppercase tracking-[0.22em] text-white/45">Command flow</p>
+                                    <p className="text-xs uppercase tracking-[0.22em] text-white/60">Command flow</p>
                                     <pre className="mt-4 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-[#f5eee5]">
                                         <code>{`$ arden new radar\n$ cd radar\n$ arden check\n$ arden test\n$ arden run`}</code>
                                     </pre>
                                 </div>
                                 <div className="space-y-4 px-6 py-6">
-                                    <p className="text-xs uppercase tracking-[0.22em] text-white/45">What this unlocks</p>
+                                    <p className="text-xs uppercase tracking-[0.22em] text-white/60">What this unlocks</p>
                                     <div className="grid gap-3">
                                         <div className="flex items-start justify-between gap-4 border-b border-white/8 pb-3">
                                             <span className="text-sm text-[#efe4d8]">LLVM-backed native code generation</span>
@@ -118,14 +122,14 @@ export function Home() {
                 </div>
             </section>
 
-            <section className="border-y border-[rgba(57,52,46,0.12)] bg-[#1f1d1a] py-8 text-white">
+            <section className="content-auto-section border-y border-[rgba(57,52,46,0.12)] bg-[#1f1d1a] py-8 text-white">
                 <div className="mx-auto grid max-w-7xl gap-0 px-6 md:grid-cols-3">
                     {operatingPrinciples.map((principle, index) => (
                         <article
                             key={principle.title}
                             className={`py-6 md:px-8 ${index !== 0 ? 'md:border-l md:border-white/10' : ''}`}
                         >
-                            <p className="text-xs uppercase tracking-[0.22em] text-white/45">
+                            <p className="text-xs uppercase tracking-[0.22em] text-white/60">
                                 0{index + 1}
                             </p>
                             <h2 className="mt-4 text-2xl font-semibold tracking-[-0.03em] text-white">
@@ -139,7 +143,7 @@ export function Home() {
                 </div>
             </section>
 
-            <section className="mx-auto max-w-7xl px-6 py-20">
+            <section className="content-auto-section mx-auto max-w-7xl px-6 py-20">
                 <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
                     <div>
                         <p className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">
@@ -155,7 +159,7 @@ export function Home() {
                             href={GITHUB_REPO_URL}
                             target="_blank"
                             rel="noreferrer"
-                            className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)] transition-colors hover:text-[var(--text)]"
+                            className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-[#b85c38] transition-colors hover:text-[var(--text)]"
                         >
                             Browse the repository
                             <MoveRight className="h-4 w-4" />

@@ -5,6 +5,7 @@ export const SITE_SEARCH_PATH = '/search';
 export const SITE_DESCRIPTION =
     'Official documentation for Arden. A modern, safe, and efficient systems programming language targeting LLVM.';
 export const SITE_URL = 'https://www.arden-lang.dev';
+export const SITE_CREATOR_URL = 'https://www.theremyyy.dev/';
 export const GITHUB_REPO_URL = 'https://github.com/TheRemyyy/arden-lang';
 export const LICENSE_URL = 'https://github.com/TheRemyyy/arden-lang/blob/main/LICENSE';
 export const CURRENT_VERSION = 'v1.3.7';

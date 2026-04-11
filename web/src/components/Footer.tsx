@@ -12,6 +12,7 @@ export function Footer() {
                             width="36"
                             height="36"
                             decoding="async"
+                            loading="lazy"
                             className="h-9 w-9 rounded-xl border border-white/10"
                         />
                         <span>Arden</span>
@@ -52,9 +53,9 @@ export function Footer() {
             <div className="mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-3 border-t border-white/10 px-6 pt-8 text-center text-xs md:flex-row md:text-left">
                 <p>&copy; {new Date().getFullYear()} Arden. Open source under Apache 2.0.</p>
                 <a
-                    href="https://theremyyy.dev"
+                    href="https://www.theremyyy.dev/"
                     target="_blank"
-                    rel="noopener noreferrer"
+                    rel="me noopener noreferrer"
                     className="transition-colors hover:text-white"
                 >
                     TheRemyyy

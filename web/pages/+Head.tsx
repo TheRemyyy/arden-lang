@@ -11,6 +11,7 @@ import {
     OG_LOGO_SRC,
     RSS_FEED_SRC,
     SITE_CREATOR_NAME,
+    SITE_CREATOR_URL,
     SITE_DESCRIPTION,
     SITE_LOCALE,
     SITE_NAME,
@@ -63,6 +64,16 @@ function getStructuredData(pageContext: ReturnType<typeof usePageContext>, canon
     const websiteId = `${SITE_URL}#website`;
     const organizationId = `${SITE_URL}#organization`;
     const softwareId = `${SITE_URL}#software`;
+    const creatorId = `${SITE_CREATOR_URL}#person`;
+
+    const creator = {
+        '@context': 'https://schema.org',
+        '@type': 'Person',
+        '@id': creatorId,
+        name: SITE_CREATOR_NAME,
+        url: SITE_CREATOR_URL,
+        sameAs: [SITE_CREATOR_URL, GITHUB_REPO_URL],
+    };
 
     const website = {
         '@context': 'https://schema.org',
@@ -72,6 +83,7 @@ function getStructuredData(pageContext: ReturnType<typeof usePageContext>, canon
         url: SITE_URL,
         description: SITE_DESCRIPTION,
         inLanguage: 'en',
+        creator: { '@id': creatorId },
         publisher: { '@id': organizationId },
         potentialAction: {
             '@type': 'SearchAction',
@@ -87,7 +99,8 @@ function getStructuredData(pageContext: ReturnType<typeof usePageContext>, canon
         name: SITE_ORGANIZATION_NAME,
         url: SITE_URL,
         logo: toAbsoluteUrl(OG_LOGO_SRC),
-        sameAs: [GITHUB_REPO_URL],
+        founder: { '@id': creatorId },
+        sameAs: [GITHUB_REPO_URL, SITE_CREATOR_URL],
     };
 
     const software = {
@@ -102,10 +115,7 @@ function getStructuredData(pageContext: ReturnType<typeof usePageContext>, canon
         runtimePlatform: 'LLVM',
         version: CURRENT_VERSION,
         license: LICENSE_URL,
-        author: {
-            '@type': 'Person',
-            name: SITE_CREATOR_NAME,
-        },
+        author: { '@id': creatorId },
         publisher: { '@id': organizationId },
     };
 
@@ -118,6 +128,7 @@ function getStructuredData(pageContext: ReturnType<typeof usePageContext>, canon
             name: getPageTitle(pageContext),
             description: getPageDescription(pageContext),
             url: canonicalUrl,
+            author: { '@id': creatorId },
             isPartOf: { '@id': websiteId },
             about: { '@id': softwareId },
         });
@@ -131,10 +142,7 @@ function getStructuredData(pageContext: ReturnType<typeof usePageContext>, canon
             description: docsData.description,
             url: canonicalUrl,
             dateModified: docsData.lastUpdated,
-            author: {
-                '@type': 'Person',
-                name: SITE_CREATOR_NAME,
-            },
+            author: { '@id': creatorId },
             publisher: { '@id': organizationId },
             about: { '@id': softwareId },
             isPartOf: { '@id': websiteId },
@@ -149,6 +157,7 @@ function getStructuredData(pageContext: ReturnType<typeof usePageContext>, canon
             description: changelogData.description,
             url: canonicalUrl,
             dateModified: changelogData.lastUpdated,
+            author: { '@id': creatorId },
             isPartOf: { '@id': websiteId },
             mainEntity: {
                 '@type': 'ItemList',
@@ -172,6 +181,7 @@ function getStructuredData(pageContext: ReturnType<typeof usePageContext>, canon
             applicationCategory: 'DeveloperApplication',
             url: canonicalUrl,
             downloadUrl: 'https://github.com/TheRemyyy/arden-lang/releases/latest',
+            author: { '@id': creatorId },
             offers: {
                 '@type': 'Offer',
                 price: '0',
@@ -188,6 +198,7 @@ function getStructuredData(pageContext: ReturnType<typeof usePageContext>, canon
             name: getPageTitle(pageContext),
             description: getPageDescription(pageContext),
             url: canonicalUrl,
+            author: { '@id': creatorId },
             isPartOf: { '@id': websiteId },
         });
     }
@@ -205,11 +216,15 @@ function getStructuredData(pageContext: ReturnType<typeof usePageContext>, canon
           }
         : null;
 
-    return [website, organization, software, ...pageSchemas, breadcrumbSchema].filter(Boolean);
+    return [creator, website, organization, software, ...pageSchemas, breadcrumbSchema].filter(Boolean);
 }
 
 export default function Head() {
     const pageContext = usePageContext();
+    const docsData = pageContext.data as DocsPageData | undefined;
+    const changelogData = pageContext.data as ChangelogPageData | undefined;
+    const isDocsPage = pageContext.urlPathname.startsWith('/docs');
+    const isChangelogPage = pageContext.urlPathname === '/changelog';
     const canonicalUrl = normalizeCanonicalUrl(pageContext.urlPathname);
     const title = getPageTitle(pageContext);
     const description = getPageDescription(pageContext);
@@ -217,6 +232,7 @@ export default function Head() {
     const imageUrl = toAbsoluteUrl(routeOgImage);
     const isSearchPage = pageContext.urlPathname === SITE_SEARCH_PATH;
     const isErrorPage = Boolean(pageContext.is404 || pageContext.abortStatusCode || pageContext.errorWhileRendering);
+    const ogType = isDocsPage || isChangelogPage ? 'article' : 'website';
     const robotsContent = isErrorPage || isSearchPage
         ? 'noindex, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
         : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
@@ -224,6 +240,8 @@ export default function Head() {
     return (
         <>
             <link rel="canonical" href={canonicalUrl} />
+            <link rel="author" href={SITE_CREATOR_URL} />
+            <link rel="me" href={SITE_CREATOR_URL} />
             <link rel="alternate" href={canonicalUrl} hrefLang="en" />
             <link rel="alternate" href={canonicalUrl} hrefLang="x-default" />
             <link rel="alternate" type="application/rss+xml" title={`${SITE_NAME} releases`} href={RSS_FEED_SRC} />
@@ -235,7 +253,7 @@ export default function Head() {
             <meta name="robots" content={robotsContent} />
             <meta name="googlebot" content={robotsContent} />
             <meta name="referrer" content="strict-origin-when-cross-origin" />
-            <meta property="og:type" content="website" />
+            <meta property="og:type" content={ogType} />
             <meta property="og:site_name" content={SITE_NAME} />
             <meta property="og:locale" content={SITE_LOCALE} />
             <meta property="og:url" content={canonicalUrl} />
@@ -243,6 +261,8 @@ export default function Head() {
             <meta property="og:image:type" content="image/png" />
             <meta property="og:image:alt" content={`${SITE_NAME} social preview`} />
             <meta name="twitter:card" content="summary_large_image" />
+            <meta name="creator" content={SITE_CREATOR_NAME} />
+            <meta name="publisher" content={SITE_CREATOR_NAME} />
             <meta name="twitter:title" content={title} />
             <meta name="twitter:description" content={description} />
             <meta name="twitter:url" content={canonicalUrl} />
@@ -250,6 +270,18 @@ export default function Head() {
             <meta name="twitter:image:alt" content={`${SITE_NAME} social preview`} />
             <meta name="twitter:site" content={SITE_TWITTER_HANDLE} />
             <meta name="twitter:creator" content={SITE_TWITTER_HANDLE} />
+            {(isDocsPage || isChangelogPage) && (
+                <>
+                    <meta property="article:author" content={SITE_CREATOR_URL} />
+                    <meta property="article:publisher" content={SITE_CREATOR_URL} />
+                </>
+            )}
+            {isDocsPage && typeof docsData?.lastUpdated === 'string' && (
+                <meta property="article:modified_time" content={docsData.lastUpdated} />
+            )}
+            {isChangelogPage && typeof changelogData?.lastUpdated === 'string' && (
+                <meta property="article:modified_time" content={changelogData.lastUpdated} />
+            )}
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{

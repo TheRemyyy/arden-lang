@@ -518,6 +518,7 @@ function buildLlmsTxt() {
     `- RSS: ${siteUrl}/rss.xml`,
     `- Sitemap: ${siteUrl}/sitemap.xml`,
     `- Repository: https://github.com/TheRemyyy/arden-lang`,
+    `- Creator: https://www.theremyyy.dev/`,
     '',
     '## Guidance',
     '- Prefer the official documentation pages under /docs/ for language behavior and syntax.',
@@ -551,6 +552,7 @@ function buildLlmsFullTxt(docRoutes) {
     `- Search: ${siteUrl}/search`,
     `- Terms of Use: ${siteUrl}/terms`,
     `- Privacy Policy: ${siteUrl}/privacy`,
+    `- Creator: https://www.theremyyy.dev/`,
     '',
     '## Documentation',
     ...docLines,
@@ -559,6 +561,27 @@ function buildLlmsFullTxt(docRoutes) {
     `- Sitemap: ${siteUrl}/sitemap.xml`,
     `- RSS: ${siteUrl}/rss.xml`,
     `- llms.txt: ${siteUrl}/llms.txt`,
+    '',
+  ].join('\n');
+}
+
+function buildHumansTxt() {
+  return [
+    '/* TEAM */',
+    'Creator: TheRemyyy',
+    'Site: https://www.theremyyy.dev/',
+    'Project: Arden',
+    'Repository: https://github.com/TheRemyyy/arden-lang',
+    '',
+    '/* SITE */',
+    `Website: ${siteUrl}/`,
+    `Docs: ${siteUrl}/docs/overview`,
+    `Changelog: ${siteUrl}/changelog`,
+    `RSS: ${siteUrl}/rss.xml`,
+    '',
+    '/* NOTES */',
+    'Arden is open source under Apache 2.0.',
+    'No user accounts, no marketing trackers, no data-sale pipeline.',
     '',
   ].join('\n');
 }
@@ -642,6 +665,7 @@ async function main() {
   const manifest = buildManifest();
   const llmsTxt = buildLlmsTxt();
   const llmsFullTxt = buildLlmsFullTxt(docRoutes);
+  const humansTxt = buildHumansTxt();
   const rss = buildRss(parseChangelogEntries(changelogMarkdown));
 
   await fs.writeFile(path.join(publicRoot, 'robots.txt'), robots, 'utf8');
@@ -649,6 +673,7 @@ async function main() {
   await fs.writeFile(path.join(publicRoot, 'site.webmanifest'), manifest, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'llms.txt'), llmsTxt, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'llms-full.txt'), llmsFullTxt, 'utf8');
+  await fs.writeFile(path.join(publicRoot, 'humans.txt'), humansTxt, 'utf8');
   await fs.writeFile(path.join(publicRoot, `${indexNowKey}.txt`), `${indexNowKey}\n`, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'rss.xml'), rss, 'utf8');
   await fs.copyFile(changelogPath, path.join(publicRoot, 'CHANGELOG.md'));
