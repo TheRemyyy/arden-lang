@@ -55,6 +55,16 @@ Compiler surface includes:
 
 Use this to share default behavior while still enforcing capability contracts.
 
+## Minimal Capability Pattern
+
+Prefer small focused interfaces over one large "god interface".
+
+Example shape:
+
+- `Readable` with one read method
+- `Writable` with one write method
+- combined interface only where both are truly required
+
 ## Why It Helps
 
 - decouples API from implementation details
@@ -66,6 +76,7 @@ Use this to share default behavior while still enforcing capability contracts.
 - using interfaces with only one real implementation forever
 - putting too many unrelated methods in one interface
 - exposing concrete class types where interface would reduce coupling
+- forcing interface abstraction too early in small code where class-only API is clearer
 
 ## Decision Rule
 

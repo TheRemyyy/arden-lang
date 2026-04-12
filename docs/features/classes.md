@@ -60,6 +60,11 @@ class User {
 - `id` cannot be reassigned after construction
 - `points` can be updated in methods
 
+Practical rule:
+
+- keep fields immutable unless you have a clear state transition reason
+- expose state changes through methods, not ad-hoc writes everywhere
+
 ## Visibility and Inheritance
 
 Class fields/methods can use visibility modifiers (`public`, `protected`, `private`) and classes can extend base classes with `extends`.
@@ -83,6 +88,11 @@ Practical rules:
 
 Constructors are where you enforce invariants early.
 If a value must never be negative/empty/invalid, validate before storing.
+
+## API Boundary Rule
+
+If external code should not directly mutate internals, keep fields non-public and
+offer explicit methods (`deposit`, `rename`, `setStatus`) that validate changes.
 
 ## Common Mistakes
 

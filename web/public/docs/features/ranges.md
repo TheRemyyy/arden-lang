@@ -15,9 +15,15 @@ You use them in loops, manual iteration, and simple numeric traversal without bu
 ## Constructing Ranges
 
 ```arden
-r1: Range<Integer> = range(0, 5);
-r2: Range<Integer> = range(0, 10, 2);
-rf: Range<Float> = range(0.0, 1.0, 0.25);
+import std.io.*;
+
+function main(): None {
+    r1: Range<Integer> = range(0, 5);
+    r2: Range<Integer> = range(0, 10, 2);
+    rf: Range<Float> = range(0.0, 1.0, 0.25);
+    println("constructed ranges");
+    return None;
+}
 ```
 
 ## Manual Iteration (Runnable)
@@ -50,11 +56,26 @@ function main(): None {
 
 `for (i in 5)` is shorthand numeric iteration and is often the cleanest option.
 
+Descending numeric traversal:
+
+```arden
+import std.io.*;
+
+function main(): None {
+    r: Range<Integer> = range(10, 0, -2);
+    while (r.has_next()) {
+        println("v={r.next()}");
+    }
+    return None;
+}
+```
+
 ## Common Mistakes
 
 - assuming end is included (it is excluded)
 - using zero step (`range(0, 10, 0)`) which is invalid
 - mismatching numeric kinds across arguments
+- using wrong step direction (`range(0, 10, -1)` never advances toward end)
 
 ## Related
 

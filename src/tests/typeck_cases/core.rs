@@ -3663,3 +3663,142 @@ fn effect_attributes_reject_transitive_inferred_effect_outside_explicit_whitelis
         .join("\n");
     assert!(joined.contains("Missing effect 'net'"), "{joined}");
 }
+
+#[test]
+fn effect_attributes_enforce_thread_effect_for_namespace_alias_builtin_calls() {
+    let src = r#"
+        import std.time as t;
+
+        @Pure
+        function main(): None {
+            t.sleep(1);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err("pure function should not call thread builtin via alias");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+    assert!(joined.contains("Time__sleep"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_any_function() {
+    let src = r#"
+        @Any
+        function dyn_effect(): None { return None; }
+
+        @Pure
+        function main(): None {
+            dyn_effect();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err("pure caller should reject @Any callee");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("cannot call @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_explicit_non_any_caller_invoking_any_function() {
+    let src = r#"
+        @Any
+        function dyn_effect(): None { return None; }
+
+        @Io
+        function main(): None {
+            dyn_effect();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err("explicit non-any caller should reject @Any callee");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_allow_any_caller_invoking_any_function() {
+    let src = r#"
+        @Any
+        function dyn_effect(): None { return None; }
+
+        @Any
+        function main(): None {
+            dyn_effect();
+            return None;
+        }
+    "#;
+
+    check_source(src).must("@Any caller should be allowed to call @Any callee");
+}
+
+#[test]
+fn effect_attributes_reject_transitive_any_effect_through_inferred_wrapper() {
+    let src = r#"
+        @Any
+        function dyn_effect(): None { return None; }
+
+        function wrapper(): None {
+            dyn_effect();
+            return None;
+        }
+
+        @Io
+        function main(): None {
+            wrapper();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err("explicit non-any caller should reject transitive @Any");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_effectful_function_value_variable() {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        @Pure
+        function main(): None {
+            f: () -> None = io_call;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject calling effectful function through function value");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}

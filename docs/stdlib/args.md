@@ -51,6 +51,11 @@ function maybe_get(index: Integer): Option<String> {
 }
 ```
 
+Compiler note:
+
+- `Args.get()` requires `Integer` index
+- statically-known negative index (for example `Args.get(-1)`) is rejected
+
 ## Function Value Usage
 
 ```arden

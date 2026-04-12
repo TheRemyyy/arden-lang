@@ -48,6 +48,19 @@ arden test --filter Addition --path examples/single_file/tooling_and_ffi/24_test
 - `@BeforeAll`: runs once before suite
 - `@AfterAll`: runs once after suite
 
+## Signature Rules (Compiler-Enforced)
+
+`@Test`, `@Before`, `@After`, `@BeforeAll`, `@AfterAll` functions must be:
+
+- non-`extern`
+- non-`async`
+- parameterless
+- non-generic
+- return type `None`
+
+`@Ignore` requires `@Test` on the same function.
+`@Test` cannot be combined with lifecycle attributes.
+
 `@Ignore` with reason example:
 
 ```arden
@@ -76,6 +89,8 @@ function notReadyYet(): None {
 - hidden shared mutable state between tests
 - assertions that depend on timing/random/environment
 - relying only on happy-path tests
+- tagging async/extern/parameterized function as `@Test`
+- using `@Ignore` on non-`@Test` function
 
 ## Related
 

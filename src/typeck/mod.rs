@@ -153,9 +153,16 @@ impl NumericConst {
 
 /// Variable information in symbol table
 #[derive(Debug, Clone)]
+pub enum FunctionEffectContract {
+    Effects(Vec<String>),
+    Any,
+}
+
+#[derive(Debug, Clone)]
 pub struct VarInfo {
     pub ty: ResolvedType,
     pub mutable: bool,
+    pub callable_effects: Option<FunctionEffectContract>,
 }
 
 /// Function signature
@@ -249,6 +256,8 @@ pub struct TypeChecker {
     current_is_pure: bool,
     /// Whether current function allows any effects
     current_allow_any: bool,
+    /// Whether the current function/method declared explicit effect policy attributes.
+    current_has_explicit_effects: bool,
     /// Function/method generic type parameter bindings in current checking context
     current_generic_type_bindings: HashMap<String, ResolvedType>,
     /// Interface bounds declared for generic type variables
@@ -424,6 +433,7 @@ impl TypeChecker {
             current_effects: Vec::new(),
             current_is_pure: false,
             current_allow_any: false,
+            current_has_explicit_effects: false,
             current_generic_type_bindings: HashMap::new(),
             type_var_bounds: HashMap::new(),
             current_module_prefix: None,
@@ -569,11 +579,78 @@ impl TypeChecker {
     }
 
     fn enforce_call_effects(&mut self, sig: &FuncSig, span: Span, callee: &str) {
-        if sig.is_pure || sig.allow_any {
+        if sig.is_pure {
+            return;
+        }
+        if sig.allow_any {
+            if self.current_is_pure {
+                self.error(
+                    format!(
+                        "Pure function cannot call @Any function '{}'; @Any may perform effects",
+                        callee
+                    ),
+                    span,
+                );
+                return;
+            }
+            if !self.current_allow_any {
+                self.error(
+                    format!(
+                        "Call to @Any function '{}' requires @Any on the caller function",
+                        callee
+                    ),
+                    span,
+                );
+            }
             return;
         }
         for eff in &sig.effects {
             self.enforce_required_effect(eff, span.clone(), callee);
+        }
+    }
+
+    fn enforce_function_value_effect_contract(
+        &mut self,
+        contract: &FunctionEffectContract,
+        span: Span,
+        callee: &str,
+    ) {
+        match contract {
+            FunctionEffectContract::Any => {
+                if self.current_is_pure {
+                    self.error(
+                        format!(
+                            "Pure function cannot call @Any function value '{}'; @Any may perform effects",
+                            callee
+                        ),
+                        span,
+                    );
+                    return;
+                }
+                if self.current_has_explicit_effects && !self.current_allow_any {
+                    self.error(
+                        format!(
+                            "Call to @Any function value '{}' requires @Any on the caller function",
+                            callee
+                        ),
+                        span,
+                    );
+                }
+            }
+            FunctionEffectContract::Effects(effects) => {
+                if self.current_is_pure {
+                    for eff in effects {
+                        self.enforce_required_effect(eff, span.clone(), callee);
+                    }
+                    return;
+                }
+                if !self.current_has_explicit_effects {
+                    return;
+                }
+                for eff in effects {
+                    self.enforce_required_effect(eff, span.clone(), callee);
+                }
+            }
         }
     }
     fn populate_import_aliases(&mut self, program: &Program) {
@@ -1445,8 +1522,10 @@ impl TypeChecker {
             let saved_effects = std::mem::take(&mut self.current_effects);
             let saved_pure = self.current_is_pure;
             let saved_any = self.current_allow_any;
+            let saved_explicit = self.current_has_explicit_effects;
             self.current_allow_any = true;
             self.current_is_pure = false;
+            self.current_has_explicit_effects = false;
             for param in &method.params {
                 let ty = self.resolve_type(&param.ty);
                 self.validate_resolved_type_exists(&ty, span.clone());
@@ -1460,6 +1539,7 @@ impl TypeChecker {
             self.current_effects = saved_effects;
             self.current_is_pure = saved_pure;
             self.current_allow_any = saved_any;
+            self.current_has_explicit_effects = saved_explicit;
             self.exit_scope();
             self.current_generic_type_bindings = saved_generic_bindings;
         }
@@ -1513,6 +1593,7 @@ impl TypeChecker {
         let saved_effects = std::mem::take(&mut self.current_effects);
         let saved_pure = self.current_is_pure;
         let saved_any = self.current_allow_any;
+        let saved_explicit = self.current_has_explicit_effects;
         let sig = function_key
             .and_then(|k| self.functions.get(k))
             .or_else(|| self.functions.get(&func.name));
@@ -1520,13 +1601,15 @@ impl TypeChecker {
             self.current_effects = sig.effects.clone();
             self.current_is_pure = sig.is_pure;
             self.current_allow_any = sig.allow_any;
+            self.current_has_explicit_effects = sig.has_explicit_effects || sig.is_pure;
         } else {
             // Fallback for unresolved keys; should be rare.
-            let (effects, is_pure, allow_any, _) =
+            let (effects, is_pure, allow_any, has_explicit_effects) =
                 self.parse_effects_from_attributes(&func.attributes);
             self.current_effects = effects;
             self.current_is_pure = is_pure;
             self.current_allow_any = allow_any;
+            self.current_has_explicit_effects = has_explicit_effects || is_pure;
         }
 
         // Add parameters to scope
@@ -1573,6 +1656,7 @@ impl TypeChecker {
         self.current_effects = saved_effects;
         self.current_is_pure = saved_pure;
         self.current_allow_any = saved_any;
+        self.current_has_explicit_effects = saved_explicit;
         self.exit_scope();
         self.current_generic_type_bindings = saved_generic_bindings;
     }
@@ -1714,6 +1798,7 @@ impl TypeChecker {
             let saved_effects = std::mem::take(&mut self.current_effects);
             let saved_pure = self.current_is_pure;
             let saved_any = self.current_allow_any;
+            let saved_explicit = self.current_has_explicit_effects;
             let saved_class = self.current_class.clone();
             self.current_class = Some(class_key.to_string());
             self.current_effects = self
@@ -1722,6 +1807,7 @@ impl TypeChecker {
                 .collect();
             self.current_is_pure = false;
             self.current_allow_any = false;
+            self.current_has_explicit_effects = false;
 
             // Add 'this' binding
             self.declare_variable(
@@ -1743,6 +1829,7 @@ impl TypeChecker {
             self.current_effects = saved_effects;
             self.current_is_pure = saved_pure;
             self.current_allow_any = saved_any;
+            self.current_has_explicit_effects = saved_explicit;
             self.current_class = saved_class;
             self.exit_scope();
         }
@@ -1753,6 +1840,7 @@ impl TypeChecker {
             let saved_effects = std::mem::take(&mut self.current_effects);
             let saved_pure = self.current_is_pure;
             let saved_any = self.current_allow_any;
+            let saved_explicit = self.current_has_explicit_effects;
             let saved_class = self.current_class.clone();
             self.current_class = Some(class_key.to_string());
             self.current_effects = self
@@ -1761,6 +1849,7 @@ impl TypeChecker {
                 .collect();
             self.current_is_pure = false;
             self.current_allow_any = false;
+            self.current_has_explicit_effects = false;
             self.declare_variable(
                 "this",
                 ResolvedType::Class(class_key.to_string()),
@@ -1771,6 +1860,7 @@ impl TypeChecker {
             self.current_effects = saved_effects;
             self.current_is_pure = saved_pure;
             self.current_allow_any = saved_any;
+            self.current_has_explicit_effects = saved_explicit;
             self.current_class = saved_class;
             self.exit_scope();
         }
@@ -1790,6 +1880,7 @@ impl TypeChecker {
             let saved_effects = std::mem::take(&mut self.current_effects);
             let saved_pure = self.current_is_pure;
             let saved_any = self.current_allow_any;
+            let saved_explicit = self.current_has_explicit_effects;
             let saved_class = self.current_class.clone();
             self.current_class = Some(class_key.to_string());
             if let Some(class_info) = self.classes.get(class_key) {
@@ -1797,15 +1888,18 @@ impl TypeChecker {
                     self.current_effects = sig.effects.clone();
                     self.current_is_pure = sig.is_pure;
                     self.current_allow_any = sig.allow_any;
+                    self.current_has_explicit_effects = sig.has_explicit_effects || sig.is_pure;
                 } else {
                     self.current_effects.clear();
                     self.current_is_pure = false;
                     self.current_allow_any = false;
+                    self.current_has_explicit_effects = false;
                 }
             } else {
                 self.current_effects.clear();
                 self.current_is_pure = false;
                 self.current_allow_any = false;
+                self.current_has_explicit_effects = false;
             }
 
             // Add 'this' binding
@@ -1835,6 +1929,7 @@ impl TypeChecker {
             self.current_effects = saved_effects;
             self.current_is_pure = saved_pure;
             self.current_allow_any = saved_any;
+            self.current_has_explicit_effects = saved_explicit;
             self.current_class = saved_class;
             self.exit_scope();
             self.current_generic_type_bindings = saved_generic_bindings;
@@ -1900,7 +1995,15 @@ impl TypeChecker {
                     );
                 }
 
-                self.declare_variable(name, expected_type, *mutable, span);
+                let callable_effects =
+                    self.infer_function_value_effect_contract(&value.node, &expected_type);
+                self.declare_variable_with_contract(
+                    name,
+                    expected_type,
+                    *mutable,
+                    span,
+                    callable_effects,
+                );
             }
 
             Stmt::Assign { target, value } => {
@@ -1923,6 +2026,11 @@ impl TypeChecker {
                         ),
                         value.span.clone(),
                     );
+                }
+                if let Expr::Ident(name) = &target.node {
+                    let callable_effects =
+                        self.infer_function_value_effect_contract(&value.node, &target_type);
+                    self.update_variable_callable_effects(name, callable_effects);
                 }
             }
 
@@ -4537,8 +4645,23 @@ impl TypeChecker {
 
     /// Declare a variable in current scope
     fn declare_variable(&mut self, name: &str, ty: ResolvedType, mutable: bool, span: Span) {
+        self.declare_variable_with_contract(name, ty, mutable, span, None);
+    }
+
+    fn declare_variable_with_contract(
+        &mut self,
+        name: &str,
+        ty: ResolvedType,
+        mutable: bool,
+        span: Span,
+        callable_effects: Option<FunctionEffectContract>,
+    ) {
         let _ = span;
-        let var = VarInfo { ty, mutable };
+        let var = VarInfo {
+            ty,
+            mutable,
+            callable_effects,
+        };
         self.scopes[self.current_scope]
             .variables
             .insert(name.to_string(), var);
@@ -4558,6 +4681,53 @@ impl TypeChecker {
             }
         }
         None
+    }
+
+    fn lookup_variable_mut(&mut self, name: &str) -> Option<&mut VarInfo> {
+        let mut scope_idx = self.current_scope;
+        loop {
+            if self.scopes[scope_idx].variables.contains_key(name) {
+                return self.scopes[scope_idx].variables.get_mut(name);
+            }
+            if let Some(parent) = self.scopes[scope_idx].parent {
+                scope_idx = parent;
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
+    fn update_variable_callable_effects(
+        &mut self,
+        name: &str,
+        callable_effects: Option<FunctionEffectContract>,
+    ) {
+        if let Some(var) = self.lookup_variable_mut(name) {
+            var.callable_effects = callable_effects;
+        }
+    }
+
+    fn infer_function_value_effect_contract(
+        &self,
+        value_expr: &Expr,
+        expected_type: &ResolvedType,
+    ) -> Option<FunctionEffectContract> {
+        if !matches!(expected_type, ResolvedType::Function(_, _)) {
+            return None;
+        }
+        let name = self.resolve_contextual_function_value_name(value_expr)?;
+        if let Some(sig) = self.functions.get(&name) {
+            if sig.allow_any {
+                return Some(FunctionEffectContract::Any);
+            }
+            if !sig.effects.is_empty() {
+                return Some(FunctionEffectContract::Effects(sig.effects.clone()));
+            }
+            return None;
+        }
+        Self::builtin_required_effect(&name)
+            .map(|effect| FunctionEffectContract::Effects(vec![effect.to_string()]))
     }
 
     /// Parse a type string like "Integer" or "List<Integer>"

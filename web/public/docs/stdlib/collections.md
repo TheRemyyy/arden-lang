@@ -19,11 +19,17 @@ import std.io.*;
 Use for ordered dynamic sequences.
 
 ```arden
-xs: List<Integer> = List<Integer>();
-xs.push(10);
-xs.push(20);
-first: Integer = xs.get(0);
-xs.set(1, 99);
+import std.io.*;
+
+function main(): None {
+    xs: List<Integer> = List<Integer>();
+    xs.push(10);
+    xs.push(20);
+    first: Integer = xs.get(0);
+    xs.set(1, 99);
+    println("first={first}, len={xs.length()}");
+    return None;
+}
 ```
 
 Common methods:
@@ -39,10 +45,16 @@ Common methods:
 Use for key-value lookups.
 
 ```arden
-scores: Map<String, Integer> = Map<String, Integer>();
-scores.insert("alice", 10);
-scores.set("bob", 7);
-exists: Boolean = scores.contains("alice");
+import std.io.*;
+
+function main(): None {
+    scores: Map<String, Integer> = Map<String, Integer>();
+    scores.insert("alice", 10);
+    scores.set("bob", 7);
+    exists: Boolean = scores.contains("alice");
+    println("has-alice={exists}, len={scores.length()}");
+    return None;
+}
 ```
 
 Common methods:
@@ -58,9 +70,16 @@ Common methods:
 Use for uniqueness checks and membership.
 
 ```arden
-seen: Set<Integer> = Set<Integer>();
-seen.add(42);
-has42: Boolean = seen.contains(42);
+import std.io.*;
+
+function main(): None {
+    seen: Set<Integer> = Set<Integer>();
+    seen.add(42);
+    seen.add(42); // duplicate does not create second entry
+    has42: Boolean = seen.contains(42);
+    println("has42={has42}, len={seen.length()}");
+    return None;
+}
 ```
 
 Common methods include `add`, `contains`, `remove`, `length`.
@@ -72,9 +91,12 @@ Produced by `range(...)` and consumed through iteration APIs.
 ```arden
 import std.io.*;
 
-r: Range<Integer> = range(0, 5);
-while (r.has_next()) {
-    println(to_string(r.next()));
+function main(): None {
+    r: Range<Integer> = range(0, 5);
+    while (r.has_next()) {
+        println(to_string(r.next()));
+    }
+    return None;
 }
 ```
 
@@ -86,6 +108,13 @@ Mutating operations require mutable access paths:
 - mutable borrow (`&mut List<T>`, `&mut Map<K, V>`, ...)
 
 Immutable references can call read methods, but mutating methods and index writes are rejected.
+
+## Decision Guide
+
+- choose `List<T>` when order/index access matters
+- choose `Map<K, V>` when lookup by key is primary operation
+- choose `Set<T>` when uniqueness/membership is the primary requirement
+- choose `Range<T>` for numeric traversal without allocating collection storage first
 
 ## Common Mistakes
 

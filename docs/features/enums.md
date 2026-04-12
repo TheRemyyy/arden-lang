@@ -15,6 +15,9 @@ enum Status {
 }
 ```
 
+Think of this as a closed set of valid states.
+If a value is `Status`, it must be exactly one of these variants.
+
 ## Runnable Matching Example
 
 ```arden
@@ -53,11 +56,22 @@ enum Result<T, E> {
 Payload variants let each state carry data.
 Example: successful value in `Ok`, error value in `Error`.
 
+## Design Rule
+
+Keep one enum focused on one domain concept.
+If variants describe unrelated concerns, split into multiple enums.
+
+Example:
+
+- good: `ConnectionState` only for connection lifecycle
+- bad: one enum mixing connection state, user role, and payment status
+
 ## Common Mistakes
 
 - using strings for state when enum variants are safer
 - adding wildcard (`_`) too early and losing clarity on handled cases
 - mixing unrelated concepts in one large enum
+- creating "catch-all" variant too early instead of modeling real states explicitly
 
 ## Decision Rule
 

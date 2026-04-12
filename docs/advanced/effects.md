@@ -40,6 +40,12 @@ function logLine(msg: String): None {
 - cannot be combined with explicit effects (`@Io`, `@Thread`, ...)
 - cannot be combined with `@Any`
 
+### `@Any`
+
+- allows calling functions across mixed effect categories
+- caller must also be `@Any` when invoking an `@Any` callee
+- `@Pure` or narrowly-annotated callers cannot call `@Any` directly
+
 ### Explicit effect enforcement
 
 If a function calls another function requiring an effect, caller must declare that effect (or use `@Any`).
@@ -56,6 +62,28 @@ function writeLog(): None {
 
 Without `@Io`, this call is rejected during type checking.
 
+Effect propagation is transitive across wrappers.
+
+```arden
+@Net
+function netCall(): None {
+    return None;
+}
+
+function wrapper(): None {
+    netCall();
+    return None;
+}
+
+@Io
+function caller(): None {
+    wrapper(); // compile-time error: Missing effect 'net'
+    return None;
+}
+```
+
+`@Io` on the top-level caller does not satisfy a transitive `@Net` requirement.
+
 ### Inference
 
 If you omit effect attributes, compiler infers effects from function body and call graph.
@@ -71,6 +99,23 @@ Current built-in behavior in compiler checks:
 
 - `println`, `print`, `read_line`, `File.*`, `System.*`, `Args.*` -> require `io`
 - `Time.sleep`, `Time.now`, `Time.unix` -> require `thread`
+
+## `std.net` Namespace Status
+
+`import std.net.*;` is valid now, but stdlib currently exposes no runtime
+`Net.*` API members yet.
+
+Practical meaning:
+
+- effect contracts like `@Net` are enforced by type checking
+- avoid documenting/expecting non-existent `Net.*` runtime functions
+
+Important distinction:
+
+- `@Net` answers: "is this function allowed to perform network effect category work?"
+- `std.net` answers: "what runtime network API surface is currently exposed?"
+
+Today, the first exists (effect checking), the second is placeholder-only.
 
 ## `@Any` Usage Rule
 

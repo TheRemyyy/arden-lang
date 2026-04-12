@@ -14,6 +14,23 @@ If a stdlib call unexpectedly fails, this is the first place to check.
 - [System](system.md)
 - [Args](args.md)
 - [Collections](collections.md)
+- `std.net` namespace (import-valid placeholder; runtime `Net.*` API not exposed yet)
+
+## `std.net` (Current State)
+
+You can import this namespace today:
+
+```arden
+import std.net.*;
+```
+
+But current stdlib does not expose runtime `Net.*` member functions yet.
+
+What this means:
+
+- import path is valid (so project/module structure can be prepared now)
+- do not expect callable runtime network helpers from stdlib yet
+- effect contracts like `@Net` are still enforced by the type checker
 
 ## Import Rules (Important)
 
@@ -26,6 +43,7 @@ Arden stdlib is compiler-intrinsic, but module usage still requires explicit imp
 - time (`Time.*`): `import std.time.*;`
 - system (`System.*`): `import std.system.*;`
 - args (`Args.*`): `import std.args.*;`
+- net namespace placeholder: `import std.net.*;` (no runtime `Net.*` members yet)
 
 ## Builtins Available Without Import
 

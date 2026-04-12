@@ -1949,6 +1949,14 @@ impl TypeChecker {
         }
         let callee_type = self.check_expr(callee, span.clone());
         if let ResolvedType::Function(param_types, return_type) = callee_type {
+            if let Expr::Ident(name) = callee {
+                let contract = self
+                    .lookup_variable(name)
+                    .and_then(|var| var.callable_effects.clone());
+                if let Some(contract) = contract {
+                    self.enforce_function_value_effect_contract(&contract, span.clone(), name);
+                }
+            }
             if args.len() != param_types.len() {
                 self.error(
                     format!(

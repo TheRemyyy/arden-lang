@@ -20,6 +20,11 @@ Writes scalar value(s) without trailing newline.
 
 Writes scalar value(s) with trailing newline.
 
+Current display support includes:
+
+- `Integer`, `Float`, `Boolean`, `String`, `Char`, `None`
+- `Option<T>` and `Result<T, E>` when payload types are display-compatible
+
 ### `read_line(): String`
 
 Reads one line from stdin.
@@ -31,6 +36,19 @@ function main(): None {
     print("Enter name: ");
     name: String = read_line();
     println("Hello, " + name);
+    return None;
+}
+```
+
+Display with `Option`/`Result` payloads:
+
+```arden
+import std.io.*;
+
+function main(): None {
+    ok: Result<Integer, String> = Result.ok(7);
+    maybe: Option<String> = Option.some("hello");
+    println("ok={ok}, maybe={maybe}");
     return None;
 }
 ```

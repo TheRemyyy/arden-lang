@@ -72,7 +72,9 @@ Validation rules enforced by compiler/test runner:
 - duplicate attributes of same kind are rejected (for example duplicate `@Io`)
 - lifecycle attributes are mutually exclusive on one function (`@Before`, `@After`, `@BeforeAll`, `@AfterAll`)
 - suite allows at most one `@BeforeAll` and one `@AfterAll`
-- `@Ignore` without `@Test` is ignored by test discovery
+- `@Ignore` without `@Test` is rejected
+- `@Test` cannot be combined with lifecycle attributes
+- test/lifecycle functions must be synchronous `function ...(): None` with no params and no generics
 
 ## Effect Attributes
 
@@ -93,6 +95,11 @@ Important rules:
 - `@Pure` cannot be combined with explicit effects
 - `@Pure` cannot be combined with `@Any`
 - missing required effect on caller is a type-check error
+- required effects propagate transitively through intermediate wrappers
+- calling an `@Any` function requires `@Any` on caller path (pure/effect-specific callers cannot call `@Any`)
+
+`@Net` is an effect contract category.
+It is not the same thing as having runtime `Net.*` stdlib calls.
 
 ## Practical Diagnostics You Will See
 
@@ -100,6 +107,7 @@ Typical compile-time failures:
 
 - `@Pure` function calling `println`/`File.*`/`System.*`
 - caller missing required propagated effect (`@Io`, `@Thread`, ...)
+- transitive wrapper case: `@Io` caller -> unannotated wrapper -> `@Net` callee (fails with missing `net`)
 - malformed `@Ignore(...)` usage on non-test declaration
 - unknown attribute typo (`@Tset` instead of `@Test`)
 
@@ -108,6 +116,11 @@ When in doubt:
 1. annotate boundary/public functions explicitly
 2. keep helpers inferred or narrowly annotated
 3. avoid `@Any` unless function is intentionally orchestration-heavy
+
+Quick mental check before commit:
+
+1. does any callee in this chain require `@Net`/`@Io`/`@Thread`/...?
+2. if yes, are all callers in the path annotated (or intentionally `@Any`)?
 
 ## Where To Use Which
 

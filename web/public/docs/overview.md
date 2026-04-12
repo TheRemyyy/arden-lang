@@ -20,6 +20,7 @@ Arden is not just a parser demo. The repository already includes:
 - effect model: `@Pure`, `@Io`, `@Thread`, `@Any` (+ `@Net/@Alloc/@Unsafe` support)
 - async model: `Task<T>`, `async`, `await`, task status/cancel/timeout APIs
 - FFI surfaces: `extern`, ABI options (`c`/`system`), bindgen workflow, `Ptr<T>` type support
+- stdlib namespace note: `std.net` import path exists, runtime `Net.*` API surface is currently placeholder-only
 - project mode: `arden.toml`, explicit file graph, cache-aware build/check/run/test
 - integrated tooling: formatter, linter/fixer, test runner, benchmark/profile, bindgen, LSP
 

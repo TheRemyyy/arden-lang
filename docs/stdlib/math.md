@@ -19,14 +19,33 @@ import std.math.*;
 
 Use these instead of hardcoded approximations.
 
-## Frequently Used Functions
+## API Reference (Current Compiler)
 
-- `Math.abs(x: Integer): Integer`
-- `Math.sqrt(x: Float): Float`
-- `Math.pow(base: Float, exp: Float): Float`
-- `Math.min/max<T>(a: T, b: T): T`
-- `Math.floor/ceil/round(x: Float): Float`
-- `Math.log/log10/exp(x: Float): Float`
+### Core Numeric
+
+- `Math.abs(x: Integer | Float): Integer | Float`
+  returns same numeric kind as input
+- `Math.min(a: Integer | Float, b: Integer | Float): Integer | Float`
+- `Math.max(a: Integer | Float, b: Integer | Float): Integer | Float`
+- `Math.pow(base: Integer | Float, exp: Integer | Float): Float`
+
+### Trig / Log / Rounding
+
+- `Math.sqrt(x: Integer | Float): Float`
+- `Math.sin(x: Integer | Float): Float`
+- `Math.cos(x: Integer | Float): Float`
+- `Math.tan(x: Integer | Float): Float`
+- `Math.floor(x: Integer | Float): Float`
+- `Math.ceil(x: Integer | Float): Float`
+- `Math.round(x: Integer | Float): Float`
+- `Math.log(x: Integer | Float): Float`
+- `Math.log10(x: Integer | Float): Float`
+- `Math.exp(x: Integer | Float): Float`
+
+### Constants and Random
+
+- `Math.pi(): Float`
+- `Math.e(): Float`
 - `Math.random(): Float`
 
 ## Integer vs Float Mental Model
@@ -35,6 +54,9 @@ Use these instead of hardcoded approximations.
 - float operations keep fractional precision (`10.0 / 3.0 = 3.333...`)
 
 Pick one numeric model per formula and convert explicitly at the boundary.
+
+`Math.min/max` can accept mixed numeric kinds.
+Mixed `Integer` + `Float` resolves to `Float`.
 
 ## Example
 
