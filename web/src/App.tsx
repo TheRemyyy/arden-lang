@@ -1,8 +1,8 @@
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { Suspense, lazy } from 'react';
-import { Analytics } from '@vercel/analytics/react';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
+import { DeferredTelemetry } from './components/DeferredTelemetry';
 import { Home } from './pages/Home';
 
 const Docs = lazy(() => import('./pages/Docs').then(module => ({ default: module.Docs })));
@@ -25,7 +25,7 @@ export default function App() {
                 </Suspense>
             </main>
             {!isDocsPage && <Footer />}
-            <Analytics />
+            <DeferredTelemetry />
         </div>
     );
 }

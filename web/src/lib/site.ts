@@ -1,11 +1,11 @@
 import { CURRENT_VERSION, PACKAGE_VERSION } from './generated-version';
 
 export const SITE_NAME = 'Arden';
-export const SITE_TITLE = 'Arden | Native Project Build Workflow with Fast Feedback';
+export const SITE_TITLE = 'Arden | Native Programming Language';
 export const SITE_ORGANIZATION_NAME = 'Arden';
 export const SITE_SEARCH_PATH = '/search';
 export const SITE_DESCRIPTION =
-    'Official Arden documentation for native project build workflows: practical compiler feedback, fast iteration, and safe systems programming with clear docs, install guides, and release notes.';
+    'Official Arden docs for native project builds with fast compiler feedback, practical install guides, and release notes for safe systems development.';
 export const SITE_URL = 'https://www.arden-lang.dev';
 export const SITE_CREATOR_URL = 'https://www.theremyyy.dev/';
 export const GITHUB_REPO_URL = 'https://github.com/TheRemyyy/arden-lang';
@@ -15,13 +15,13 @@ export const SITE_TWITTER_HANDLE = '@TheRemyyy';
 export const SITE_CREATOR_NAME = 'TheRemyyy';
 export const SITE_KEYWORDS = [
     'Arden',
-    'Arden language',
-    'native project build',
-    'fast compiler feedback',
+    'arden-lang',
+    'native',
+    'programming',
+    'language',
     'systems programming language',
     'LLVM compiler',
-    'memory safety',
-    'native performance',
+    'fast compiler feedback',
     'developer documentation',
     'release notes',
 ];

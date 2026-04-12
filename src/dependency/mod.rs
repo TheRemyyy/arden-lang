@@ -1,3 +1,7 @@
+mod lookup_prep;
+
+pub(crate) use lookup_prep::build_namespace_files_lookup;
+
 use crate::ast::{ImportDecl, Program};
 use crate::cache::*;
 use crate::typeck::{ClassMethodEffectsSummary, FunctionEffectsSummary};

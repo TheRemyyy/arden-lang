@@ -1,6 +1,6 @@
 # Arden
 
-> Official Arden documentation for native project build workflows: practical compiler feedback, fast iteration, and safe systems programming with clear docs, install guides, and release notes.
+> Official Arden docs for native project builds with fast compiler feedback, practical install guides, and release notes for safe systems development.
 
 ## Project
 - Homepage: https://www.arden-lang.dev/

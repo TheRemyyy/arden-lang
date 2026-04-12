@@ -15,6 +15,7 @@ mod linker;
 mod lint;
 mod lsp;
 mod parser;
+mod pipeline;
 mod project;
 mod project_rewrite;
 mod shared;
@@ -50,11 +51,17 @@ use crate::cli::paths::{
 };
 use crate::cli::test_discovery::find_test_files;
 use crate::codegen::Codegen;
+use crate::dependency::build_namespace_files_lookup;
 use crate::dependency::*;
 use crate::diagnostics::*;
 use crate::import_check::ImportChecker;
 use crate::linker::*;
 use crate::parser::Parser;
+use crate::pipeline::{
+    compute_project_change_impact, evaluate_semantic_cache_gate, prepare_rewrite_inputs,
+    run_import_check_phase, validate_symbol_collisions, ImportCheckInputs, RewritePreparation,
+    SemanticGateInputs,
+};
 use crate::project::{find_project_root, OutputKind, ProjectConfig};
 use crate::specialization::*;
 use crate::stdlib::stdlib_registry;
@@ -1565,55 +1572,8 @@ fn build_project(
     let previous_dependency_graph = build_timings.measure("dependency cache load", || {
         load_dependency_graph_cache(&project_root)
     })?;
-    let mut namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
-    namespace_files_map.reserve(parsed_files.len() + total_module_names);
-    let mut dependency_lookup_base_namespace_ns = 0_u64;
-    let mut dependency_lookup_module_namespace_ns = 0_u64;
-    let mut dependency_lookup_sort_dedup_ns = 0_u64;
-    build_timings.measure_step("dependency lookup prep", || {
-        for unit in &parsed_files {
-            let started_at = Instant::now();
-            namespace_files_map
-                .entry(unit.namespace.clone())
-                .or_default()
-                .push(unit.file.clone());
-            dependency_lookup_base_namespace_ns += elapsed_nanos_u64(started_at);
-            for module_name in &unit.module_names {
-                let started_at = Instant::now();
-                namespace_files_map
-                    .entry(format!(
-                        "{}.{}",
-                        unit.namespace,
-                        module_name.replace("__", ".")
-                    ))
-                    .or_default()
-                    .push(unit.file.clone());
-                dependency_lookup_module_namespace_ns += elapsed_nanos_u64(started_at);
-            }
-        }
-        let sort_started_at = Instant::now();
-        for files in namespace_files_map.values_mut() {
-            files.sort();
-            files.dedup();
-        }
-        dependency_lookup_sort_dedup_ns += elapsed_nanos_u64(sort_started_at);
-    });
-    build_timings.record_duration_ns(
-        "dependency lookup/base namespace",
-        dependency_lookup_base_namespace_ns,
-    );
-    build_timings.record_duration_ns(
-        "dependency lookup/module namespace",
-        dependency_lookup_module_namespace_ns,
-    );
-    build_timings.record_duration_ns("dependency lookup/function files", 0);
-    build_timings.record_duration_ns("dependency lookup/class files", 0);
-    build_timings.record_duration_ns("dependency lookup/interface files", 0);
-    build_timings.record_duration_ns("dependency lookup/module files", 0);
-    build_timings.record_duration_ns(
-        "dependency lookup/sort dedup",
-        dependency_lookup_sort_dedup_ns,
-    );
+    let namespace_files_map =
+        build_namespace_files_lookup(&mut build_timings, &parsed_files, total_module_names);
 
     let project_symbol_lookup = ProjectSymbolLookup {
         exact: project_symbol_lookup_exact,
@@ -1791,73 +1751,24 @@ fn build_project(
 
     let previous_semantic_summary = load_semantic_summary_cache(&project_root)?;
     let previous_typecheck_summary = load_typecheck_summary_cache(&project_root)?;
-    let mut body_only_changed = HashSet::new();
-    let mut api_changed = HashSet::new();
-    let mut dependent_api_impact = HashSet::new();
-
-    if let Some(previous) = &previous_dependency_graph {
-        let previous_files: HashMap<&PathBuf, &DependencyGraphFileEntry> = previous
-            .files
-            .iter()
-            .map(|entry| (&entry.file, entry))
-            .collect();
-
-        for unit in &parsed_files {
-            match previous_files.get(&unit.file) {
-                Some(prev) if prev.semantic_fingerprint == unit.semantic_fingerprint => {}
-                Some(prev) if prev.api_fingerprint == unit.api_fingerprint => {
-                    body_only_changed.insert(unit.file.clone());
-                }
-                _ => {
-                    api_changed.insert(unit.file.clone());
-                }
-            }
-        }
-
-        dependent_api_impact = if api_changed.is_empty() {
-            HashSet::new()
-        } else {
-            let mut impacted = transitive_dependents(&reverse_file_dependency_graph, &api_changed);
-            for changed in &api_changed {
-                impacted.remove(changed);
-            }
-            impacted
-        };
-
-        if !body_only_changed.is_empty() || !api_changed.is_empty() {
-            print_cli_cache(format!(
-                "Impact graph: {} body-only, {} API, {} downstream dependents",
-                body_only_changed.len(),
-                api_changed.len(),
-                dependent_api_impact.len()
-            ));
-        }
-    }
-
-    let (semantic_fingerprint, semantic_cache_hit) =
-        build_timings.measure("semantic cache gate", || {
-            let semantic_fingerprint =
-                compute_semantic_project_fingerprint(&config, &parsed_files, emit_llvm, do_check);
-            let semantic_cache_hit = if !check_only {
-                load_semantic_cached_fingerprint(&project_root)?.is_some_and(|cached| {
-                    cached == semantic_fingerprint
-                        && project_build_artifact_exists(&output_path, emit_llvm)
-                })
-            } else {
-                false
-            };
-            Ok::<_, String>((semantic_fingerprint, semantic_cache_hit))
-        })?;
-    build_timings.record_counts(
-        "semantic cache gate",
-        &[
-            ("files", parsed_files.len()),
-            ("body_only", body_only_changed.len()),
-            ("api", api_changed.len()),
-            ("downstream", dependent_api_impact.len()),
-            ("hit", usize::from(semantic_cache_hit)),
-        ],
+    let impact = compute_project_change_impact(
+        previous_dependency_graph.as_ref(),
+        &parsed_files,
+        &reverse_file_dependency_graph,
     );
+    let (semantic_fingerprint, semantic_cache_hit) = evaluate_semantic_cache_gate(
+        &mut build_timings,
+        SemanticGateInputs {
+            config: &config,
+            parsed_files: &parsed_files,
+            emit_llvm,
+            do_check,
+            check_only,
+            project_root: &project_root,
+            output_path: &output_path,
+            impact: &impact,
+        },
+    )?;
     if semantic_cache_hit {
         print_cli_cache(format!("Reused semantic build cache for {}", config.name));
         save_cached_fingerprint(&project_root, &fingerprint)?;
@@ -1871,86 +1782,13 @@ fn build_project(
         return Ok(());
     }
 
-    if !function_collisions.is_empty() {
-        eprintln!(
-            "{} Function name collisions detected across namespaces:",
-            "error".red().bold()
-        );
-        for (func, ns_a, ns_b) in function_collisions {
-            eprintln!(
-                "  → '{}' is defined in both '{}' and '{}'",
-                func, ns_a, ns_b
-            );
-        }
-        return Err(
-            "Project contains colliding top-level function names. Use module-qualified names or rename functions."
-                .to_string(),
-        );
-    }
-    if !class_collisions.is_empty() {
-        eprintln!(
-            "{} Class name collisions detected across namespaces:",
-            "error".red().bold()
-        );
-        for (name, ns_a, ns_b) in class_collisions {
-            eprintln!(
-                "  → '{}' is defined in both '{}' and '{}'",
-                name, ns_a, ns_b
-            );
-        }
-        return Err(
-            "Project contains colliding top-level class names. Use unique class names per project."
-                .to_string(),
-        );
-    }
-    if !enum_collisions.is_empty() {
-        eprintln!(
-            "{} Enum name collisions detected across namespaces:",
-            "error".red().bold()
-        );
-        for (name, ns_a, ns_b) in enum_collisions {
-            eprintln!(
-                "  → '{}' is defined in both '{}' and '{}'",
-                name, ns_a, ns_b
-            );
-        }
-        return Err(
-            "Project contains colliding top-level enum names. Use unique enum names per project."
-                .to_string(),
-        );
-    }
-    if !interface_collisions.is_empty() {
-        eprintln!(
-            "{} Interface name collisions detected across namespaces:",
-            "error".red().bold()
-        );
-        for (name, ns_a, ns_b) in interface_collisions {
-            eprintln!(
-                "  → '{}' is defined in both '{}' and '{}'",
-                name, ns_a, ns_b
-            );
-        }
-        return Err(
-            "Project contains colliding top-level interface names. Use unique interface names per project."
-                .to_string(),
-        );
-    }
-    if !module_collisions.is_empty() {
-        eprintln!(
-            "{} Module name collisions detected across namespaces:",
-            "error".red().bold()
-        );
-        for (name, ns_a, ns_b) in module_collisions {
-            eprintln!(
-                "  → '{}' is defined in both '{}' and '{}'",
-                name, ns_a, ns_b
-            );
-        }
-        return Err(
-            "Project contains colliding top-level module names. Use unique module names per project."
-                .to_string(),
-        );
-    }
+    validate_symbol_collisions(
+        function_collisions,
+        class_collisions,
+        enum_collisions,
+        interface_collisions,
+        module_collisions,
+    )?;
 
     let entry_path = config.get_entry_path(&project_root);
     if !do_check {
@@ -1981,36 +1819,22 @@ fn build_project(
     }
 
     print_cli_step("Rewriting project graph");
-    let (namespace_functions, entry_namespace, namespace_api_fingerprints, file_api_fingerprints) =
-        build_timings.measure_step("rewrite prep", || {
-            let mut namespace_functions: HashMap<String, HashSet<String>> = HashMap::new();
-            for unit in &parsed_files {
-                if unit.function_names.is_empty() {
-                    continue;
-                }
-                namespace_functions
-                    .entry(unit.namespace.clone())
-                    .or_insert_with(|| HashSet::with_capacity(unit.function_names.len()))
-                    .extend(unit.function_names.iter().cloned());
-            }
-
-            let entry_namespace = parsed_files
-                .iter()
-                .find(|unit| unit.file == entry_path)
-                .map(|unit| unit.namespace.clone())
-                .unwrap_or_else(|| "global".to_string());
-            let namespace_api_fingerprints = compute_namespace_api_fingerprints(&parsed_files);
-            let file_api_fingerprints: HashMap<PathBuf, String> = parsed_files
-                .iter()
-                .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
-                .collect();
-            (
-                namespace_functions,
-                entry_namespace,
-                namespace_api_fingerprints,
-                file_api_fingerprints,
-            )
-        });
+    let RewritePreparation {
+        namespace_functions,
+        entry_namespace,
+        namespace_api_fingerprints,
+        file_api_fingerprints,
+        safe_rewrite_cache_files,
+    } = build_timings.measure_step("rewrite prep", || {
+        prepare_rewrite_inputs(
+            &parsed_files,
+            &entry_path,
+            previous_dependency_graph.as_ref(),
+            &impact.body_only_changed,
+            &impact.api_changed,
+            &impact.dependent_api_impact,
+        )
+    });
     let rewrite_fingerprint_ctx = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
         global_function_map: &global_function_map,
@@ -2029,187 +1853,20 @@ fn build_project(
         file_api_fingerprints: &file_api_fingerprints,
         symbol_lookup: Arc::new(project_symbol_lookup.clone()),
     };
-    let safe_rewrite_cache_files: HashSet<PathBuf> =
-        if can_reuse_safe_rewrite_cache(previous_dependency_graph.as_ref(), &entry_namespace) {
-            parsed_files
-                .iter()
-                .filter(|unit| {
-                    !body_only_changed.contains(&unit.file)
-                        && !api_changed.contains(&unit.file)
-                        && !dependent_api_impact.contains(&unit.file)
-                })
-                .map(|unit| unit.file.clone())
-                .collect()
-        } else {
-            HashSet::new()
-        };
 
     // Phase 2: Check imports for each file
     if do_check {
         print_cli_step("Checking imports");
-        let shared_function_map = Arc::new(global_function_map.clone());
-        let shared_known_namespace_paths =
-            Arc::new(collect_known_namespace_paths_for_units(&parsed_files));
-        let import_check_cache_hits = std::sync::atomic::AtomicUsize::new(0);
-        let import_check_timing_totals = Arc::new(ImportCheckTimingTotals::default());
-
-        let import_results: Vec<Result<(), String>> =
-            build_timings.measure("import check", || {
-                Ok::<_, String>(
-                    parsed_files
-                        .par_iter()
-                        .map(|unit| {
-                            let fingerprint_started_at = Instant::now();
-                            let rewrite_context_fingerprint =
-                                compute_rewrite_context_fingerprint_for_unit_impl(
-                                    unit,
-                                    &entry_namespace,
-                                    &rewrite_fingerprint_ctx,
-                                    None,
-                                );
-                            import_check_timing_totals
-                                .rewrite_context_fingerprint_ns
-                                .fetch_add(
-                                    elapsed_nanos_u64(fingerprint_started_at),
-                                    Ordering::Relaxed,
-                                );
-                            let cache_lookup_started_at = Instant::now();
-                            if load_import_check_cache_hit(
-                                &project_root,
-                                &unit.file,
-                                &unit.import_check_fingerprint,
-                                &rewrite_context_fingerprint,
-                            )? {
-                                import_check_timing_totals.cache_lookup_ns.fetch_add(
-                                    elapsed_nanos_u64(cache_lookup_started_at),
-                                    Ordering::Relaxed,
-                                );
-                                import_check_cache_hits
-                                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                return Ok(());
-                            }
-                            import_check_timing_totals.cache_lookup_ns.fetch_add(
-                                elapsed_nanos_u64(cache_lookup_started_at),
-                                Ordering::Relaxed,
-                            );
-
-                            let checker_init_started_at = Instant::now();
-                            let mut checker = ImportChecker::new(
-                                Arc::clone(&shared_function_map),
-                                Arc::clone(&shared_known_namespace_paths),
-                                unit.namespace.clone(),
-                                extract_top_level_imports(&unit.program),
-                                stdlib_registry(),
-                            );
-                            import_check_timing_totals.checker_init_ns.fetch_add(
-                                elapsed_nanos_u64(checker_init_started_at),
-                                Ordering::Relaxed,
-                            );
-
-                            let checker_run_started_at = Instant::now();
-                            if let Err(errors) = checker.check_program(&unit.program) {
-                                import_check_timing_totals.checker_run_ns.fetch_add(
-                                    elapsed_nanos_u64(checker_run_started_at),
-                                    Ordering::Relaxed,
-                                );
-                                let filename = unit
-                                    .file
-                                    .file_name()
-                                    .and_then(|s| s.to_str())
-                                    .unwrap_or("unknown");
-                                let source = fs::read_to_string(&unit.file).unwrap_or_default();
-                                let mut rendered = String::new();
-                                for err in errors {
-                                    if source.is_empty() {
-                                        rendered.push_str(&format!(
-                                            "{}: {}\n",
-                                            "error".red().bold(),
-                                            err.format()
-                                        ));
-                                    } else {
-                                        rendered
-                                            .push_str(&err.format_with_source(&source, filename));
-                                        rendered.push('\n');
-                                    }
-                                }
-                                return Err(rendered.trim_end().to_string());
-                            }
-                            import_check_timing_totals.checker_run_ns.fetch_add(
-                                elapsed_nanos_u64(checker_run_started_at),
-                                Ordering::Relaxed,
-                            );
-                            let cache_save_started_at = Instant::now();
-                            save_import_check_cache_hit(
-                                &project_root,
-                                &unit.file,
-                                &unit.import_check_fingerprint,
-                                &rewrite_context_fingerprint,
-                            )?;
-                            import_check_timing_totals.cache_save_ns.fetch_add(
-                                elapsed_nanos_u64(cache_save_started_at),
-                                Ordering::Relaxed,
-                            );
-                            Ok(())
-                        })
-                        .collect(),
-                )
-            })?;
-
-        for result in import_results {
-            if let Err(rendered) = result {
-                return Err(format!("Import check failed\n{rendered}"));
-            }
-        }
-        let import_check_cache_hits =
-            import_check_cache_hits.load(std::sync::atomic::Ordering::Relaxed);
-        if import_check_cache_hits > 0 {
-            print_cli_cache(format!(
-                "Reused import-check cache for {}/{} files",
-                import_check_cache_hits,
-                parsed_files.len()
-            ));
-        }
-        build_timings.record_counts(
-            "import check",
-            &[
-                ("considered", parsed_files.len()),
-                ("reused", import_check_cache_hits),
-                (
-                    "checked",
-                    parsed_files.len().saturating_sub(import_check_cache_hits),
-                ),
-            ],
-        );
-        build_timings.record_duration_ns(
-            "import check/context fingerprint",
-            import_check_timing_totals
-                .rewrite_context_fingerprint_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "import check/cache lookup",
-            import_check_timing_totals
-                .cache_lookup_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "import check/checker init",
-            import_check_timing_totals
-                .checker_init_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "import check/checker run",
-            import_check_timing_totals
-                .checker_run_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "import check/cache save",
-            import_check_timing_totals
-                .cache_save_ns
-                .load(Ordering::Relaxed),
-        );
+        run_import_check_phase(
+            &mut build_timings,
+            ImportCheckInputs {
+                project_root: &project_root,
+                parsed_files: &parsed_files,
+                global_function_map: &global_function_map,
+                entry_namespace: &entry_namespace,
+                rewrite_fingerprint_ctx: &rewrite_fingerprint_ctx,
+            },
+        )?;
     }
 
     // Phase 3: Build combined AST with deterministic namespace mangling.
@@ -2628,11 +2285,12 @@ fn build_project(
         let mut semantic_full_files: HashSet<PathBuf> =
             parsed_files.iter().map(|u| u.file.clone()).collect();
         if previous_dependency_graph.is_some() && previous_semantic_summary.is_some() {
-            semantic_full_files = body_only_changed
-                .union(&api_changed)
+            semantic_full_files = impact
+                .body_only_changed
+                .union(&impact.api_changed)
                 .cloned()
                 .collect::<HashSet<_>>();
-            semantic_full_files.extend(dependent_api_impact.iter().cloned());
+            semantic_full_files.extend(impact.dependent_api_impact.iter().cloned());
             if semantic_full_files.is_empty() {
                 semantic_full_files.extend(parsed_files.iter().map(|u| u.file.clone()));
             }

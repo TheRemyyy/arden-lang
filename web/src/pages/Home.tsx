@@ -26,7 +26,7 @@ const operatingPrinciples = [
 const capabilityRows = [
     {
         icon: ShieldCheck,
-        title: 'Static checks that pull mistakes left',
+        title: 'Compile-time safety that pulls mistakes left',
         description:
             'Ownership, borrowing, mutability, and semantic validation push failures to compile time before they leak into runtime debugging.',
     },
@@ -69,7 +69,7 @@ const audienceCards = [
     {
         title: 'Systems developers',
         description:
-            'Use Arden when you want native builds, predictable tooling, and strong static checks without bolting together five separate layers.',
+            'Use Arden when you want native binaries, predictable tooling, and strong compile-time safety without bolting together five separate layers.',
     },
     {
         title: 'Tooling-heavy teams',
@@ -118,16 +118,16 @@ export function Home() {
                 <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-10 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.12fr_0.88fr] lg:items-end lg:pb-20 lg:pt-14">
                     <div className="relative z-10">
                         <h1 className="max-w-4xl font-display text-4xl font-bold leading-[0.95] tracking-[-0.04em] text-[var(--text)] md:text-6xl">
-                            Arden native project build workflow with cleaner feedback.
+                            Arden is a native programming language with clearer compiler feedback.
                         </h1>
                         <p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-muted)] md:text-lg">
-                            Arden combines native compilation, static safety checks, and an integrated command surface so teams can move from experiments to larger codebases without swapping mental models.
+                            Arden combines native compilation and an integrated command surface so teams can move from experiments to larger codebases without swapping mental models.
                         </p>
                         <p className="mt-4 max-w-2xl text-[15px] leading-8 text-[var(--text-muted)] md:text-base">
                             It is built for teams that want readable ownership rules, practical diagnostics, explicit project structure, and feedback that stays useful as the codebase grows.
                         </p>
                         <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">
-                            Build native software with a sharper workflow and cleaner feedback is the core focus behind Arden.
+                            The arden-lang programming language keeps native performance and readable feedback in everyday development.
                         </p>
                         <div className="mt-8 flex flex-wrap gap-3">
                             <a

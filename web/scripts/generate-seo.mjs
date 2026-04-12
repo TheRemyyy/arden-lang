@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 
 const siteUrl = 'https://www.arden-lang.dev';
 const indexNowKey = '5f16d52efed72638de1a80329fd512fb';
-const siteDescription = 'Official Arden documentation for native project build workflows: practical compiler feedback, fast iteration, and safe systems programming with clear docs, install guides, and release notes.';
+const siteDescription = 'Official Arden docs for native project builds with fast compiler feedback, practical install guides, and release notes for safe systems development.';
 const projectRoot = path.resolve(process.cwd(), '..');
 const docsRoot = path.join(projectRoot, 'docs');
 const publicRoot = path.join(process.cwd(), 'public');
