@@ -54,7 +54,10 @@ function main(): None {
     }
 
     // 6. Comparison
-    if (Str.compare(lower, "arden language") == 0) {
+    // Str.compare returns Integer relation: <0, 0, >0 (not Boolean)
+    cmp_equal: Integer = Str.compare(lower, "arden language");
+    println("Compare(lower, 'arden language') = {cmp_equal}");
+    if (cmp_equal == 0) {
         println("Lower case comparison: OK");
     }
 

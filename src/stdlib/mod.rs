@@ -9,6 +9,7 @@
 //! - std.string - String utilities
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 static STDLIB_REGISTRY: OnceLock<StdLib> = OnceLock::new();
@@ -67,6 +68,17 @@ const STDLIB_FUNCTIONS: &[(&str, &str)] = &[
     ("exit", "builtin"),
     ("range", "builtin"),
 ];
+const STDLIB_NAMESPACES: &[&str] = &[
+    "builtin",
+    "std.io",
+    "std.fs",
+    "std.system",
+    "std.time",
+    "std.args",
+    "std.math",
+    "std.string",
+    "std.net",
+];
 
 fn alias_lookup_key(namespace_path: &str, member: &str) -> String {
     format!("{namespace_path}\u{0}{member}")
@@ -81,15 +93,23 @@ pub struct StdLib {
     /// function_name -> namespace (e.g., "println" -> "std.io")
     functions: HashMap<String, String>,
     alias_calls: HashMap<String, String>,
+    namespaces: HashSet<String>,
 }
 
 impl StdLib {
     pub fn new() -> Self {
         let mut functions = HashMap::with_capacity(STDLIB_FUNCTIONS.len());
         let mut alias_calls = HashMap::with_capacity(STDLIB_FUNCTIONS.len());
+        let mut namespaces =
+            HashSet::with_capacity(STDLIB_NAMESPACES.len() + STDLIB_FUNCTIONS.len());
+
+        for namespace in STDLIB_NAMESPACES {
+            namespaces.insert((*namespace).to_string());
+        }
 
         for (function_name, namespace) in STDLIB_FUNCTIONS {
             functions.insert((*function_name).to_string(), (*namespace).to_string());
+            namespaces.insert((*namespace).to_string());
             let member = function_name
                 .split_once("__")
                 .map(|(_, member)| member)
@@ -103,6 +123,7 @@ impl StdLib {
         Self {
             functions,
             alias_calls,
+            namespaces,
         }
     }
 
@@ -114,6 +135,10 @@ impl StdLib {
     /// Get all std functions as a map
     pub fn get_functions(&self) -> &HashMap<String, String> {
         &self.functions
+    }
+
+    pub fn known_namespaces(&self) -> &HashSet<String> {
+        &self.namespaces
     }
 
     /// Resolve aliased std namespace member call to canonical callable symbol.

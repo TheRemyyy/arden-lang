@@ -34,11 +34,14 @@ Use this for runtime configuration (`APP_ENV`, `API_URL`, feature flags).
 import std.io.*;
 import std.system.*;
 
-env: String = System.getenv("APP_ENV");
-if (env == "") {
-    println("APP_ENV not set");
-} else {
-    println("APP_ENV={env}");
+function main(): None {
+    env: String = System.getenv("APP_ENV");
+    if (env == "") {
+        println("APP_ENV not set");
+    } else {
+        println("APP_ENV={env}");
+    }
+    return None;
 }
 ```
 
@@ -52,8 +55,11 @@ Returns the directory where the process currently runs.
 import std.io.*;
 import std.system.*;
 
-cwd: String = System.cwd();
-println("cwd={cwd}");
+function main(): None {
+    cwd: String = System.cwd();
+    println("cwd={cwd}");
+    return None;
+}
 ```
 
 Useful for debugging path issues in CI and scripts.
@@ -66,11 +72,14 @@ Returns one of: `windows`, `macos`, `linux`, `unknown`.
 import std.io.*;
 import std.system.*;
 
-os: String = System.os();
-if (os == "windows") {
-    println("Using Windows-specific behavior");
-} else {
-    println("Using Unix-like behavior");
+function main(): None {
+    os: String = System.os();
+    if (os == "windows") {
+        println("Using Windows-specific behavior");
+    } else {
+        println("Using Unix-like behavior");
+    }
+    return None;
 }
 ```
 
@@ -82,8 +91,11 @@ Use when you only care whether a command succeeded.
 import std.io.*;
 import std.system.*;
 
-code: Integer = System.shell("echo hello");
-println("exit code={code}");
+function main(): None {
+    code: Integer = System.shell("echo hello");
+    println("exit code={code}");
+    return None;
+}
 ```
 
 ## 5. Run Command + Capture Output: `System.exec(command)`
@@ -94,8 +106,11 @@ Use when you need stdout text (`whoami`, `git rev-parse`, etc.).
 import std.io.*;
 import std.system.*;
 
-user: String = System.exec("whoami");
-println("current user={user}");
+function main(): None {
+    user: String = System.exec("whoami");
+    println("current user={user}");
+    return None;
+}
 ```
 
 ### `shell` vs `exec`
@@ -122,7 +137,10 @@ function main(): None {
 The global builtin `exit` is also available:
 
 ```arden
-stop: (Integer) -> None = exit;
+function main(): None {
+    stop: (Integer) -> None = exit;
+    stop(0);
+}
 ```
 
 ## Safety Notes (Important)

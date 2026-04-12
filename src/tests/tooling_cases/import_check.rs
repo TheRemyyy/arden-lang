@@ -136,6 +136,19 @@ function main(): Float {
 }
 
 #[test]
+fn stdlib_net_namespace_import_is_recognized_even_without_members() {
+    let source = r#"
+import std.net.*;
+
+function main(): None {
+    return None;
+}
+"#;
+    let errors = check_import_errors(source);
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
 fn local_function_can_shadow_stdlib_name() {
     let source = r#"
 function print(owned s: String): None { return None; }

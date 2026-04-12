@@ -3,12 +3,19 @@
 ## Why This Matters
 
 Arden prevents common memory and aliasing bugs at compile time while still producing native binaries.
+This is one of the core reasons to use Arden instead of manual-memory systems code.
 
 ## High-Level Model
 
 - scalar values behave as native values
 - runtime-backed values (`String`, collections, classes, tasks) are managed under ownership rules
 - borrow/lifetime hazards are validated statically where possible
+
+Think in three layers:
+
+1. owner (who controls lifetime)
+2. borrows (who can observe/mutate now)
+3. scope (when each access ends)
 
 ## Compiler Guarantees
 
@@ -39,11 +46,31 @@ function main(): None {
 }
 ```
 
+## Mutation Rules in Practice
+
+- immutable binding: value cannot be reassigned
+- `mut` binding: value can be reassigned
+- `&T`: read-only borrow
+- `&mut T`: exclusive mutable borrow
+- `borrow mut` parameter: callee can mutate caller-owned value through a checked path
+
+If you are new to ownership, start with:
+
+1. immutable by default
+2. introduce `mut` only where needed
+3. keep `&mut` scopes as short as possible
+
 ## Practical Rules
 
 - code to ownership semantics, not guessed stack/heap internals
 - keep borrow scopes small when values need to be moved later
 - make mutability explicit at API boundaries (`borrow mut` where intended)
+
+## Common Compile Errors and Fix Direction
+
+- "value moved" -> clone before move or change function to borrow
+- "cannot borrow as mutable because it is also borrowed as immutable" -> end immutable borrow scope first
+- "cannot assign through immutable reference" -> switch to mutable path (`mut` + `&mut` / `borrow mut`)
 
 ## Cleanup Model
 
@@ -53,6 +80,12 @@ When owning bindings leave scope, required runtime cleanup is performed accordin
 
 Lifetimes are implicit in source syntax, but enforced by compiler.
 You do not write explicit lifetime annotations today.
+
+What this means in practice:
+
+- you do not annotate lifetimes manually
+- but code still fails if a reference can outlive its owner
+- fixing usually means moving code blocks or returning owned values instead of references
 
 ## Related
 

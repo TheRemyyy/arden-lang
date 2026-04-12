@@ -21,9 +21,12 @@ That gives faster feedback loops and safer refactors.
 ## Numeric Rules
 
 ```arden
-a: Integer = 1;
-b: Float = 2.5;
-c: Float = a + b; // Integer promotes to Float inside numeric expression
+function main(): None {
+    a: Integer = 1;
+    b: Float = 2.5;
+    c: Float = a + b; // Integer promotes to Float inside numeric expression
+    return None;
+}
 ```
 
 Important constraints:
@@ -37,10 +40,14 @@ Important constraints:
 ```arden
 import std.io.*;
 
-text: String = "Arden";
-
 function logDone(): None {
     println("done");
+    return None;
+}
+
+function main(): None {
+    text: String = "Arden";
+    logDone();
     return None;
 }
 ```
@@ -53,10 +60,13 @@ Arden supports borrowed references:
 - `&mut T` mutable reference
 
 ```arden
-mut x: Integer = 1;
-r: &Integer = &x;
-rx: &mut Integer = &mut x;
-*rx = 2;
+function main(): None {
+    mut x: Integer = 1;
+    r: &Integer = &x;
+    rx: &mut Integer = &mut x;
+    *rx = 2;
+    return None;
+}
 ```
 
 Reference safety rules are documented in [Ownership and Borrowing](../advanced/ownership.md).

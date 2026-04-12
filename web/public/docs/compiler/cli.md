@@ -126,6 +126,15 @@ arden check [FILE] [--timings]
 - optional file; otherwise project entry point
 - `--timings` timing breakdown in project mode
 
+### `arden info`
+
+```bash
+arden info
+```
+
+Prints resolved project configuration (entry, files, output, optimization and
+related settings). Use this first when build/run behavior looks unexpected.
+
 ## Advanced Build Knobs (Project Mode)
 
 These knobs are useful when you profile large project builds.

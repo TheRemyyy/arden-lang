@@ -3518,3 +3518,148 @@ fn effect_attributes_allow_caller_when_effect_is_declared() {
 
     check_source(src).must("matching caller effect should type-check");
 }
+
+#[test]
+fn effect_attributes_reject_pure_caller_for_all_explicit_effect_kinds() {
+    let cases = [
+        ("@Io", "io"),
+        ("@Net", "net"),
+        ("@Alloc", "alloc"),
+        ("@Unsafe", "unsafe"),
+        ("@Thread", "thread"),
+    ];
+
+    for (attr, effect_name) in cases {
+        let src = format!(
+            r#"
+        {attr}
+        function callee(): None {{ return None; }}
+
+        @Pure
+        function main(): None {{
+            callee();
+            return None;
+        }}
+    "#
+        );
+
+        let errs = check_source(&src).must_err("pure caller should reject explicit effects");
+        let joined = errs
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Pure function cannot call effectful function"),
+            "{joined}"
+        );
+        assert!(joined.contains(effect_name), "{joined}");
+    }
+}
+
+#[test]
+fn effect_attributes_reject_mismatched_explicit_caller_effect_for_all_explicit_effect_kinds() {
+    let cases = [
+        ("@Io", "@Net", "io"),
+        ("@Net", "@Alloc", "net"),
+        ("@Alloc", "@Unsafe", "alloc"),
+        ("@Unsafe", "@Thread", "unsafe"),
+        ("@Thread", "@Io", "thread"),
+    ];
+
+    for (callee_attr, caller_attr, effect_name) in cases {
+        let src = format!(
+            r#"
+        {callee_attr}
+        function callee(): None {{ return None; }}
+
+        {caller_attr}
+        function main(): None {{
+            callee();
+            return None;
+        }}
+    "#
+        );
+
+        let errs = check_source(&src).must_err("mismatched explicit caller effect should fail");
+        let joined = errs
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Missing effect"), "{joined}");
+        assert!(joined.contains(effect_name), "{joined}");
+    }
+}
+
+#[test]
+fn effect_attributes_allow_matching_caller_effect_for_all_explicit_effect_kinds() {
+    let cases = ["@Io", "@Net", "@Alloc", "@Unsafe", "@Thread"];
+
+    for attr in cases {
+        let src = format!(
+            r#"
+        {attr}
+        function callee(): None {{ return None; }}
+
+        {attr}
+        function main(): None {{
+            callee();
+            return None;
+        }}
+    "#
+        );
+
+        check_source(&src).must("matching explicit caller effect should type-check");
+    }
+}
+
+#[test]
+fn effect_attributes_allow_any_caller_for_all_explicit_effect_kinds() {
+    let src = r#"
+        @Io function io_call(): None { return None; }
+        @Net function net_call(): None { return None; }
+        @Alloc function alloc_call(): None { return None; }
+        @Unsafe function unsafe_call(): None { return None; }
+        @Thread function thread_call(): None { return None; }
+
+        @Any
+        function main(): None {
+            io_call();
+            net_call();
+            alloc_call();
+            unsafe_call();
+            thread_call();
+            return None;
+        }
+    "#;
+
+    check_source(src).must("@Any caller should allow all explicit effects");
+}
+
+#[test]
+fn effect_attributes_reject_transitive_inferred_effect_outside_explicit_whitelist() {
+    let src = r#"
+        @Net
+        function net_call(): None { return None; }
+
+        function wrapper(): None {
+            net_call();
+            return None;
+        }
+
+        @Io
+        function main(): None {
+            wrapper();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err("explicit @Io should reject transitive net effect");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("Missing effect 'net'"), "{joined}");
+}

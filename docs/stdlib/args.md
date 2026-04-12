@@ -24,12 +24,15 @@ import std.args.*;
 import std.args.*;
 import std.io.*;
 
-argc: Integer = Args.count();
-println("argc={argc}");
+function main(): None {
+    argc: Integer = Args.count();
+    println("argc={argc}");
 
-if (argc > 1) {
-    arg1: String = Args.get(1);
-    println("first={arg1}");
+    if (argc > 1) {
+        arg1: String = Args.get(1);
+        println("first={arg1}");
+    }
+    return None;
 }
 ```
 
@@ -53,8 +56,12 @@ function maybe_get(index: Integer): Option<String> {
 ```arden
 import std.args.*;
 
-count_fn: () -> Integer = Args.count;
-get_fn: (Integer) -> String = Args.get;
+function main(): None {
+    count_fn: () -> Integer = Args.count;
+    get_fn: (Integer) -> String = Args.get;
+    _c: Integer = count_fn();
+    return None;
+}
 ```
 
 ## Effect Note

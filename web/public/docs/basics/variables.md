@@ -17,15 +17,21 @@ That keeps state transitions visible in code review.
 Use `name: Type = value;`.
 
 ```arden
-age: Integer = 30;
-name: String = "Alice";
+function main(): None {
+    age: Integer = 30;
+    name: String = "Alice";
+    return None;
+}
 ```
 
 `let` is optional and equivalent:
 
 ```arden
-let score: Integer = 10;
-level: Integer = 10;
+function main(): None {
+    let score: Integer = 10;
+    level: Integer = 10;
+    return None;
+}
 ```
 
 ## Mutability (`mut`)
@@ -33,16 +39,22 @@ level: Integer = 10;
 Bindings are immutable by default.
 
 ```arden
-x: Integer = 10;
-// x = 20; // Error: immutable variable
+function main(): None {
+    x: Integer = 10;
+    // x = 20; // Error: immutable variable
+    return None;
+}
 ```
 
 Mark the binding as mutable when reassignment is intentional:
 
 ```arden
-mut count: Integer = 0;
-count = count + 1;
-count += 1;
+function main(): None {
+    mut count: Integer = 0;
+    count = count + 1;
+    count += 1;
+    return None;
+}
 ```
 
 ### Quick Rule
@@ -55,8 +67,11 @@ count += 1;
 You can create a new binding with the same name in the same scope.
 
 ```arden
-input: String = "100";
-input: Integer = to_int(input); // new binding, new type
+function main(): None {
+    input: String = "100";
+    input: Integer = to_int(input); // new binding, new type
+    return None;
+}
 ```
 
 Use this for staged transformations, not as a replacement for clear naming.
@@ -69,10 +84,13 @@ A variable owns its value by default. References borrow access:
 - `&mut T` mutable borrow
 
 ```arden
-mut n: Integer = 5;
-read: &Integer = &n;
-write: &mut Integer = &mut n;
-*write = 9;
+function main(): None {
+    mut n: Integer = 5;
+    read: &Integer = &n;
+    write: &mut Integer = &mut n;
+    *write = 9;
+    return None;
+}
 ```
 
 See [Ownership and Borrowing](../advanced/ownership.md) for full rules.
@@ -82,4 +100,3 @@ See [Ownership and Borrowing](../advanced/ownership.md) for full rules.
 - trying to reassign a non-`mut` binding
 - treating shadowing as mutation
 - borrowing mutably from an immutable binding
-

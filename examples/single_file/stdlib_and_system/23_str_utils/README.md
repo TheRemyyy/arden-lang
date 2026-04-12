@@ -5,6 +5,7 @@ Focused example: **String Utilities**.
 What this demonstrates:
 - `Str.trim/upper/lower/contains/...`
 - text normalization before comparison
+- `Str.compare` returns integer relation (`<0`, `0`, `>0`), not boolean
 - common string utility operations
 
 Run:

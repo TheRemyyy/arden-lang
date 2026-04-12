@@ -43,8 +43,10 @@ function main(): None {
 Semicolons are required after statements:
 
 ```arden
-x: Integer = 5;
-return None;
+function main(): None {
+    x: Integer = 5;
+    return None;
+}
 ```
 
 Declarations like `function`, `class`, `if`, `while`, and `match` do not need `;` after closing brace.
@@ -52,20 +54,30 @@ Declarations like `function`, `class`, `if`, `while`, and `match` do not need `;
 ## Assignment and Compound Assignment
 
 ```arden
-mut x: Integer = 10;
-x = x + 1;
-x += 2;
-x -= 1;
-x *= 3;
-x /= 2;
-x %= 3;
+function main(): None {
+    mut x: Integer = 10;
+    x = x + 1;
+    x += 2;
+    x -= 1;
+    x *= 3;
+    x /= 2;
+    x %= 3;
+    return None;
+}
 ```
 
 Compound assignment works with fields and indexes too:
 
 ```arden
-obj.count += 1;
-arr[i] -= 2;
+function main(): None {
+    numbers: List<Integer> = List<Integer>();
+    numbers.push(10);
+    numbers[0] -= 2;
+
+    // field form uses the same operator shape:
+    // obj.count += 1;
+    return None;
+}
 ```
 
 ## String Interpolation
@@ -73,7 +85,10 @@ arr[i] -= 2;
 ```arden
 import std.io.*;
 
-println("count={10}, ok={true}, mark={'🚀'}");
+function main(): None {
+    println("count={10}, ok={true}, mark={'🚀'}");
+    return None;
+}
 ```
 
 Interpolation supports scalar display types (`Integer`, `Float`, `Boolean`, `String`, `Char`, `None`).

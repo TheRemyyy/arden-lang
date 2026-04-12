@@ -11,13 +11,16 @@ Control flow is where state bugs hide. Arden keeps it explicit: typed conditions
 ```arden
 import std.io.*;
 
-x: Integer = 10;
-if (x > 5) {
-    println("Large");
-} else if (x == 5) {
-    println("Equal");
-} else {
-    println("Small");
+function main(): None {
+    x: Integer = 10;
+    if (x > 5) {
+        println("Large");
+    } else if (x == 5) {
+        println("Equal");
+    } else {
+        println("Small");
+    }
+    return None;
 }
 ```
 
@@ -28,10 +31,13 @@ Use for condition-driven loops.
 ```arden
 import std.io.*;
 
-mut i: Integer = 0;
-while (i < 5) {
-    println("{i}");
-    i += 1;
+function main(): None {
+    mut i: Integer = 0;
+    while (i < 5) {
+        println("{i}");
+        i += 1;
+    }
+    return None;
 }
 ```
 
@@ -44,18 +50,21 @@ Use for range/iterable-driven loops.
 ```arden
 import std.io.*;
 
-for (i in 5) {
-    println("{i}"); // 0..4
-}
+function main(): None {
+    for (i in 5) {
+        println("{i}"); // 0..4
+    }
 
-for (i: Float in 5) {
-    println("{i}"); // loop binding widened to Float
-}
+    for (i: Float in 5) {
+        println("{i}"); // loop binding widened to Float
+    }
 
-r: Range<Integer> = range(1, 10, 2); // 1,3,5,7,9
-while (r.has_next()) {
-    value: Integer = r.next();
-    println(to_string(value));
+    r: Range<Integer> = range(1, 10, 2); // 1,3,5,7,9
+    while (r.has_next()) {
+        value: Integer = r.next();
+        println(to_string(value));
+    }
+    return None;
 }
 ```
 
@@ -66,17 +75,20 @@ while (r.has_next()) {
 ```arden
 import std.io.*;
 
-numbers: List<Integer> = List<Integer>();
-numbers.push(1);
-numbers.push(2);
+function main(): None {
+    numbers: List<Integer> = List<Integer>();
+    numbers.push(1);
+    numbers.push(2);
 
-for (n in numbers) {
-    println("{n}");
-}
+    for (n in numbers) {
+        println("{n}");
+    }
 
-text: String = "Ahoj";
-for (ch in text) {
-    println("{ch}");
+    text: String = "Ahoj";
+    for (ch in text) {
+        println("{ch}");
+    }
+    return None;
 }
 ```
 
@@ -85,9 +97,16 @@ Borrowed views are also iterable:
 ```arden
 import std.io.*;
 
-view: &List<Integer> = &numbers;
-for (n in view) {
-    println("{n}");
+function main(): None {
+    numbers: List<Integer> = List<Integer>();
+    numbers.push(10);
+    numbers.push(20);
+
+    view: &List<Integer> = &numbers;
+    for (n in view) {
+        println("{n}");
+    }
+    return None;
 }
 ```
 
@@ -98,11 +117,14 @@ for (n in view) {
 ```arden
 import std.io.*;
 
-value: Integer = 2;
-match (value) {
-    1 => { println("One"); },
-    2 => { println("Two"); },
-    _ => { println("Other"); }
+function main(): None {
+    value: Integer = 2;
+    match (value) {
+        1 => { println("One"); },
+        2 => { println("Two"); },
+        _ => { println("Other"); }
+    }
+    return None;
 }
 ```
 

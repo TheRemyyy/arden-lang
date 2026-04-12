@@ -22,11 +22,31 @@ arden run
 arden test
 ```
 
+## Diagnostic Commands You Will Actually Need
+
+```bash
+arden check --timings
+arden build --timings
+```
+
+Advanced large-project perf tuning (optional):
+
+```bash
+ARDEN_OBJECT_SHARD_THRESHOLD=1 ARDEN_OBJECT_SHARD_SIZE=2 arden build --timings
+```
+
 ## What To Verify First In New Project
 
 - `arden.toml` has correct `entry`
 - all source files are listed in `files`
 - `arden check` passes before first feature work
+
+## Quick Triage When Project Build Fails
+
+1. run `arden info` and confirm entry/output paths are what you expect
+2. run `arden check` first (imports/type/borrow failures are clearer here)
+3. if it is perf-related, rerun with `--timings`
+4. only then debug codegen/link stage
 
 ## Example Projects
 

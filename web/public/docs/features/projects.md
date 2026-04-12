@@ -36,6 +36,12 @@ arden run
 arden test
 ```
 
+Pass args to your project binary:
+
+```bash
+arden run -- --mode dev --verbose
+```
+
 ## Import + Graph Behavior
 
 - import usage is validated across all declared files
@@ -52,6 +58,21 @@ In CI, keeping cache between runs reduces no-op latency significantly.
 `opt_level` controls final binary optimization: `0/1/2/3/s/z/fast` (default `3`).
 
 Use lower levels while iterating locally if compile speed matters more than peak runtime.
+
+## Build Throughput Diagnostics
+
+When project builds become slow:
+
+```bash
+arden check --timings
+arden build --timings
+```
+
+For advanced large-project tuning only:
+
+```bash
+ARDEN_OBJECT_SHARD_THRESHOLD=1 ARDEN_OBJECT_SHARD_SIZE=2 arden build --timings
+```
 
 ## Common Mistakes
 

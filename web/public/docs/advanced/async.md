@@ -27,11 +27,14 @@ async function load(): Task<String> {
 ## Async Blocks
 
 ```arden
-task: Task<Integer> = async {
-    return 21 * 2;
-};
+async function mainAsync(): Task<None> {
+    task: Task<Integer> = async {
+        return 21 * 2;
+    };
 
-result: Integer = await task;
+    result: Integer = await task;
+    return None;
+}
 ```
 
 ## Task Methods

@@ -14,7 +14,7 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/changelog</loc>
-    <lastmod>2026-04-12T22:01:30.773Z</lastmod>
+    <lastmod>2026-04-12T22:15:38.201Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -56,25 +56,25 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/basics/syntax</loc>
-    <lastmod>2026-04-12T21:37:51.751Z</lastmod>
+    <lastmod>2026-04-12T22:15:35.253Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/basics/variables</loc>
-    <lastmod>2026-04-12T20:38:19.373Z</lastmod>
+    <lastmod>2026-04-12T22:14:39.221Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/basics/types</loc>
-    <lastmod>2026-04-12T21:20:51.249Z</lastmod>
+    <lastmod>2026-04-12T22:14:46.501Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/basics/control_flow</loc>
-    <lastmod>2026-04-12T21:38:27.584Z</lastmod>
+    <lastmod>2026-04-12T22:15:04.875Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -116,13 +116,13 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/projects</loc>
-    <lastmod>2026-04-12T21:16:57.759Z</lastmod>
+    <lastmod>2026-04-12T22:05:59.706Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/projects/README</loc>
-    <lastmod>2026-04-12T21:16:57.758Z</lastmod>
+    <lastmod>2026-04-12T22:05:52.919Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -134,31 +134,31 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/overview</loc>
-    <lastmod>2026-04-12T21:33:49.351Z</lastmod>
+    <lastmod>2026-04-12T22:08:47.223Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/math</loc>
-    <lastmod>2026-04-12T21:48:11.678Z</lastmod>
+    <lastmod>2026-04-12T22:13:10.738Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/string</loc>
-    <lastmod>2026-04-12T21:48:11.704Z</lastmod>
+    <lastmod>2026-04-12T22:12:59.488Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/time</loc>
-    <lastmod>2026-04-12T21:47:45.326Z</lastmod>
+    <lastmod>2026-04-12T22:12:28.956Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/args</loc>
-    <lastmod>2026-04-12T21:47:45.326Z</lastmod>
+    <lastmod>2026-04-12T22:12:19.678Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -170,13 +170,13 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/io</loc>
-    <lastmod>2026-04-12T21:47:45.324Z</lastmod>
+    <lastmod>2026-04-12T22:12:35.802Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/system</loc>
-    <lastmod>2026-04-12T21:07:20.439Z</lastmod>
+    <lastmod>2026-04-12T22:12:48.498Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -194,7 +194,7 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/advanced/async</loc>
-    <lastmod>2026-04-12T21:20:13.171Z</lastmod>
+    <lastmod>2026-04-12T22:15:11.242Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -206,13 +206,13 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/advanced/memory_management</loc>
-    <lastmod>2026-04-12T21:48:11.757Z</lastmod>
+    <lastmod>2026-04-12T22:05:42.841Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/compiler/cli</loc>
-    <lastmod>2026-04-12T22:01:58.727Z</lastmod>
+    <lastmod>2026-04-12T22:06:24.151Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>

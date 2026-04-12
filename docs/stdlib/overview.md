@@ -65,6 +65,7 @@ rand: () -> Float = Math.random;
 - assuming module symbols are globally available without import
 - mixing `System.shell` (exit code) and `System.exec` (stdout text)
 - calling `Args.get(i)` without checking `Args.count()` first
+- treating `Str.compare(a, b)` as boolean instead of integer relation (`<0`, `0`, `>0`)
 
 ## Where To Start
 

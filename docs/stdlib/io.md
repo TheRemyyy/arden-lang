@@ -27,9 +27,12 @@ Reads one line from stdin.
 ```arden
 import std.io.*;
 
-print("Enter name: ");
-name: String = read_line();
-println("Hello, " + name);
+function main(): None {
+    print("Enter name: ");
+    name: String = read_line();
+    println("Hello, " + name);
+    return None;
+}
 ```
 
 ## File APIs (`File.*`)
@@ -60,9 +63,12 @@ Deletes regular file.
 import std.fs.*;
 import std.io.*;
 
-if (File.exists("notes.txt")) {
-    text: String = File.read("notes.txt");
-    println(text);
+function main(): None {
+    if (File.exists("notes.txt")) {
+        text: String = File.read("notes.txt");
+        println(text);
+    }
+    return None;
 }
 ```
 

@@ -50,7 +50,7 @@ impl<'a> ImportChecker<'a> {
         self.function_namespaces
             .values()
             .cloned()
-            .chain(self.stdlib.get_functions().values().cloned())
+            .chain(self.stdlib.known_namespaces().iter().cloned())
             .chain(self.known_namespace_paths.iter().cloned())
             .collect()
     }

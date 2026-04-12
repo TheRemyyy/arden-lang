@@ -19,10 +19,16 @@ import std.time.*;
 ## 1. Current Time String
 
 ```arden
+import std.io.*;
 import std.time.*;
 
-now_default: String = Time.now("");
-now_iso_like: String = Time.now("%Y-%m-%d %H:%M:%S");
+function main(): None {
+    now_default: String = Time.now("");
+    now_iso_like: String = Time.now("%Y-%m-%d %H:%M:%S");
+    println("default={now_default}");
+    println("custom={now_iso_like}");
+    return None;
+}
 ```
 
 `Time.now("")` uses default `%H:%M:%S` format.
@@ -30,9 +36,14 @@ now_iso_like: String = Time.now("%Y-%m-%d %H:%M:%S");
 ## 2. Unix Timestamp
 
 ```arden
+import std.io.*;
 import std.time.*;
 
-ts: Integer = Time.unix();
+function main(): None {
+    ts: Integer = Time.unix();
+    println("unix={ts}");
+    return None;
+}
 ```
 
 ## 3. Sleep / Delay
@@ -41,9 +52,12 @@ ts: Integer = Time.unix();
 import std.time.*;
 import std.io.*;
 
-println("waiting...");
-Time.sleep(250);
-println("done");
+function main(): None {
+    println("waiting...");
+    Time.sleep(250);
+    println("done");
+    return None;
+}
 ```
 
 ## Validation Rule
