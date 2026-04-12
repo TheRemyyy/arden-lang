@@ -3,7 +3,7 @@ import Gauge from 'lucide-react/dist/esm/icons/gauge';
 import MoveRight from 'lucide-react/dist/esm/icons/move-right';
 import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
 import TerminalSquare from 'lucide-react/dist/esm/icons/terminal-square';
-import { GITHUB_REPO_URL } from '../lib/site';
+import { GITHUB_REPO_URL, RSS_FEED_SRC, SITE_CREATOR_URL } from '../lib/site';
 
 const operatingPrinciples = [
     {
@@ -44,6 +44,78 @@ const capabilityRows = [
     },
 ];
 
+const workflowMoments = [
+    {
+        step: 'Create',
+        command: 'arden new radar',
+        description:
+            'Start a native software project with a clean structure instead of hand-assembling files, build scripts, and ad-hoc conventions.',
+    },
+    {
+        step: 'Validate',
+        command: 'arden check',
+        description:
+            'Get fast compiler feedback on ownership, imports, mutability, and semantic issues before you waste time on runtime debugging.',
+    },
+    {
+        step: 'Ship',
+        command: 'arden build',
+        description:
+            'Produce LLVM-backed native output through the same workflow surface you already used for checking, testing, and iteration.',
+    },
+];
+
+const audienceCards = [
+    {
+        title: 'Systems developers',
+        description:
+            'Use Arden when you want a systems programming language with native software output, predictable tooling, and strong static checks.',
+    },
+    {
+        title: 'Tooling-heavy teams',
+        description:
+            'Arden fits teams that care about developer workflow, command-line ergonomics, diagnostics, documentation, and repo-level consistency.',
+    },
+    {
+        title: 'Performance-focused products',
+        description:
+            'It is a good fit for native utilities, internal developer tools, performance-sensitive services, and compiler-adjacent experiments.',
+    },
+];
+
+const discoveryLinks = [
+    {
+        href: '/docs/overview',
+        label: 'Read the documentation overview',
+        description: 'Start with the language surface, projects, ownership, async support, and compiler workflow.',
+    },
+    {
+        href: '/install',
+        label: 'Open the installation guide',
+        description: 'Download the latest portable bundle or follow the source build path for local development.',
+    },
+    {
+        href: '/changelog',
+        label: 'Browse release history',
+        description: 'See how Arden evolves across compiler correctness, tooling, diagnostics, and project-system work.',
+    },
+    {
+        href: GITHUB_REPO_URL,
+        label: 'Inspect the repository',
+        description: 'Review implementation details, examples, benchmarks, issues, and development history on GitHub.',
+    },
+    {
+        href: RSS_FEED_SRC,
+        label: 'Subscribe through RSS',
+        description: 'Follow releases without relying on social platforms or third-party announcement feeds.',
+    },
+    {
+        href: SITE_CREATOR_URL,
+        label: 'Visit TheRemyyy',
+        description: 'See the broader portfolio, linked projects, and the creator behind Arden on theremyyy.dev.',
+    },
+];
+
 export function Home() {
     return (
         <div className="overflow-x-hidden pt-16 text-[var(--text)]">
@@ -55,6 +127,9 @@ export function Home() {
                         </h1>
                         <p className="mt-5 max-w-2xl text-lg leading-8 text-[var(--text-muted)]">
                             Arden combines LLVM-backed native output, static safety checks, and an integrated command-line workflow so teams can move from experiments to multi-file projects without swapping mental models.
+                        </p>
+                        <p className="mt-4 max-w-2xl text-base leading-8 text-[var(--text-muted)]">
+                            This systems programming language is built for native software teams that want fast compiler feedback, readable ownership rules, project mode, and a workflow that stays coherent from the first file to larger repositories.
                         </p>
                         <div className="mt-8 flex flex-wrap gap-3">
                             <a
@@ -181,6 +256,139 @@ export function Home() {
                                 </article>
                             );
                         })}
+                    </div>
+                </div>
+            </section>
+
+            <section className="content-auto-section border-y border-[rgba(57,52,46,0.12)] bg-[rgba(251,247,241,0.62)] py-20">
+                <div className="mx-auto grid max-w-7xl gap-12 px-6 lg:grid-cols-[0.88fr_1.12fr]">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                            What Arden is
+                        </p>
+                        <h2 className="mt-4 max-w-lg font-display text-4xl font-bold leading-tight tracking-[-0.04em] md:text-5xl">
+                            A systems programming language shaped around native software, fast workflow, and useful compiler feedback.
+                        </h2>
+                    </div>
+                    <div className="grid gap-6 text-base leading-8 text-[var(--text-muted)]">
+                        <p>
+                            Arden is a systems programming language targeting LLVM and designed for people who care about native software, low-level control, and a workflow that does not fall apart once a project grows beyond a toy example. The core pitch is not abstract purity. It is practical compiler feedback, strong semantics, and a command-line surface that already knows about checking, testing, profiling, benchmarks, formatting, and project builds.
+                        </p>
+                        <p>
+                            That matters because faster feedback changes how teams work. If the workflow is coherent, the compiler becomes a daily tool instead of a hurdle. If the diagnostics are readable, native software development gets easier to trust. If the project model is explicit, documentation, examples, and actual implementation stop drifting apart. Arden is trying to make those pieces feel like one product instead of disconnected tooling.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <section className="content-auto-section mx-auto max-w-7xl px-6 py-20">
+                <div className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr]">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                            Workflow shape
+                        </p>
+                        <h2 className="mt-4 max-w-lg font-display text-4xl font-bold leading-tight tracking-[-0.04em] md:text-5xl">
+                            The native software workflow should stay readable from first command to shipped build.
+                        </h2>
+                        <p className="mt-5 max-w-lg text-base leading-8 text-[var(--text-muted)]">
+                            The homepage promise, documentation, and CLI need to agree with each other. That is why Arden keeps compiler feedback, project setup, testing, and build steps inside the same workflow language instead of scattering them across unrelated tools.
+                        </p>
+                    </div>
+
+                    <div className="grid gap-4">
+                        {workflowMoments.map((moment) => (
+                            <article
+                                key={moment.step}
+                                className="rounded-[1.75rem] border border-[rgba(57,52,46,0.14)] bg-[rgba(251,247,241,0.84)] p-6 shadow-[0_18px_60px_rgba(31,29,26,0.06)]"
+                            >
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                        <p className="text-xs uppercase tracking-[0.22em] text-[var(--text-muted)]">
+                                            {moment.step}
+                                        </p>
+                                        <h3 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[var(--text)]">
+                                            {moment.command}
+                                        </h3>
+                                    </div>
+                                    <span className="rounded-full border border-[rgba(57,52,46,0.14)] bg-[var(--surface-soft)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
+                                        Workflow
+                                    </span>
+                                </div>
+                                <p className="mt-4 text-sm leading-7 text-[var(--text-muted)]">
+                                    {moment.description}
+                                </p>
+                            </article>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            <section className="content-auto-section border-y border-[rgba(57,52,46,0.12)] bg-[#1f1d1a] py-20 text-white">
+                <div className="mx-auto max-w-7xl px-6">
+                    <div className="max-w-3xl">
+                        <p className="text-xs uppercase tracking-[0.24em] text-white/60">
+                            Who Arden is for
+                        </p>
+                        <h2 className="mt-4 font-display text-4xl font-bold leading-tight tracking-[-0.04em] md:text-5xl">
+                            Built for teams that want compiler rigor without a chaotic toolchain.
+                        </h2>
+                        <p className="mt-5 text-base leading-8 text-white/68">
+                            Arden is relevant if you build native software, internal tools, CLI products, performance-sensitive services, language tooling, or systems-adjacent infrastructure and you care about readable code, predictable builds, and faster feedback loops.
+                        </p>
+                    </div>
+
+                    <div className="mt-10 grid gap-4 md:grid-cols-3">
+                        {audienceCards.map((card) => (
+                            <article
+                                key={card.title}
+                                className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6"
+                            >
+                                <h3 className="text-2xl font-semibold tracking-[-0.03em] text-white">
+                                    {card.title}
+                                </h3>
+                                <p className="mt-4 text-sm leading-7 text-white/68">
+                                    {card.description}
+                                </p>
+                            </article>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            <section className="content-auto-section mx-auto max-w-7xl px-6 py-20">
+                <div className="grid gap-10 lg:grid-cols-[0.82fr_1.18fr]">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                            Discover Arden
+                        </p>
+                        <h2 className="mt-4 max-w-lg font-display text-4xl font-bold leading-tight tracking-[-0.04em] md:text-5xl">
+                            If there are no social channels, the project itself should still be easy to follow.
+                        </h2>
+                        <p className="mt-5 max-w-lg text-base leading-8 text-[var(--text-muted)]">
+                            Arden does not need social plugins to be discoverable. The useful discovery surface is the docs, install path, changelog, repository, RSS feed, and the creator site that links the whole project graph together.
+                        </p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        {discoveryLinks.map((link) => (
+                            <a
+                                key={link.href}
+                                href={link.href}
+                                target={link.href.startsWith('http') ? '_blank' : undefined}
+                                rel={link.href.startsWith('http') ? 'noreferrer' : undefined}
+                                className="group rounded-[1.6rem] border border-[rgba(57,52,46,0.14)] bg-[rgba(251,247,241,0.84)] p-5 transition-all hover:-translate-y-0.5 hover:border-[var(--accent)]"
+                            >
+                                <div className="flex items-center justify-between gap-3">
+                                    <h3 className="text-lg font-semibold tracking-[-0.02em] text-[var(--text)]">
+                                        {link.label}
+                                    </h3>
+                                    <MoveRight className="h-4 w-4 text-[var(--accent)] transition-transform group-hover:translate-x-1" />
+                                </div>
+                                <p className="mt-3 text-sm leading-7 text-[var(--text-muted)]">
+                                    {link.description}
+                                </p>
+                            </a>
+                        ))}
                     </div>
                 </div>
             </section>
