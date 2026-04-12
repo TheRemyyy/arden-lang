@@ -30,8 +30,7 @@ mod typeck;
 use clap::{Parser as ClapParser, Subcommand};
 use colored::*;
 use inkwell::context::Context;
-use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -51,23 +50,25 @@ use crate::cli::paths::{
 };
 use crate::cli::test_discovery::find_test_files;
 use crate::codegen::Codegen;
-use crate::dependency::build_namespace_files_lookup;
+#[cfg(test)]
 use crate::dependency::*;
 use crate::diagnostics::*;
 use crate::import_check::ImportChecker;
 use crate::linker::*;
 use crate::parser::Parser;
 use crate::project::pipeline::{
-    build_object_sharding_plan, compute_project_change_impact, evaluate_semantic_cache_gate,
-    prepare_rewrite_inputs, run_final_link_phase, run_import_check_phase, run_object_cache_probe,
-    run_rewrite_phase, run_semantic_phase, validate_symbol_collisions, FinalLinkInputs,
-    ImportCheckInputs, ObjectCacheProbeInputs, ObjectCacheProbeOutputs, ObjectShardingPlan,
-    RewritePhaseInputs, RewritePreparation, SemanticGateInputs, SemanticPhaseInputs,
+    build_rewrite_fingerprint_context, compute_project_change_impact, evaluate_semantic_cache_gate,
+    run_dependency_graph_phase, run_entry_validation_phase, run_full_codegen_phase,
+    run_import_check_phase, run_object_pipeline, run_parse_index_phase, run_rewrite_phase,
+    run_rewrite_prep_phase, run_semantic_phase, validate_symbol_collisions, DependencyGraphInputs,
+    DependencyGraphOutputs, FullCodegenInputs, FullCodegenRoute, ImportCheckInputs,
+    ObjectPipelineInputs, ParseIndexOutputs, RewriteContextInputs, RewritePhaseInputs,
+    RewritePrepInputs, RewritePreparation, SemanticGateInputs, SemanticPhaseInputs,
 };
 use crate::project::{find_project_root, OutputKind, ProjectConfig};
 use crate::specialization::*;
 use crate::stdlib::stdlib_registry;
-use crate::symbol_lookup::*;
+use crate::symbol_lookup::GlobalSymbolMaps;
 use crate::test_runner::{discover_tests, generate_test_runner_with_source, print_discovery};
 use crate::typeck::TypeChecker;
 
@@ -348,7 +349,10 @@ fn parse_source_text(
     })
 }
 
-fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectUnit, String> {
+pub(crate) fn parse_project_unit(
+    project_root: &Path,
+    file: &Path,
+) -> Result<ParsedProjectUnit, String> {
     let filename = file
         .file_name()
         .and_then(|s| s.to_str())
@@ -1270,486 +1274,58 @@ fn build_project(
     );
     print_cli_step(format!("Parsing {} source file(s)", files.len()));
 
-    // Phase 1: Parse all files (parallel) and extract namespace information
-    let mut parsed_files: Vec<ParsedProjectUnit> = Vec::new();
-    let mut global_function_map: HashMap<String, String> = HashMap::new(); // func_name -> namespace
-    let mut global_function_file_map: HashMap<String, PathBuf> = HashMap::new(); // func_name -> owner file
-    let mut global_class_map: HashMap<String, String> = HashMap::new(); // class_name -> namespace
-    let mut global_class_file_map: HashMap<String, PathBuf> = HashMap::new(); // class_name -> owner file
-    let mut global_interface_map: HashMap<String, String> = HashMap::new(); // interface_name -> namespace
-    let mut global_interface_file_map: HashMap<String, PathBuf> = HashMap::new(); // interface_name -> owner file
-    let mut global_enum_map: HashMap<String, String> = HashMap::new(); // enum_name -> namespace
-    let mut global_enum_file_map: HashMap<String, PathBuf> = HashMap::new(); // enum_name -> owner file
-    let mut global_module_map: HashMap<String, String> = HashMap::new(); // module_name -> namespace
-    let mut global_module_file_map: HashMap<String, PathBuf> = HashMap::new(); // module_name -> owner file
-    let mut project_symbol_lookup_exact: ExactSymbolLookup = HashMap::new();
-    let mut project_symbol_lookup_wildcard_members: WildcardMemberLookup = HashMap::new();
-    let mut namespace_class_map: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut namespace_interface_map: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut namespace_enum_map: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut namespace_module_map: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut function_collisions: Vec<(String, String, String)> = Vec::new();
-    let mut class_collisions: Vec<(String, String, String)> = Vec::new();
-    let mut interface_collisions: Vec<(String, String, String)> = Vec::new();
-    let mut enum_collisions: Vec<(String, String, String)> = Vec::new();
-    let mut module_collisions: Vec<(String, String, String)> = Vec::new();
-    let mut parse_cache_hits: usize = 0;
-
-    let mut parsed_units: Vec<ParsedProjectUnit> =
-        build_timings.measure("parse + symbol scan", || {
-            files
-                .par_iter()
-                .map(|file| parse_project_unit(&project_root, file))
-                .collect::<Result<Vec<_>, String>>()
-        })?;
-    parsed_units.sort_by(|a, b| a.file.cmp(&b.file));
-    let total_function_names: usize = parsed_units
-        .iter()
-        .map(|unit| unit.function_names.len())
-        .sum();
-    let total_class_names: usize = parsed_units.iter().map(|unit| unit.class_names.len()).sum();
-    let total_interface_names: usize = parsed_units
-        .iter()
-        .map(|unit| unit.interface_names.len())
-        .sum();
-    let total_enum_names: usize = parsed_units.iter().map(|unit| unit.enum_names.len()).sum();
-    let total_module_names: usize = parsed_units
-        .iter()
-        .map(|unit| unit.module_names.len())
-        .sum();
-    let needs_project_symbol_lookup = parsed_units.iter().any(|unit| {
-        unit.imports
-            .iter()
-            .any(|import| !import.path.starts_with("std."))
-    });
-    global_function_map.reserve(total_function_names);
-    global_function_file_map.reserve(total_function_names);
-    global_class_map.reserve(total_class_names);
-    global_class_file_map.reserve(total_class_names);
-    global_interface_map.reserve(total_interface_names);
-    global_interface_file_map.reserve(total_interface_names);
-    global_enum_map.reserve(total_enum_names);
-    global_enum_file_map.reserve(total_enum_names);
-    global_module_map.reserve(total_module_names);
-    global_module_file_map.reserve(total_module_names);
-    if needs_project_symbol_lookup {
-        project_symbol_lookup_exact.reserve(
-            total_function_names
-                + total_class_names
-                + total_interface_names
-                + total_enum_names
-                + total_module_names,
-        );
-        project_symbol_lookup_wildcard_members.reserve(
-            total_function_names
-                + total_class_names
-                + total_interface_names
-                + total_enum_names
-                + total_module_names,
-        );
-    }
-    namespace_class_map.reserve(parsed_units.len());
-    namespace_interface_map.reserve(parsed_units.len());
-    namespace_enum_map.reserve(parsed_units.len());
-    namespace_module_map.reserve(parsed_units.len());
-    let mut parse_index_namespace_sets_ns = 0_u64;
-    let mut parse_index_function_register_ns = 0_u64;
-    let mut parse_index_class_register_ns = 0_u64;
-    let mut parse_index_interface_register_ns = 0_u64;
-    let mut parse_index_enum_register_ns = 0_u64;
-    let mut parse_index_module_register_ns = 0_u64;
-    let mut parse_index_parsed_file_push_ns = 0_u64;
-
-    build_timings.measure_step("parse index assembly", || {
-        for unit in parsed_units {
-            if unit.from_parse_cache {
-                parse_cache_hits += 1;
-            }
-
-            let namespace_sets_started_at = Instant::now();
-            for func_name in &unit.function_names {
-                let started_at = Instant::now();
-                register_global_symbol(
-                    func_name,
-                    &unit.namespace,
-                    &unit.file,
-                    &mut GlobalSymbolRegistrationContext {
-                        global_map: &mut global_function_map,
-                        global_file_map: &mut global_function_file_map,
-                        collisions: &mut function_collisions,
-                        exact_lookup: &mut project_symbol_lookup_exact,
-                        wildcard_lookup: &mut project_symbol_lookup_wildcard_members,
-                        build_symbol_lookup: needs_project_symbol_lookup,
-                    },
-                );
-                parse_index_function_register_ns += elapsed_nanos_u64(started_at);
-            }
-            if !unit.class_names.is_empty() {
-                let class_entry = namespace_class_map
-                    .entry(unit.namespace.clone())
-                    .or_insert_with(|| HashSet::with_capacity(unit.class_names.len()));
-                for class_name in &unit.class_names {
-                    class_entry.insert(class_name.clone());
-                }
-                for class_name in &unit.class_names {
-                    let started_at = Instant::now();
-                    register_global_symbol(
-                        class_name,
-                        &unit.namespace,
-                        &unit.file,
-                        &mut GlobalSymbolRegistrationContext {
-                            global_map: &mut global_class_map,
-                            global_file_map: &mut global_class_file_map,
-                            collisions: &mut class_collisions,
-                            exact_lookup: &mut project_symbol_lookup_exact,
-                            wildcard_lookup: &mut project_symbol_lookup_wildcard_members,
-                            build_symbol_lookup: needs_project_symbol_lookup,
-                        },
-                    );
-                    parse_index_class_register_ns += elapsed_nanos_u64(started_at);
-                }
-            }
-            if !unit.interface_names.is_empty() {
-                let interface_entry = namespace_interface_map
-                    .entry(unit.namespace.clone())
-                    .or_insert_with(|| HashSet::with_capacity(unit.interface_names.len()));
-                for interface_name in &unit.interface_names {
-                    interface_entry.insert(interface_name.clone());
-                }
-                for interface_name in &unit.interface_names {
-                    let started_at = Instant::now();
-                    register_global_symbol(
-                        interface_name,
-                        &unit.namespace,
-                        &unit.file,
-                        &mut GlobalSymbolRegistrationContext {
-                            global_map: &mut global_interface_map,
-                            global_file_map: &mut global_interface_file_map,
-                            collisions: &mut interface_collisions,
-                            exact_lookup: &mut project_symbol_lookup_exact,
-                            wildcard_lookup: &mut project_symbol_lookup_wildcard_members,
-                            build_symbol_lookup: needs_project_symbol_lookup,
-                        },
-                    );
-                    parse_index_interface_register_ns += elapsed_nanos_u64(started_at);
-                }
-            }
-            if !unit.enum_names.is_empty() {
-                let enum_entry = namespace_enum_map
-                    .entry(unit.namespace.clone())
-                    .or_insert_with(|| HashSet::with_capacity(unit.enum_names.len()));
-                for enum_name in &unit.enum_names {
-                    enum_entry.insert(enum_name.clone());
-                }
-                for enum_name in &unit.enum_names {
-                    let started_at = Instant::now();
-                    register_global_symbol(
-                        enum_name,
-                        &unit.namespace,
-                        &unit.file,
-                        &mut GlobalSymbolRegistrationContext {
-                            global_map: &mut global_enum_map,
-                            global_file_map: &mut global_enum_file_map,
-                            collisions: &mut enum_collisions,
-                            exact_lookup: &mut project_symbol_lookup_exact,
-                            wildcard_lookup: &mut project_symbol_lookup_wildcard_members,
-                            build_symbol_lookup: needs_project_symbol_lookup,
-                        },
-                    );
-                    parse_index_enum_register_ns += elapsed_nanos_u64(started_at);
-                }
-            }
-            if !unit.module_names.is_empty() {
-                let module_entry = namespace_module_map
-                    .entry(unit.namespace.clone())
-                    .or_insert_with(|| HashSet::with_capacity(unit.module_names.len()));
-                for module_name in &unit.module_names {
-                    module_entry.insert(module_name.clone());
-                }
-                for module_name in &unit.module_names {
-                    let started_at = Instant::now();
-                    register_global_symbol(
-                        module_name,
-                        &unit.namespace,
-                        &unit.file,
-                        &mut GlobalSymbolRegistrationContext {
-                            global_map: &mut global_module_map,
-                            global_file_map: &mut global_module_file_map,
-                            collisions: &mut module_collisions,
-                            exact_lookup: &mut project_symbol_lookup_exact,
-                            wildcard_lookup: &mut project_symbol_lookup_wildcard_members,
-                            build_symbol_lookup: needs_project_symbol_lookup,
-                        },
-                    );
-                    parse_index_module_register_ns += elapsed_nanos_u64(started_at);
-                }
-            }
-            parse_index_namespace_sets_ns += elapsed_nanos_u64(namespace_sets_started_at);
-
-            let push_started_at = Instant::now();
-            parsed_files.push(unit);
-            parse_index_parsed_file_push_ns += elapsed_nanos_u64(push_started_at);
-        }
-    });
-
-    if parse_cache_hits > 0 {
-        print_cli_cache(format!(
-            "Reused parse cache for {}/{} files",
-            parse_cache_hits,
-            files.len()
-        ));
-    }
-    build_timings.record_counts(
-        "parse + symbol scan",
-        &[
-            ("considered", files.len()),
-            ("reused", parse_cache_hits),
-            ("parsed", files.len().saturating_sub(parse_cache_hits)),
-        ],
-    );
-    build_timings.record_duration_ns(
-        "parse cache/load",
-        PARSE_CACHE_TIMING_TOTALS.load_ns.load(Ordering::Relaxed),
-    );
-    build_timings.record_duration_ns(
-        "parse cache/save",
-        PARSE_CACHE_TIMING_TOTALS.save_ns.load(Ordering::Relaxed),
-    );
-    build_timings.record_counts(
-        "parse cache/io",
-        &[
-            (
-                "loads",
-                PARSE_CACHE_TIMING_TOTALS.load_count.load(Ordering::Relaxed),
-            ),
-            (
-                "saves",
-                PARSE_CACHE_TIMING_TOTALS.save_count.load(Ordering::Relaxed),
-            ),
-            (
-                "bytes_read",
-                PARSE_CACHE_TIMING_TOTALS.bytes_read.load(Ordering::Relaxed) as usize,
-            ),
-            (
-                "bytes_written",
-                PARSE_CACHE_TIMING_TOTALS
-                    .bytes_written
-                    .load(Ordering::Relaxed) as usize,
-            ),
-        ],
-    );
-    build_timings.record_duration_ns("parse index/namespace sets", parse_index_namespace_sets_ns);
-    build_timings.record_duration_ns(
-        "parse index/register functions",
-        parse_index_function_register_ns,
-    );
-    build_timings.record_duration_ns(
-        "parse index/register classes",
-        parse_index_class_register_ns,
-    );
-    build_timings.record_duration_ns(
-        "parse index/register interfaces",
-        parse_index_interface_register_ns,
-    );
-    build_timings.record_duration_ns("parse index/register enums", parse_index_enum_register_ns);
-    build_timings.record_duration_ns(
-        "parse index/register modules",
-        parse_index_module_register_ns,
-    );
-    build_timings.record_duration_ns("parse index/push units", parse_index_parsed_file_push_ns);
-    build_timings.record_counts(
-        "parse index/details",
-        &[
-            ("functions", total_function_names),
-            ("classes", total_class_names),
-            ("interfaces", total_interface_names),
-            ("enums", total_enum_names),
-            ("modules", total_module_names),
-            (
-                "project_symbol_lookup",
-                usize::from(needs_project_symbol_lookup),
-            ),
-        ],
-    );
-    let previous_dependency_graph = build_timings.measure("dependency cache load", || {
-        load_dependency_graph_cache(&project_root)
-    })?;
-    let namespace_files_map =
-        build_namespace_files_lookup(&mut build_timings, &parsed_files, total_module_names);
-
-    let project_symbol_lookup = ProjectSymbolLookup {
-        exact: project_symbol_lookup_exact,
-        wildcard_members: project_symbol_lookup_wildcard_members,
-    };
-
-    let dependency_resolution_ctx = DependencyResolutionContext {
-        namespace_files_map: &namespace_files_map,
-        global_function_map: &global_function_map,
-        global_function_file_map: &global_function_file_map,
-        global_class_map: &global_class_map,
-        global_class_file_map: &global_class_file_map,
-        global_interface_map: &global_interface_map,
-        global_interface_file_map: &global_interface_file_map,
-        global_enum_map: &global_enum_map,
-        global_enum_file_map: &global_enum_file_map,
-        global_module_map: &global_module_map,
-        global_module_file_map: &global_module_file_map,
-        symbol_lookup: Arc::new(project_symbol_lookup.clone()),
-    };
-    let dependency_graph_timing_totals = Arc::new(DependencyGraphTimingTotals::default());
-    let (file_dependency_graph, dependency_graph_cache_hits) =
-        build_timings.measure_value("dependency graph", || {
-            build_file_dependency_graph_incremental(
-                &parsed_files,
-                &dependency_resolution_ctx,
-                previous_dependency_graph.as_ref(),
-                Some(dependency_graph_timing_totals.as_ref()),
-            )
-        });
-    let reverse_file_dependency_graph = build_reverse_dependency_graph(&file_dependency_graph);
-    let current_entry_namespace = parsed_files
-        .iter()
-        .find(|unit| unit.file == config.get_entry_path(&project_root))
-        .map(|unit| unit.namespace.clone())
-        .unwrap_or_else(|| "global".to_string());
-    let current_dependency_graph_cache = dependency_graph_cache_from_state(
-        &current_entry_namespace,
-        &parsed_files,
-        &file_dependency_graph,
-    );
-    if dependency_graph_cache_hits > 0 {
-        print_cli_cache(format!(
-            "Reused dependency graph entries for {}/{} files",
-            dependency_graph_cache_hits,
-            parsed_files.len()
-        ));
-    }
-    build_timings.record_counts(
-        "dependency graph",
-        &[
-            ("considered", parsed_files.len()),
-            ("reused", dependency_graph_cache_hits),
-            (
-                "rebuilt",
-                parsed_files
-                    .len()
-                    .saturating_sub(dependency_graph_cache_hits),
-            ),
-        ],
-    );
-    build_timings.record_duration_ns(
-        "dependency graph/cache validation",
-        dependency_graph_timing_totals
-            .cache_validation_ns
-            .load(Ordering::Relaxed),
-    );
-    build_timings.record_duration_ns(
-        "dependency graph/direct refs",
-        dependency_graph_timing_totals
-            .direct_symbol_refs_ns
-            .load(Ordering::Relaxed),
-    );
-    build_timings.record_duration_ns(
-        "dependency graph/import exact",
-        dependency_graph_timing_totals
-            .import_exact_ns
-            .load(Ordering::Relaxed),
-    );
-    build_timings.record_duration_ns(
-        "dependency graph/import wildcard",
-        dependency_graph_timing_totals
-            .import_wildcard_ns
-            .load(Ordering::Relaxed),
-    );
-    build_timings.record_duration_ns(
-        "dependency graph/import namespace alias",
-        dependency_graph_timing_totals
-            .import_namespace_alias_ns
-            .load(Ordering::Relaxed),
-    );
-    build_timings.record_duration_ns(
-        "dependency graph/import parent namespace",
-        dependency_graph_timing_totals
-            .import_parent_namespace_ns
-            .load(Ordering::Relaxed),
-    );
-    build_timings.record_duration_ns(
-        "dependency graph/namespace fallback",
-        dependency_graph_timing_totals
-            .namespace_fallback_ns
-            .load(Ordering::Relaxed),
-    );
-    build_timings.record_duration_ns(
-        "dependency graph/owner lookup",
-        dependency_graph_timing_totals
-            .owner_lookup_ns
-            .load(Ordering::Relaxed),
-    );
-    build_timings.record_duration_ns(
-        "dependency graph/namespace files",
-        dependency_graph_timing_totals
-            .namespace_files_ns
-            .load(Ordering::Relaxed),
-    );
-    build_timings.record_counts(
-        "dependency graph/details",
-        &[
-            (
-                "reused_files",
-                dependency_graph_timing_totals
-                    .files_reused
-                    .load(Ordering::Relaxed),
-            ),
-            (
-                "rebuilt_files",
-                dependency_graph_timing_totals
-                    .files_rebuilt
-                    .load(Ordering::Relaxed),
-            ),
-            (
-                "direct_symbol_refs",
-                dependency_graph_timing_totals
-                    .direct_symbol_ref_count
-                    .load(Ordering::Relaxed),
-            ),
-            (
-                "exact_imports",
-                dependency_graph_timing_totals
-                    .import_exact_count
-                    .load(Ordering::Relaxed),
-            ),
-            (
-                "wildcard_imports",
-                dependency_graph_timing_totals
-                    .import_wildcard_count
-                    .load(Ordering::Relaxed),
-            ),
-            (
-                "namespace_alias_imports",
-                dependency_graph_timing_totals
-                    .import_namespace_alias_count
-                    .load(Ordering::Relaxed),
-            ),
-            (
-                "parent_namespace_imports",
-                dependency_graph_timing_totals
-                    .import_parent_namespace_count
-                    .load(Ordering::Relaxed),
-            ),
-            (
-                "namespace_fallbacks",
-                dependency_graph_timing_totals
-                    .namespace_fallback_count
-                    .load(Ordering::Relaxed),
-            ),
-            (
-                "qualified_refs",
-                dependency_graph_timing_totals
-                    .qualified_ref_count
-                    .load(Ordering::Relaxed),
-            ),
-        ],
-    );
+    let ParseIndexOutputs {
+        parsed_files,
+        global_function_map,
+        global_function_file_map,
+        global_class_map,
+        global_class_file_map,
+        global_interface_map,
+        global_interface_file_map,
+        global_enum_map,
+        global_enum_file_map,
+        global_module_map,
+        global_module_file_map,
+        namespace_class_map,
+        namespace_interface_map,
+        namespace_enum_map,
+        namespace_module_map,
+        function_collisions,
+        class_collisions,
+        interface_collisions,
+        enum_collisions,
+        module_collisions,
+        project_symbol_lookup,
+        total_module_names,
+    } = run_parse_index_phase(&mut build_timings, &project_root, &files)?;
+    let entry_path = config.get_entry_path(&project_root);
+    let DependencyGraphOutputs {
+        previous_dependency_graph,
+        file_dependency_graph,
+        reverse_file_dependency_graph,
+        current_dependency_graph_cache,
+    } = run_dependency_graph_phase(
+        &mut build_timings,
+        DependencyGraphInputs {
+            project_root: &project_root,
+            entry_path: &entry_path,
+            parsed_files: &parsed_files,
+            total_module_names,
+            global_maps: GlobalSymbolMaps {
+                function_map: &global_function_map,
+                function_file_map: &global_function_file_map,
+                class_map: &global_class_map,
+                class_file_map: &global_class_file_map,
+                interface_map: &global_interface_map,
+                interface_file_map: &global_interface_file_map,
+                enum_map: &global_enum_map,
+                enum_file_map: &global_enum_file_map,
+                module_map: &global_module_map,
+                module_file_map: &global_module_file_map,
+            },
+            project_symbol_lookup: &project_symbol_lookup,
+        },
+    )?;
 
     let previous_semantic_summary = load_semantic_summary_cache(&project_root)?;
     let previous_typecheck_summary = load_typecheck_summary_cache(&project_root)?;
@@ -1792,69 +1368,43 @@ fn build_project(
         module_collisions,
     )?;
 
-    let entry_path = config.get_entry_path(&project_root);
-    if !do_check {
-        let entry_source = fs::read_to_string(&entry_path).map_err(|e| {
-            format!(
-                "{}: Failed to read entry file '{}': {}",
-                "error".red().bold(),
-                entry_path.display(),
-                e
-            )
-        })?;
-        let entry_program = parsed_files
-            .iter()
-            .find(|unit| unit.file == entry_path)
-            .map(|unit| &unit.program)
-            .ok_or_else(|| {
-                format!(
-                    "{}: Entry file '{}' was not parsed",
-                    "error".red().bold(),
-                    entry_path.display()
-                )
-            })?;
-        let entry_filename = entry_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("main.arden");
-        validate_entry_main_signature(entry_program, &entry_source, entry_filename)?;
-    }
+    run_entry_validation_phase(do_check, &entry_path, &parsed_files)?;
 
-    print_cli_step("Rewriting project graph");
     let RewritePreparation {
         namespace_functions,
         entry_namespace,
         namespace_api_fingerprints,
         file_api_fingerprints,
         safe_rewrite_cache_files,
-    } = build_timings.measure_step("rewrite prep", || {
-        prepare_rewrite_inputs(
-            &parsed_files,
-            &entry_path,
-            previous_dependency_graph.as_ref(),
-            &impact.body_only_changed,
-            &impact.api_changed,
-            &impact.dependent_api_impact,
-        )
-    });
-    let rewrite_fingerprint_ctx = RewriteFingerprintContext {
+    } = run_rewrite_prep_phase(
+        &mut build_timings,
+        RewritePrepInputs {
+            parsed_files: &parsed_files,
+            entry_path: &entry_path,
+            previous_dependency_graph: previous_dependency_graph.as_ref(),
+            body_only_changed: &impact.body_only_changed,
+            api_changed: &impact.api_changed,
+            dependent_api_impact: &impact.dependent_api_impact,
+        },
+    );
+    let rewrite_fingerprint_ctx = build_rewrite_fingerprint_context(RewriteContextInputs {
         namespace_functions: &namespace_functions,
+        namespace_classes: &namespace_class_map,
+        namespace_modules: &namespace_module_map,
+        namespace_api_fingerprints: &namespace_api_fingerprints,
+        file_api_fingerprints: &file_api_fingerprints,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
-        namespace_classes: &namespace_class_map,
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
         global_interface_map: &global_interface_map,
         global_interface_file_map: &global_interface_file_map,
         global_enum_map: &global_enum_map,
         global_enum_file_map: &global_enum_file_map,
-        namespace_modules: &namespace_module_map,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
-        namespace_api_fingerprints: &namespace_api_fingerprints,
-        file_api_fingerprints: &file_api_fingerprints,
-        symbol_lookup: Arc::new(project_symbol_lookup.clone()),
-    };
+        project_symbol_lookup: &project_symbol_lookup,
+    });
 
     // Phase 2: Check imports for each file
     if do_check {
@@ -1934,30 +1484,18 @@ fn build_project(
         link_libs: &config.link_libs,
         link_args: &config.link_args,
     };
-    if emit_llvm {
-        print_cli_step("Compiling program");
-        let combined_program = combined_program_for_files(&rewritten_files);
-        build_timings.measure("full codegen", || {
-            compile_program_ast(
-                &combined_program,
-                &entry_path,
-                &output_path,
-                emit_llvm,
-                &link,
-            )
-        })?;
-        build_timings.record_counts("full codegen", &[("files", rewritten_files.len())]);
-    } else {
-        if rewritten_files
-            .iter()
-            .any(|unit| unit.has_specialization_demand)
-        {
-            print_cli_step("Compiling program");
-            let combined_program = combined_program_for_files(&rewritten_files);
-            build_timings.measure("full codegen", || {
-                compile_program_ast(&combined_program, &entry_path, &output_path, false, &link)
-            })?;
-            build_timings.record_counts("full codegen", &[("files", rewritten_files.len())]);
+    match run_full_codegen_phase(
+        &mut build_timings,
+        FullCodegenInputs {
+            rewritten_files: &rewritten_files,
+            entry_path: &entry_path,
+            output_path: &output_path,
+            emit_llvm,
+            link: &link,
+        },
+    )? {
+        FullCodegenRoute::EmitLlvmCompleted => {}
+        FullCodegenRoute::FullProgramCompleted => {
             save_cached_fingerprint(&project_root, &fingerprint)?;
             print_cli_artifact_result(
                 "Built",
@@ -1968,702 +1506,33 @@ fn build_project(
             build_timings.print();
             return Ok(());
         }
-
-        print_cli_step("Compiling objects");
-        let object_build_fingerprint = compute_object_build_fingerprint(&link);
-        let previous_link_manifest = build_timings.measure("link manifest load", || {
-            load_link_manifest_cache(&project_root)
-        })?;
-        let (
-            rewritten_file_indices,
-            object_cache_paths_by_file,
-            codegen_reference_metadata,
-            precomputed_dependency_closures,
-        ) = build_timings.measure_step("object prep", || {
-            let rewritten_file_indices: HashMap<PathBuf, usize> = rewritten_files
-                .iter()
-                .enumerate()
-                .map(|(index, unit)| (unit.file.clone(), index))
-                .collect();
-            let object_cache_paths_by_file: HashMap<PathBuf, ObjectCachePaths> = rewritten_files
-                .iter()
-                .map(|unit| {
-                    (
-                        unit.file.clone(),
-                        object_cache_paths(&project_root, &unit.file),
-                    )
-                })
-                .collect();
-            let codegen_reference_metadata: HashMap<PathBuf, CodegenReferenceMetadata> =
-                parsed_files
-                    .iter()
-                    .map(|unit| {
-                        (
-                            unit.file.clone(),
-                            CodegenReferenceMetadata {
-                                imports: unit.imports.clone(),
-                                referenced_symbols: unit.referenced_symbols.clone(),
-                                qualified_symbol_refs: unit.qualified_symbol_refs.clone(),
-                                api_referenced_symbols: unit.api_referenced_symbols.clone(),
-                            },
-                        )
-                    })
-                    .collect();
-            let precomputed_dependency_closures =
-                precompute_all_transitive_dependencies(&file_dependency_graph);
-            (
-                rewritten_file_indices,
-                object_cache_paths_by_file,
-                codegen_reference_metadata,
-                precomputed_dependency_closures,
-            )
-        });
-        let ObjectShardingPlan {
-            object_candidate_count,
-            object_shard_size,
-            object_shard_threshold,
-            object_shards,
-        } = build_object_sharding_plan(&rewritten_files, &project_root);
-        let ObjectCacheProbeOutputs {
-            mut object_paths,
-            object_cache_hits,
-            cache_misses,
-        } = run_object_cache_probe(
-            &mut build_timings,
-            ObjectCacheProbeInputs {
-                object_build_fingerprint: &object_build_fingerprint,
-                rewritten_files: &rewritten_files,
-                object_cache_paths_by_file: &object_cache_paths_by_file,
-                object_shards: &object_shards,
-                object_candidate_count,
-                object_shard_size,
-                object_shard_threshold,
-            },
-        )?;
-
-        let object_codegen_timing_totals = Arc::new(ObjectCodegenTimingTotals::default());
-        let declaration_closure_timing_totals = Arc::new(DeclarationClosureTimingTotals::default());
-        let object_emit_timing_totals = Arc::new(ObjectEmitTimingTotals::default());
-        crate::codegen::core::reset_codegen_phase_timings();
-        crate::codegen::util::reset_object_write_timings();
-        let compiled_results: Vec<(usize, PathBuf)> =
-            build_timings.measure("object codegen", || {
-                cache_misses
-                    .par_iter()
-                    .map(|shard| {
-                        let obj_path = if let Some(cache_paths) = &shard.cache_paths {
-                            cache_paths.object_path.clone()
-                        } else {
-                            let unit = &rewritten_files[shard.member_indices[0]];
-                            object_cache_paths_by_file
-                                .get(&unit.file)
-                                .ok_or_else(|| {
-                                    format!(
-                                        "{}: missing object cache paths for rewritten unit '{}'",
-                                        cli_error("error"),
-                                        unit.file.display()
-                                    )
-                                })?
-                                .object_path
-                                .clone()
-                        };
-                        let declaration_closure_started_at = Instant::now();
-                        let mut batch_active_symbols = HashSet::new();
-                        let mut batch_declaration_symbols = HashSet::new();
-                        let mut batch_closure_files = HashSet::new();
-                        let global_maps = GlobalSymbolMaps {
-                            function_map: &global_function_map,
-                            function_file_map: &global_function_file_map,
-                            class_map: &global_class_map,
-                            class_file_map: &global_class_file_map,
-                            interface_map: &global_interface_map,
-                            interface_file_map: &global_interface_file_map,
-                            enum_map: &global_enum_map,
-                            enum_file_map: &global_enum_file_map,
-                            module_map: &global_module_map,
-                            module_file_map: &global_module_file_map,
-                        };
-                        for index in &shard.member_indices {
-                            let unit = &rewritten_files[*index];
-                            let declaration_closure = declaration_symbols_for_unit(
-                                DeclarationClosureRequest {
-                                    root_file: &unit.file,
-                                    root_active_symbols: &unit.active_symbols,
-                                    precomputed_dependency_closures:
-                                        &precomputed_dependency_closures,
-                                    reference_metadata: &codegen_reference_metadata,
-                                    entry_namespace: &entry_namespace,
-                                    symbol_lookup: &project_symbol_lookup,
-                                    timings: Some(declaration_closure_timing_totals.as_ref()),
-                                },
-                                &global_maps,
-                            );
-                            batch_active_symbols.extend(unit.active_symbols.iter().cloned());
-                            batch_declaration_symbols.extend(declaration_closure.symbols);
-                            batch_closure_files.extend(declaration_closure.files);
-                        }
-                        object_codegen_timing_totals
-                            .declaration_closure_ns
-                            .fetch_add(
-                                elapsed_nanos_u64(declaration_closure_started_at),
-                                Ordering::Relaxed,
-                            );
-                        let codegen_program_started_at = Instant::now();
-                        let codegen_program = if shard
-                            .member_indices
-                            .iter()
-                            .any(|index| rewritten_files[*index].has_specialization_demand)
-                        {
-                            combined_program_for_files(&rewritten_files)
-                        } else {
-                            codegen_program_for_units(
-                                &rewritten_files,
-                                &rewritten_file_indices,
-                                &shard.member_files,
-                                Some(&batch_closure_files),
-                                Some(&batch_declaration_symbols),
-                            )
-                        };
-                        object_codegen_timing_totals.codegen_program_ns.fetch_add(
-                            elapsed_nanos_u64(codegen_program_started_at),
-                            Ordering::Relaxed,
-                        );
-                        let closure_body_symbols_started_at = Instant::now();
-                        let mut codegen_active_symbols = batch_active_symbols;
-                        let shard_member_files =
-                            shard.member_files.iter().cloned().collect::<HashSet<_>>();
-                        codegen_active_symbols.extend(closure_body_symbols_for_files(
-                            &shard_member_files,
-                            &batch_declaration_symbols,
-                            &global_function_file_map,
-                            &global_class_file_map,
-                            &global_module_file_map,
-                        ));
-                        object_codegen_timing_totals
-                            .closure_body_symbols_ns
-                            .fetch_add(
-                                elapsed_nanos_u64(closure_body_symbols_started_at),
-                                Ordering::Relaxed,
-                            );
-                        let llvm_emit_started_at = Instant::now();
-                        compile_program_ast_to_object_filtered(
-                            &codegen_program,
-                            &shard.member_files[0],
-                            &obj_path,
-                            &link,
-                            &codegen_active_symbols,
-                            &batch_declaration_symbols,
-                            Some(object_emit_timing_totals.as_ref()),
-                        )?;
-                        object_codegen_timing_totals
-                            .llvm_emit_ns
-                            .fetch_add(elapsed_nanos_u64(llvm_emit_started_at), Ordering::Relaxed);
-                        let cache_save_started_at = Instant::now();
-                        if let Some(cache_paths) = &shard.cache_paths {
-                            save_object_shard_cache_meta(
-                                cache_paths,
-                                &shard.member_fingerprints,
-                                &object_build_fingerprint,
-                            )?;
-                        } else {
-                            let unit = &rewritten_files[shard.member_indices[0]];
-                            let cache_paths =
-                                object_cache_paths_by_file.get(&unit.file).ok_or_else(|| {
-                                    format!(
-                                        "{}: missing object cache paths for rewritten unit '{}'",
-                                        cli_error("error"),
-                                        unit.file.display()
-                                    )
-                                })?;
-                            save_object_cache_meta(
-                                cache_paths,
-                                &unit.semantic_fingerprint,
-                                &unit.rewrite_context_fingerprint,
-                                &object_build_fingerprint,
-                            )?;
-                        }
-                        object_codegen_timing_totals
-                            .cache_save_ns
-                            .fetch_add(elapsed_nanos_u64(cache_save_started_at), Ordering::Relaxed);
-                        Ok::<Vec<(usize, PathBuf)>, String>(
-                            shard
-                                .member_indices
-                                .iter()
-                                .map(|index| (*index, obj_path.clone()))
-                                .collect(),
-                        )
-                    })
-                    .collect::<Result<Vec<_>, String>>()
-                    .map(|results| results.into_iter().flatten().collect())
-            })?;
-        build_timings.record_counts(
-            "object codegen",
-            &[
-                ("candidates", object_candidate_count),
-                ("reused", object_cache_hits),
-                (
-                    "rebuilt",
-                    object_candidate_count.saturating_sub(object_cache_hits),
-                ),
-                ("shard_size", object_shard_size),
-                ("shard_threshold", object_shard_threshold),
-                ("rebuilt_shards", cache_misses.len()),
-            ],
-        );
-        build_timings.record_duration_ns(
-            "object codegen/declaration closure",
-            object_codegen_timing_totals
-                .declaration_closure_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/program projection",
-            object_codegen_timing_totals
-                .codegen_program_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/closure body symbols",
-            object_codegen_timing_totals
-                .closure_body_symbols_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/llvm emit",
-            object_codegen_timing_totals
-                .llvm_emit_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/cache save",
-            object_codegen_timing_totals
-                .cache_save_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object cache meta/save",
-            OBJECT_CACHE_META_TIMING_TOTALS
-                .save_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_counts(
-            "object cache meta/write",
-            &[
-                (
-                    "saves",
-                    OBJECT_CACHE_META_TIMING_TOTALS
-                        .save_count
-                        .load(Ordering::Relaxed),
-                ),
-                (
-                    "bytes_written",
-                    OBJECT_CACHE_META_TIMING_TOTALS
-                        .bytes_written
-                        .load(Ordering::Relaxed) as usize,
-                ),
-            ],
-        );
-        build_timings.record_duration_ns(
-            "object codegen/emit context create",
-            object_emit_timing_totals
-                .context_create_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/emit codegen new",
-            object_emit_timing_totals
-                .codegen_new_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/emit compile filtered",
-            object_emit_timing_totals
-                .compile_filtered_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/emit object dir setup",
-            object_emit_timing_totals
-                .object_dir_setup_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/emit write object",
-            object_emit_timing_totals
-                .write_object_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_counts(
-            "object codegen/emit details",
-            &[
-                (
-                    "active_symbols",
-                    object_emit_timing_totals
-                        .active_symbol_count
-                        .load(Ordering::Relaxed),
-                ),
-                (
-                    "decl_symbols",
-                    object_emit_timing_totals
-                        .declaration_symbol_count
-                        .load(Ordering::Relaxed),
-                ),
-                (
-                    "program_decls",
-                    object_emit_timing_totals
-                        .program_decl_count
-                        .load(Ordering::Relaxed),
-                ),
-            ],
-        );
-        let codegen_phase_timings = crate::codegen::core::snapshot_codegen_phase_timings();
-        build_timings.record_duration_ns(
-            "object codegen/core generic class check",
-            codegen_phase_timings.program_has_generic_classes_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core specialize classes 1",
-            codegen_phase_timings.specialize_generic_classes_initial_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core explicit generic check",
-            codegen_phase_timings.program_has_explicit_generic_calls_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core specialize explicit",
-            codegen_phase_timings.specialize_explicit_generic_calls_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core specialize classes 2",
-            codegen_phase_timings.specialize_generic_classes_final_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core collect spec symbols",
-            codegen_phase_timings.collect_generated_spec_symbols_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core specialize active",
-            codegen_phase_timings.specialized_active_symbols_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core import aliases",
-            codegen_phase_timings.import_alias_collection_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core enum pass",
-            codegen_phase_timings.enum_declare_pass_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core enum filters",
-            codegen_phase_timings.enum_declare_decl_filter_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core enum work",
-            codegen_phase_timings.enum_declare_work_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core decl pass",
-            codegen_phase_timings.decl_pass_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core decl filters",
-            codegen_phase_timings.decl_pass_decl_filter_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core decl class work",
-            codegen_phase_timings.decl_pass_class_work_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core decl fn work",
-            codegen_phase_timings.decl_pass_function_work_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core decl module work",
-            codegen_phase_timings.decl_pass_module_work_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core body pass",
-            codegen_phase_timings.body_pass_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core body filters",
-            codegen_phase_timings.body_pass_decl_filter_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core body fn work",
-            codegen_phase_timings.body_pass_function_work_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core body fn setup",
-            codegen_phase_timings.body_function_setup_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core body fn param alloc",
-            codegen_phase_timings.body_function_param_alloc_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core body fn stmt loop",
-            codegen_phase_timings.body_function_stmt_loop_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core stmt let",
-            codegen_phase_timings.body_stmt_let_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core stmt assign",
-            codegen_phase_timings.body_stmt_assign_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core stmt expr",
-            codegen_phase_timings.body_stmt_expr_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core stmt return",
-            codegen_phase_timings.body_stmt_return_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core body fn implicit return",
-            codegen_phase_timings.body_function_implicit_return_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core expr literal",
-            codegen_phase_timings.expr_literal_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core expr ident",
-            codegen_phase_timings.expr_ident_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core expr binary",
-            codegen_phase_timings.expr_binary_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core expr call",
-            codegen_phase_timings.expr_call_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core body class work",
-            codegen_phase_timings.body_pass_class_work_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/core body module work",
-            codegen_phase_timings.body_pass_module_work_ns,
-        );
-        build_timings.record_counts(
-            "object codegen/core counts",
-            &[
-                ("decls", codegen_phase_timings.total_decls_count),
-                ("import_aliases", codegen_phase_timings.import_alias_count),
-                ("active_symbols", codegen_phase_timings.active_symbols_count),
-                (
-                    "decl_symbols",
-                    codegen_phase_timings.declaration_symbols_count,
-                ),
-                (
-                    "spec_owners",
-                    codegen_phase_timings.generated_spec_owners_count,
-                ),
-                ("declared_enums", codegen_phase_timings.declared_enum_count),
-                (
-                    "declared_classes",
-                    codegen_phase_timings.declared_class_count,
-                ),
-                (
-                    "declared_functions",
-                    codegen_phase_timings.declared_function_count,
-                ),
-                (
-                    "declared_modules",
-                    codegen_phase_timings.declared_module_count,
-                ),
-                (
-                    "compiled_functions",
-                    codegen_phase_timings.compiled_function_count,
-                ),
-                (
-                    "compiled_classes",
-                    codegen_phase_timings.compiled_class_count,
-                ),
-                (
-                    "compiled_modules",
-                    codegen_phase_timings.compiled_module_count,
-                ),
-            ],
-        );
-        build_timings.record_duration_ns(
-            "object codegen/decl closure seed",
-            declaration_closure_timing_totals
-                .closure_seed_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/decl metadata lookup",
-            declaration_closure_timing_totals
-                .metadata_lookup_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/decl wildcard imports",
-            declaration_closure_timing_totals
-                .wildcard_imports_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/decl exact imports",
-            declaration_closure_timing_totals
-                .exact_imports_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/decl qualified refs",
-            declaration_closure_timing_totals
-                .qualified_refs_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_duration_ns(
-            "object codegen/decl reference symbols",
-            declaration_closure_timing_totals
-                .reference_symbols_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_counts(
-            "object codegen/decl details",
-            &[
-                (
-                    "visited_files",
-                    declaration_closure_timing_totals
-                        .visited_file_count
-                        .load(Ordering::Relaxed),
-                ),
-                (
-                    "wildcard_imports",
-                    declaration_closure_timing_totals
-                        .wildcard_import_count
-                        .load(Ordering::Relaxed),
-                ),
-                (
-                    "exact_imports",
-                    declaration_closure_timing_totals
-                        .exact_import_count
-                        .load(Ordering::Relaxed),
-                ),
-                (
-                    "qualified_refs",
-                    declaration_closure_timing_totals
-                        .qualified_ref_count
-                        .load(Ordering::Relaxed),
-                ),
-                (
-                    "reference_symbols",
-                    declaration_closure_timing_totals
-                        .reference_symbol_count
-                        .load(Ordering::Relaxed),
-                ),
-            ],
-        );
-        let object_write_timings = crate::codegen::util::snapshot_object_write_timings();
-        build_timings.record_duration_ns(
-            "object codegen/write object total",
-            object_write_timings.emit_object_bytes_ns + object_write_timings.filesystem_write_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object with TM",
-            object_write_timings.with_target_machine_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object TM config",
-            object_write_timings.target_machine_config_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object TM init",
-            object_write_timings.ensure_targets_initialized_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object triple",
-            object_write_timings.target_triple_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object host cpu",
-            object_write_timings.host_cpu_query_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object opt resolve",
-            object_write_timings.opt_level_resolve_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object target from triple",
-            object_write_timings.target_from_triple_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object TM create",
-            object_write_timings.target_machine_create_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object target setup",
-            object_write_timings.target_machine_setup_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object set triple",
-            object_write_timings.module_set_triple_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object set layout",
-            object_write_timings.module_set_data_layout_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object memory buffer",
-            object_write_timings.write_to_memory_buffer_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object to vec",
-            object_write_timings.memory_buffer_to_vec_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object direct file emit",
-            object_write_timings.direct_write_to_file_ns,
-        );
-        build_timings.record_duration_ns(
-            "object codegen/write object fs write",
-            object_write_timings.filesystem_write_ns,
-        );
-        build_timings.record_counts(
-            "object codegen/write object counts",
-            &[
-                (
-                    "tm_cache_hits",
-                    object_write_timings.target_machine_cache_hit_count,
-                ),
-                (
-                    "tm_cache_misses",
-                    object_write_timings.target_machine_cache_miss_count,
-                ),
-                ("emit_calls", object_write_timings.emit_object_call_count),
-                ("write_calls", object_write_timings.write_object_call_count),
-            ],
-        );
-
-        for (index, obj_path) in compiled_results {
-            object_paths[index] = Some(obj_path);
+        FullCodegenRoute::ObjectsRequired => {
+            run_object_pipeline(
+                &mut build_timings,
+                ObjectPipelineInputs {
+                    project_root: &project_root,
+                    output_path: &output_path,
+                    parsed_files: &parsed_files,
+                    rewritten_files: &rewritten_files,
+                    file_dependency_graph: &file_dependency_graph,
+                    link: &link,
+                    entry_namespace: &entry_namespace,
+                    project_symbol_lookup: &project_symbol_lookup,
+                    global_maps: GlobalSymbolMaps {
+                        function_map: &global_function_map,
+                        function_file_map: &global_function_file_map,
+                        class_map: &global_class_map,
+                        class_file_map: &global_class_file_map,
+                        interface_map: &global_interface_map,
+                        interface_file_map: &global_interface_file_map,
+                        enum_map: &global_enum_map,
+                        enum_file_map: &global_enum_file_map,
+                        module_map: &global_module_map,
+                        module_file_map: &global_module_file_map,
+                    },
+                },
+            )?;
         }
-
-        if object_cache_hits > 0 {
-            print_cli_cache(format!(
-                "Reused object cache for {}/{} files",
-                object_cache_hits, object_candidate_count
-            ));
-        }
-
-        run_final_link_phase(
-            &mut build_timings,
-            FinalLinkInputs {
-                previous_link_manifest: previous_link_manifest.as_ref(),
-                output_path: &output_path,
-                link: &link,
-                project_root: &project_root,
-                object_paths,
-                cache_miss_count: cache_misses.len(),
-            },
-        )?;
     }
 
     if !check_only {
@@ -2686,7 +1555,7 @@ fn build_project(
     Ok(())
 }
 
-fn compile_program_ast(
+pub(crate) fn compile_program_ast(
     program: &Program,
     source_path: &Path,
     output_path: &Path,
@@ -2730,7 +1599,7 @@ fn compile_program_ast(
     Ok(())
 }
 
-fn compile_program_ast_to_object_filtered(
+pub(crate) fn compile_program_ast_to_object_filtered(
     program: &Program,
     source_path: &Path,
     object_path: &Path,
@@ -3127,7 +1996,7 @@ fn extract_namespace(program: &ast::Program) -> String {
         .unwrap_or_else(|| "global".to_string())
 }
 
-fn validate_entry_main_signature(
+pub(crate) fn validate_entry_main_signature(
     program: &Program,
     source: &str,
     filename: &str,

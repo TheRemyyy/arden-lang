@@ -27,7 +27,11 @@ function toAbsoluteUrl(path: string): string {
 }
 
 function normalizeCanonicalUrl(urlPathname: string): string {
-    return urlPathname === '/' ? SITE_URL : `${SITE_URL}${urlPathname}`;
+    const normalizedPath = urlPathname.endsWith('/README')
+        ? urlPathname.slice(0, -('/README'.length))
+        : urlPathname;
+
+    return normalizedPath === '/' ? SITE_URL : `${SITE_URL}${normalizedPath}`;
 }
 
 function getPageTitle(pageContext: ReturnType<typeof usePageContext>): string {
