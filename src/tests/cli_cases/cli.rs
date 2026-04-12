@@ -625,6 +625,26 @@ fn cli_run_tests_accepts_relative_single_file_path_in_current_directory() {
 }
 
 #[test]
+fn cli_run_tests_reports_exit_status_for_failing_tests() {
+    let temp_root = make_temp_project_root("cli-test-failure-status");
+    let test_file = temp_root.join("failing_test.arden");
+    fs::write(
+        &test_file,
+        r#"
+            @Test
+            function failingCase(): None { fail("boom"); }
+        "#,
+    )
+    .must("write failing test file");
+
+    let err = run_tests(Some(&test_file), false, Some("failingCase"))
+        .must_err("failing tests should report process exit details");
+    assert!(err.contains("test run failed: exited with code"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn cli_run_tests_skips_before_hooks_for_ignored_tests() {
     let temp_root = make_temp_project_root("cli-test-ignore-skips-before");
     let test_file = temp_root.join("ignored_before_test.arden");

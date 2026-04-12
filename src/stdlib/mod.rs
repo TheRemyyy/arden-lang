@@ -1,7 +1,8 @@
 //! Standard library namespace definitions
 //!
 //! All standard library functions are organized under `std` namespace:
-//! - std.io - File operations, print functions
+//! - std.io - Console I/O helpers
+//! - std.fs - File operations
 //! - std.system - Environment, shell, system calls
 //! - std.time - Time-related functions
 //! - std.math - Mathematical functions
@@ -25,7 +26,6 @@ const STDLIB_FUNCTIONS: &[(&str, &str)] = &[
     ("System__cwd", "std.system"),
     ("System__os", "std.system"),
     ("System__exit", "std.system"),
-    ("System__args", "std.system"),
     ("Time__now", "std.time"),
     ("Time__unix", "std.time"),
     ("Time__sleep", "std.time"),
@@ -62,11 +62,8 @@ const STDLIB_FUNCTIONS: &[(&str, &str)] = &[
     ("assert_ne", "builtin"),
     ("assert_true", "builtin"),
     ("assert_false", "builtin"),
-    ("assert_null", "builtin"),
-    ("assert_not_null", "builtin"),
     ("fail", "builtin"),
     ("to_string", "builtin"),
-    ("length", "builtin"),
     ("exit", "builtin"),
     ("range", "builtin"),
 ];

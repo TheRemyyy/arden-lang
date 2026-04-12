@@ -1,3 +1,4 @@
+// Runtime orchestration: state transitions and execution flow helpers.
 package runtime;
 
 import analytics as analytics;

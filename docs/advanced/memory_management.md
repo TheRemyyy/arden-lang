@@ -1,47 +1,50 @@
 # Memory Management
 
-Arden is a native language with compiler-enforced ownership and borrowing.
+## Why This Matters
 
-It targets LLVM and does not rely on a tracing garbage collector for ordinary program execution.
+Arden aims to prevent common memory/aliasing bugs at compile time while still producing native binaries.
 
 ## High-Level Model
 
-- primitive values behave like ordinary native values
-- heap-backed runtime values such as `String`, collections, and class instances are managed through the language runtime and ownership rules
-- lifetimes and mutation hazards are checked statically where possible
+- scalar values behave as native values
+- runtime-backed values (`String`, collections, classes, tasks) are managed under ownership rules
+- borrow/lifetime hazards are validated statically where possible
 
-## Ownership
+## Compiler Guarantees
 
-Arden tracks ownership transfers and borrowed access.
-
-That means the compiler can reject:
+Arden rejects:
 
 - use-after-move
-- conflicting mutable and immutable borrows
-- invalid mutation through immutable access paths
+- conflicting mutable/immutable borrows
+- invalid mutation through immutable paths
 
 Primary reference:
 
 - [Ownership and Borrowing](ownership.md)
 
-## Stack vs Heap
+## Minimal Example
 
-As a practical mental model:
+```arden
+function consume(owned s: String): None { return None; }
 
-- small scalar values are cheap, local native values
-- strings, collections, tasks, and class instances generally involve runtime-managed storage
+function main(): None {
+    value: String = "hello";
+    borrow_view: &String = &value;
+    println(*borrow_view);
 
-The exact representation is an implementation detail, but the user-facing rule is: write code against ownership and borrowing semantics, not guessed storage trivia.
+    // consume(value); // invalid while borrowed
+    return None;
+}
+```
 
-## Destruction And Scope
+## Practical Rule
 
-When values leave scope, Arden can run the necessary cleanup for the underlying runtime representation.
+Code to ownership semantics, not guessed stack/heap internals.
 
-That is why destructors and ownership rules matter more than “manual free everywhere” style programming.
+## Cleanup Model
 
-## Smart-Pointer-Like Types
+When owning bindings leave scope, required runtime cleanup is performed according to value semantics.
 
-Some generic ownership/container forms such as `Box<T>`, `Rc<T>`, and `Arc<T>` appear in examples and type surfaces.
+## Lifetimes
 
-Treat these as evolving language/runtime surface area and verify current behavior against examples or the compiler before documenting them as a stable low-level ABI guarantee.
-
+Lifetimes are currently implicit in source syntax, but still enforced by the compiler.

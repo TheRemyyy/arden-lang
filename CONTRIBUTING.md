@@ -33,7 +33,7 @@ cargo run -- --help
 Compiler-facing smoke checks:
 
 ```bash
-cargo run -- check examples/01_hello.arden
+cargo run -- check examples/single_file/basics/01_hello/01_hello.arden
 bash scripts/cli_smoke.sh
 bash scripts/examples_smoke_linux.sh
 ```

@@ -1,44 +1,53 @@
 # Time Module
 
-The `Time` module provides functions for working with system time and controlling program execution flow.
+## Why This Matters
+
+Time functions are used for retries, delays, scheduling checks, timestamps, and logging context.
+
+## Import
+
+```arden
+import std.time.*;
+```
 
 ## Functions
 
-The `Time` object provides static methods for time retrieval and manipulation.
+- `Time.now(format: String): String`
+- `Time.unix(): Integer`
+- `Time.sleep(ms: Integer): None`
 
-### `Time.now(format: String): String`
-
-Returns the current local time as a formatted string. If an empty string `""` is provided as the format, it defaults to `"%H:%M:%S"`.
-Longer format strings are supported without truncating or corrupting the returned value.
-
-Uses standard C `strftime` format specifiers.
+## 1. Current Time String
 
 ```arden
-// Default format (HH:MM:SS)
-currentTime: String = Time.now("");
+import std.time.*;
 
-// Custom format (YYYY-MM-DD)
-today: String = Time.now("%Y-%m-%d");
+now_default: String = Time.now("");
+now_iso_like: String = Time.now("%Y-%m-%d %H:%M:%S");
 ```
 
-### `Time.unix(): Integer`
+`Time.now("")` uses default `%H:%M:%S` format.
 
-Returns the current Unix timestamp (number of seconds since January 1, 1970).
+## 2. Unix Timestamp
 
 ```arden
-timestamp: Integer = Time.unix();
+import std.time.*;
+
+ts: Integer = Time.unix();
 ```
 
-### `Time.sleep(ms: Integer): None`
-
-Suspends the execution of the current thread for the specified number of milliseconds.
-
-Negative millisecond values are invalid. Constant negative arguments are rejected during `arden check`, and dynamic negative values fail fast at runtime with a direct diagnostic.
+## 3. Sleep / Delay
 
 ```arden
+import std.time.*;
 import std.io.*;
 
-println("Waiting...");
-Time.sleep(1000); // Wait for 1 second
-println("Done!");
+println("waiting...");
+Time.sleep(250);
+println("done");
 ```
+
+Negative sleep values are invalid (rejected at compile-time when constant, otherwise runtime error).
+
+## Example In Repo
+
+- [`19_time`](../../examples/single_file/stdlib_and_system/19_time/19_time.arden)

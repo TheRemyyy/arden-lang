@@ -10309,6 +10309,30 @@ impl<'ctx> Codegen<'ctx> {
 
     // === Statements ===
 
+    fn build_entry_alloca(
+        &self,
+        ty: BasicTypeEnum<'ctx>,
+        name: &str,
+    ) -> Result<PointerValue<'ctx>> {
+        let function = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("attempted to allocate outside of a function"))?;
+        let entry_block = function
+            .get_first_basic_block()
+            .ok_or_else(|| CodegenError::new("function is missing an entry basic block"))?;
+
+        let alloc_builder = self.context.create_builder();
+        if let Some(first_instruction) = entry_block.get_first_instruction() {
+            alloc_builder.position_before(&first_instruction);
+        } else {
+            alloc_builder.position_at_end(entry_block);
+        }
+
+        alloc_builder
+            .build_alloca(ty, name)
+            .map_err(|_| CodegenError::new(format!("failed to allocate local variable '{}'", name)))
+    }
+
     pub fn compile_stmt(&mut self, stmt: &Stmt) -> Result<()> {
         match stmt {
             Stmt::Let {
@@ -10322,12 +10346,7 @@ impl<'ctx> Codegen<'ctx> {
                 let val = self.compile_expr_with_expected_type(&value.node, &normalized_ty)?;
                 let actual_ty = self.infer_expr_type(&value.node, &[]);
                 self.reject_incompatible_expected_type_value(&normalized_ty, &actual_ty, val)?;
-                let alloca = self
-                    .builder
-                    .build_alloca(self.llvm_type(&normalized_ty), name)
-                    .map_err(|_| {
-                        CodegenError::new(format!("failed to allocate local variable '{}'", name))
-                    })?;
+                let alloca = self.build_entry_alloca(self.llvm_type(&normalized_ty), name)?;
                 self.builder.build_store(alloca, val).map_err(|_| {
                     CodegenError::new(format!("failed to store local variable '{}'", name))
                 })?;

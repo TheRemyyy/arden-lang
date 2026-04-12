@@ -1,112 +1,82 @@
 # Compiler Architecture
 
-This document describes the current high-level structure of the Arden compiler.
+## Why This Matters
 
-It is intentionally architectural, not a changelog dump.
+When you change compiler behavior, this map tells you where to change it safely and where to add tests.
 
 ## Pipeline
 
-Arden roughly follows this flow:
+High-level flow:
 
-1. lex source into tokens
-2. parse tokens into an AST
-3. resolve and type-check declarations and expressions
-4. run borrow checking
+1. lex source
+2. parse AST
+3. resolve + type-check
+4. borrow-check
 5. lower to LLVM IR
-6. compile and link a native artifact
+6. compile/link native artifact
 
 ## Main Source Areas
 
 ### Frontend
 
-- `src/lexer/` - tokenization
-- `src/parser/` - AST construction
-- `src/ast/` - AST definitions
+- `src/lexer/`
+- `src/parser/`
+- `src/ast/`
 
-### Semantic Analysis
+### Semantic Stages
 
-- `src/typeck/` - type collection, resolution, checking, effects
-- `src/borrowck/` - ownership and borrowing validation
-- `src/import_check/` - import validation
-- `src/project_rewrite/` - project-mode rewriting / symbol normalization
-
-### Project / Build Logic
-
-- `src/project/` - `arden.toml` loading and project configuration
-- `src/cache/` - project cache and reuse metadata
-- `src/dependency/` - dependency graph and invalidation logic
-- `src/symbol_lookup/` - symbol indexing and lookup support
+- `src/typeck/`
+- `src/borrowck/`
+- `src/import_check/`
+- `src/project/` rewrite/semantic pipeline pieces
 
 ### Backend
 
-- `src/codegen/` - LLVM IR lowering
-- `src/linker/` - final artifact linking
-- `src/stdlib/` - intrinsic stdlib wiring used by semantic/codegen stages
+- `src/codegen/`
+- `src/linker/`
+- `src/stdlib/` intrinsic wiring
 
 ### Tooling
 
-- `src/formatter/` - `arden fmt`
-- `src/lint/` - `arden lint` / `arden fix`
-- `src/test_runner/` - `arden test`
-- `src/bindgen/` - `arden bindgen`
-- `src/lsp/` - `arden lsp`
+- `src/formatter/`
+- `src/lint/`
+- `src/test_runner/`
+- `src/bindgen/`
+- `src/lsp/`
 
 ### Tests
 
-- `src/tests/` - integration-style compiler tests
-- module-local `tests.rs` files - unit and behavior-focused coverage
+- integration-style suites in `src/tests/`
+- module-focused coverage in local test modules
 
-## Project Mode
+## Project Mode Architecture
 
-Project mode is driven by `arden.toml`.
+Project mode centers around `arden.toml`:
 
-Important behavior:
+- explicit entry + files list
+- import graph validation
+- semantic/build cache reuse via `.ardencache/`
 
-- files are listed explicitly
-- the entrypoint is explicit
-- project commands such as `build`, `run`, `check`, `test`, `fmt`, and `info` use project configuration
-- project builds can reuse cached work from `.ardencache/`
+## Linker Policy
 
-Related docs:
+Repo-default linkers:
 
-- [CLI reference](cli.md)
-- [Projects](../features/projects.md)
+- Linux: `mold`
+- macOS: `lld`
+- Windows: `lld-link`
 
-## Native Toolchain
+## Debugging Build Stages
 
-Arden lowers through LLVM object emission and links through explicit platform linkers.
-
-Current linker policy is explicit:
-
-- Linux requires direct `mold`
-- macOS requires LLVM `lld`
-- Windows requires LLVM `lld-link`
-
-This is also reflected in CI and release workflows.
-
-## Build Cache
-
-Project builds maintain cache data under `.ardencache/`.
-
-At a high level, that cache is used to:
-
-- detect unchanged builds
-- reuse parsed or rewritten project state where possible
-- reduce rebuild work after partial edits
-
-For user-facing timing inspection:
+Use timings:
 
 ```bash
 arden build --timings
 arden check --timings
 ```
 
-## CLI Entry
+And parse/lex commands for frontend debugging:
 
-The main CLI entrypoint is:
-
-- `src/main.rs`
-
-That command surface is documented in:
-
-- [CLI reference](cli.md)
+```bash
+arden lex file.arden
+arden parse file.arden
+```

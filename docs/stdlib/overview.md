@@ -1,27 +1,56 @@
 # Standard Library
 
-The Arden Standard Library (`std`) provides core functionality for building applications.
+## Why This Matters
 
-## Modules
+This page tells you where each common runtime capability lives and which imports you need.
 
-- [Math](math.md): Mathematical functions and constants.
-- [Str](string.md): String manipulation utilities.
-- [Time](time.md): Time retrieval and sleeping.
-- [File](io.md): File system operations.
-- [System](system.md): System-level interactions (exit, getenv, etc.).
-- [Args](args.md): Command-line arguments.
-- [Collections](collections.md): Built-in List and Map types.
-- [I/O](io.md): Console input and output.
+## Module Map
 
-## Import Behavior (Important)
+- [I/O + File](io.md)
+- [Math](math.md)
+- [Strings (`Str`)](string.md)
+- [Time](time.md)
+- [System](system.md)
+- [Args](args.md)
+- [Collections](collections.md)
 
-The stdlib is implemented as **compiler intrinsics**, but import behavior is split:
+## Import Rules (Important)
 
-- `print`, `println`, and `read_line` are free functions in `std.io` and should be imported:
-  - `import std.io.*;` (or specific function imports).
-- Module-style APIs such as `Math.*`, `Str.*`, `Time.*`, `System.*`, `File.*`, and `Args.*` are intrinsic objects and are available directly in the current compiler.
-- Builtins like `to_string`, `range`, `exit`, and assertion helpers (`assert*`, `fail`) are available without import.
-- Those builtins can also be stored in typed function values, for example `conv: (Integer) -> Float = to_float`, `build: (Integer, Integer) -> Range<Integer> = range`, `check: (Integer, Integer) -> None = assert_eq`, `stop: (Integer) -> None = exit`, and `fail_now: () -> None = fail`.
-- Direct stdlib object members can be stored as typed function values too, for example `cwd: () -> String = System.cwd`, `sleep_ms: (Integer) -> None = Time.sleep`, `argc: () -> Integer = Args.count`, and `rand: () -> Float = Math.random`.
+Arden stdlib is compiler-intrinsic, but module usage still follows explicit imports:
 
-There are no external `.arden` stdlib source files; calls are lowered directly by the compiler/codegen pipeline.
+- console I/O: `import std.io.*;`
+- file API (`File.*`): `import std.fs.*;`
+- math (`Math.*`): `import std.math.*;`
+- strings (`Str.*`): `import std.string.*;`
+- time (`Time.*`): `import std.time.*;`
+- system (`System.*`): `import std.system.*;`
+- args (`Args.*`): `import std.args.*;`
+
+Global builtins available without import include:
+
+- `to_string`, `to_int`, `to_float`
+- `range`
+- `exit`
+- assertions: `assert`, `assert_eq`, `assert_ne`, `assert_true`, `assert_false`
+- `fail`
+
+## Function Values
+
+You can store builtin or stdlib members in typed function values:
+
+```arden
+import std.args.*;
+import std.math.*;
+import std.system.*;
+
+conv: (Integer) -> Float = to_float;
+cwd: () -> String = System.cwd;
+argc: () -> Integer = Args.count;
+rand: () -> Float = Math.random;
+```
+
+## Where To Start
+
+- new user: [I/O](io.md), [Args](args.md), [String](string.md)
+- systems tooling: [System](system.md), [Time](time.md)
+- numeric work: [Math](math.md), [Collections](collections.md)

@@ -1,6 +1,11 @@
 # Types
 
-Arden is strongly and statically typed. Every variable must have a type known at compile time.
+Arden is strongly and statically typed: every expression has a known compile-time type.
+
+## Why This Matters
+
+Type checks move failures from runtime into `arden check`/`arden build`.
+That gives faster feedback loops and safer refactors.
 
 ## Primitive Types
 
@@ -8,81 +13,67 @@ Arden is strongly and statically typed. Every variable must have a type known at
 | :--- | :--- | :--- |
 | `Integer` | 64-bit signed integer | `42`, `-1` |
 | `Float` | 64-bit floating point | `3.14`, `-0.01` |
-| `Boolean` | True or False | `true`, `false` |
-| `Char` | Unicode character | `'a'`, `'🚀'` |
-| `String` | UTF-8 encoded string | `"Hello"` |
-| `None` | Unit type (empty value) | `None` |
+| `Boolean` | Boolean value | `true`, `false` |
+| `Char` | Unicode scalar | `'a'`, `'🚀'` |
+| `String` | UTF-8 string | `"Hello"` |
+| `None` | Unit type | `None` |
 
-### Integers
-
-Currently, `Integer` is the primary integer type.
+## Numeric Rules
 
 ```arden
-x: Integer = 100_000; // Underscores can be used for readability
+a: Integer = 1;
+b: Float = 2.5;
+c: Float = a + b; // Integer promotes to Float inside numeric expression
 ```
 
-### Floats
+Important constraints:
+
+- mixed numeric expressions can widen `Integer` to `Float`
+- assignments still require type-compatible RHS
+- container/generic types are invariant (`Option<Integer>` is not `Option<Float>`)
+
+## Strings and `None`
 
 ```arden
-f: Float = 1.0;
-sum: Float = 1 + 2.5;
-same: Boolean = 1 == 1.0;
-choice: Float = if (flag) { 1 } else { 2.5 };
-```
+text: String = "Arden";
 
-Rules worth remembering:
-
-- Arden promotes `Integer` to `Float` inside mixed scalar numeric expressions.
-- Assignments still require a `Float` result on the right-hand side; there is no blanket implicit conversion step.
-- Wrapped/container types stay invariant, so `Option<Integer>` does not implicitly become `Option<Float>`, and `Range<Integer>` does not implicitly become `Range<Float>`.
-
-### Booleans
-
-Used in conditional logic.
-
-```arden
-isValid: Boolean = true;
-if (isValid) { ... }
-```
-
-### Strings
-
-Strings are heap-allocated and UTF-8 encoded.
-
-```arden
-s: String = "Text";
-```
-
-### None
-
-The `None` type represents the absence of a value, similar to `void` in C or `()` in Rust. It has a single value: `None`.
-
-```arden
-function doWork(): None {
+function logDone(): None {
+    println("done");
     return None;
 }
 ```
 
 ## Reference Types
 
-Arden allows references to values.
+Arden supports borrowed references:
 
-- `&T`: Immutable reference.
-- `&mut T`: Mutable reference.
+- `&T` immutable reference
+- `&mut T` mutable reference
 
-See [Ownership and Borrowing](../advanced/ownership.md) for more details.
+```arden
+mut x: Integer = 1;
+r: &Integer = &x;
+rx: &mut Integer = &mut x;
+*rx = 2;
+```
+
+Reference safety rules are documented in [Ownership and Borrowing](../advanced/ownership.md).
 
 ## Composite Types
 
-- **Lists**: `List<T>` - See [Collections](../stdlib/collections.md#listt)
-- **Maps**: `Map<K, V>` - See [Collections](../stdlib/collections.md#mapk-v)
-- **User-defined**: Classes, Enums, Interfaces.
+- `List<T>` - ordered dynamic collection
+- `Map<K, V>` - key/value collection
+- `Set<T>` - unique-value collection
+- `Range<T>` - iterator-like range type
+- classes, enums, interfaces
 
-### Built-in Generic Constructors
+See [Collections](../stdlib/collections.md) and feature docs for details.
 
-Built-in generic constructor argument rules are checked at compile time:
+## Built-in Generic Constructors
 
-- `List<T>()` and `List<T>(capacity: Integer)` are valid.
-- `List<T>(capacity)` preallocates backing storage only; it does not create `capacity` elements or change `length()`.
-- `Map<K, V>()`, `Set<T>()`, `Option<T>()`, and `Result<T, E>()` accept no value arguments.
-- Passing extra or incompatible constructor arguments is a type error.
+Constructor argument shapes are checked statically:
+
+- `List<T>()` and `List<T>(capacity: Integer)` are valid
+- `Map<K, V>()`, `Set<T>()`, `Option<T>()`, `Result<T, E>()` take no value args
+- incompatible arity/types are compile errors
+

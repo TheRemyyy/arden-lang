@@ -17,6 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed a codegen/runtime crash on larger nested `List` workloads by forcing `let`-statement stack slots to be allocated in function entry blocks instead of loop bodies, preventing stack growth across loop iterations (`SIGSEGV`/signal 11 in `arden run`/`arden profile` scenarios).
+- Fixed stale whole-project/object cache reuse across local compiler rebuilds by hashing the active compiler binary identity (path/size/mtime) into project/object fingerprints, so changed compiler binaries no longer reuse previously built artifacts.
+- Fixed runtime crash reporting in `arden run`/`arden profile` to surface signal-based exits as explicit crash diagnostics with actionable guidance instead of the ambiguous `process exited with code -1`.
+- Fixed `arden test` failure reporting to include explicit process exit/signal diagnostics (instead of only `test run failed`) when the generated test runner crashes or exits non-zero.
+- Fixed single-file `arden bench`/`arden profile` cleanup so temporary `*.bench` binaries are removed even when program execution fails, avoiding stale artifacts after non-zero exits.
 - Fixed checked and unchecked ordered comparisons for `Char`, so Windows project builds that validate drive-letter prefixes from `std.system.cwd` no longer fail on expressions like `letter >= 'A'`.
 - Fixed macOS portable release bundles after the LLVM 22 upgrade by collecting transitive non-system dylib dependencies such as `libz3`, so packaged `arden-real` no longer aborts during smoke tests on clean runners.
 - Fixed nested Cargo test runs and CLI/test-runner cwd recovery across Linux/macOS CI.
@@ -129,15 +134,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Supports common C prototypes and variadic signatures.
   - Supports stdout output or `--output <file>` generation.
 - **New Feature Examples**:
-  - `examples/26_effect_system.arden`
-  - `examples/27_extern_c_interop.arden`
-  - `examples/28_async_runtime_control.arden`
-  - `examples/29_effect_inference_and_any.arden`
-  - `examples/30_extern_variadic_printf.arden`
-  - `examples/31_extern_abi_link_name.arden`
-  - `examples/32_extern_safe_wrapper.arden`
-  - `examples/33_extern_ptr_types.arden`
-  - `examples/34_bindgen_workflow.arden`
+  - `examples/single_file/tooling_and_ffi/26_effect_system/26_effect_system.arden`
+  - `examples/single_file/tooling_and_ffi/27_extern_c_interop/27_extern_c_interop.arden`
+  - `examples/single_file/tooling_and_ffi/28_async_runtime_control/28_async_runtime_control.arden`
+  - `examples/single_file/tooling_and_ffi/29_effect_inference_and_any/29_effect_inference_and_any.arden`
+  - `examples/single_file/tooling_and_ffi/30_extern_variadic_printf/30_extern_variadic_printf.arden`
+  - `examples/single_file/tooling_and_ffi/31_extern_abi_link_name/31_extern_abi_link_name.arden`
+  - `examples/single_file/tooling_and_ffi/32_extern_safe_wrapper/32_extern_safe_wrapper.arden`
+  - `examples/single_file/tooling_and_ffi/33_extern_ptr_types/33_extern_ptr_types.arden`
+  - `examples/single_file/tooling_and_ffi/34_bindgen_workflow/34_bindgen_workflow.arden`
   - `examples/README.md` (coverage index)
 
 ### ♻️ Changed
@@ -177,7 +182,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Documentation Consistency**: Updated `arden` CLI usage, module syntax notes, and compiler architecture file map.
 - **Class/Module Collisions**: Top-level class and module name collisions now fail early across namespaces.
 - **List Capacity Growth**: Fixed `List.push()` codegen to grow backing storage with `realloc` when `length >= capacity`, preventing heap corruption (`malloc(): corrupted top size`) in large workloads like `benchmark/arden/matrix_mul.arden`.
-- **Map IR Block Ordering**: Fixed invalid LLVM IR generation in `Map.set()` control-flow block ordering (late-created `map_set.cont/update`), which caused Clang parse failures in `examples/17_comprehensive.arden`.
+- **Map IR Block Ordering**: Fixed invalid LLVM IR generation in `Map.set()` control-flow block ordering (late-created `map_set.cont/update`), which caused Clang parse failures in `examples/single_file/safety_and_async/17_comprehensive/17_comprehensive.arden`.
 
 ## [1.3.2] - Range Types - 2026-02-22
 
@@ -188,7 +193,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Iterator protocol with `has_next()` and `next()` methods
   - Support for ascending and descending ranges (negative steps)
   - LLVM struct-based implementation with heap allocation
-  - New example: `examples/25_range_types.arden`
+  - New example: `examples/single_file/stdlib_and_system/25_range_types/25_range_types.arden`
   - Documentation: `docs/features/ranges.md`
 
 - **Testing Framework**: Full testing framework with attributes and assertions
@@ -198,7 +203,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `@BeforeAll`, `@AfterAll` for suite-level setup/teardown
   - New CLI command: `arden test` - Discover and run all @Test functions
   - Assertion functions: `assert()`, `assert_eq()`, `assert_ne()`, `assert_true()`, `assert_false()`, `fail()`
-  - New example: `examples/24_test_attributes.arden`
+  - New example: `examples/single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden`
 
 - **LSP (Language Server Protocol)**: Arden now has a built-in LSP server for IDE integration
   - New CLI command: `arden lsp` - Start the language server

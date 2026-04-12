@@ -1,0 +1,143 @@
+// Example 10: Ownership and Borrowing
+//
+// Goal:
+// - understand `owned` (move), `borrow` (read-only), `borrow mut` (exclusive mutable access)
+// - see how `&` and `&mut` references behave
+// - understand when values stay usable vs. become moved
+
+import std.io.*;
+
+class Data {
+    mut value: Integer;
+
+    constructor(value: Integer) {
+        this.value = value;
+    }
+
+    function get(): Integer {
+        return this.value;
+    }
+
+    function set(newValue: Integer): None {
+        this.value = newValue;
+        return None;
+    }
+}
+
+// owned (default): caller gives ownership to callee.
+function consume(owned d: Data): Integer {
+    return d.get();
+}
+
+// borrow: caller keeps ownership, callee gets read-only access.
+function read_once(borrow d: Data): Integer {
+    return d.get();
+}
+
+// Explicit mutable-reference mutation.
+function bump_ref(x: &mut Integer): None {
+    *x = *x + 1;
+    return None;
+}
+
+// borrow mut mode: callee gets exclusive borrowed access to caller-owned value.
+function observe_borrow_mut(borrow mut x: Integer): None {
+    println("observe_borrow_mut saw {x}");
+    return None;
+}
+
+function demo_owned_move(): None {
+    println("\n=== owned move ===");
+
+    d: Data = Data(10);
+    value: Integer = consume(d);
+    println("consume(d) returned {value}");
+
+    // d is moved and no longer valid after consume(d).
+    // println("{d.get()}"); // Uncomment -> compile error: moved value
+
+    return None;
+}
+
+function demo_borrow_read_only(): None {
+    println("\n=== borrow (read-only) ===");
+
+    d: Data = Data(20);
+
+    a: Integer = read_once(d);
+    b: Integer = read_once(d); // still valid because borrow does not move
+
+    println("first read={a}, second read={b}");
+
+    return None;
+}
+
+function demo_borrow_mut_param(): None {
+    println("\n=== borrow mut parameter + &mut reference ===");
+
+    mut n: Integer = 5;
+    observe_borrow_mut(n);
+    bump_ref(&mut n);
+    bump_ref(&mut n);
+
+    println("n after two bumps = {n}");
+
+    return None;
+}
+
+function demo_references(): None {
+    println("\n=== references (& / &mut) ===");
+
+    mut x: Integer = 42;
+
+    // Multiple immutable references are fine.
+    {
+        rx1: &Integer = &x;
+        rx2: &Integer = &x;
+        println("immutable refs: {*rx1}, {*rx2}");
+    };
+
+    // Mutable reference allows in-place mutation.
+    rmut: &mut Integer = &mut x;
+    *rmut = 100;
+    println("after *rmut = 100, x = {x}");
+
+    // Only one mutable reference can be active at once.
+    // rmut2: &mut Integer = &mut x; // Uncomment -> compile error
+
+    return None;
+}
+
+function demo_container_mutability_forwarding(): None {
+    println("\n=== &mut forwarding on containers ===");
+
+    mut numbers: List<Integer> = List<Integer>();
+    numbers.push(1);
+
+    {
+        write_view: &mut List<Integer> = &mut numbers;
+        write_view[0] = 5;
+        write_view.push(9);
+    };
+
+    read_view: &List<Integer> = &numbers;
+    println("numbers[0]={read_view.get(0)}, len={read_view.length()}");
+
+    // read_view.push(1);  // Uncomment -> compile error: mutating method via immutable ref
+    // read_view[0] = 7;   // Uncomment -> compile error: assignment via immutable ref
+
+    return None;
+}
+
+function main(): None {
+    println("=== Ownership / Borrowing walkthrough ===");
+
+    demo_owned_move();
+    demo_borrow_read_only();
+    demo_borrow_mut_param();
+    demo_references();
+    demo_container_mutability_forwarding();
+
+    println("\nDone.");
+    return None;
+}

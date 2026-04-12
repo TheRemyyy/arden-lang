@@ -1,88 +1,68 @@
 # Control Flow
 
-## If Expressions
+Arden provides explicit control-flow constructs with predictable typing and scope behavior.
 
-Conditional execution.
+## Why This Matters
 
-```arden
-if (condition) {
-    // ...
-} else if (other_condition) {
-    // ...
-} else {
-    // ...
-}
-```
+Control flow is where state bugs hide. Arden keeps it explicit: typed conditions, explicit loop variables, exhaustive matching.
 
-Example:
+## `if` / `else if` / `else`
 
 ```arden
 x: Integer = 10;
 if (x > 5) {
     println("Large");
+} else if (x == 5) {
+    println("Equal");
 } else {
     println("Small");
 }
 ```
 
-## Loops
+## `while`
 
-### While Loop
-
-Executes as long as the condition is true.
+Use for condition-driven loops.
 
 ```arden
 mut i: Integer = 0;
 while (i < 5) {
     println("{i}");
-    i = i + 1;
+    i += 1;
 }
 ```
 
-### For Loop
+## `for`
 
-Iterates over a range or collection.
+Use for range/iterable-driven loops.
 
-**Range iteration:**
+### Range iteration
 
 ```arden
-// 'in 5' creates a range from 0 to 4
 for (i in 5) {
-    println("Iteration {i}");
+    println("{i}"); // 0..4
 }
 
 for (i: Float in 5) {
-    println("Iteration {i}");
+    println("{i}"); // loop binding widened to Float
 }
 
-end: Integer = 5;
-for (i in end) {
-    println("Iteration {i}");
-}
-
-// Using Range<T> explicitly
-r: Range<Integer> = range(1, 10, 2);  // 1, 3, 5, 7, 9
+r: Range<Integer> = range(1, 10, 2); // 1,3,5,7,9
 while (r.has_next()) {
-    val: Integer = r.next();
-    println(to_string(val));
+    value: Integer = r.next();
+    println(to_string(value));
 }
 ```
 
-`for (i: Float in 5)` widens each loop binding to `Float`, but the iterable itself still keeps its original type. For example, `Range<Integer>` does not implicitly become `Range<Float>`.
+`for (i: Float in 5)` widens the loop variable, not the iterable type itself.
 
-See [Range Types](../features/ranges.md) for more details on ranges.
-
-**Collection iteration:**
+### Collection iteration
 
 ```arden
 numbers: List<Integer> = List<Integer>();
-// ... add items ...
-for (n in numbers) {
-    println("{n}");
-}
+numbers.push(1);
+numbers.push(2);
 
-view: &List<Integer> = &numbers;
-for (n in view) {
+for (n in numbers) {
     println("{n}");
 }
 
@@ -90,24 +70,35 @@ text: String = "Ahoj";
 for (ch in text) {
     println("{ch}");
 }
+```
 
-view: &String = &text;
-for (ch in view) {
-    println("{ch}");
+Borrowed views are also iterable:
+
+```arden
+view: &List<Integer> = &numbers;
+for (n in view) {
+    println("{n}");
 }
 ```
 
-## Pattern Matching
+## `match`
 
-The `match` statement is a powerful control flow operator.
+`match` is exhaustive and suited for enum/pattern branching.
 
 ```arden
-val: Integer = 2;
-match (val) {
-    1 => { println("One"); }
-    2 => { println("Two"); }
+value: Integer = 2;
+match (value) {
+    1 => { println("One"); },
+    2 => { println("Two"); },
     _ => { println("Other"); }
 }
 ```
 
-It is exhaustive, meaning all cases must be covered (using `_` as a catch-all if needed).
+Use `_` as explicit catch-all when needed.
+
+## Related
+
+- [Range Types](../features/ranges.md)
+- [Enums](../features/enums.md)
+- [Pattern Matching Example](../../examples/single_file/safety_and_async/16_pattern_matching/16_pattern_matching.arden)
+

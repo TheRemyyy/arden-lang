@@ -1,56 +1,62 @@
 # Args Module
 
-The `Args` module provides access to command-line arguments passed to the program.
+## Why This Matters
 
-## Functions
+CLI arguments are the default input channel for scripts, automation, and tooling commands.
+If you build command-driven apps, this is usually your first runtime boundary.
 
-The `Args` object provides static methods for argument retrieval.
+## Quick Mental Model
 
-### `Args.count(): Integer`
+- `Args.count()` tells you how many argv entries exist
+- `Args.get(i)` returns argv entry at index `i`
+- index `0` is executable path
+- user arguments start at index `1`
 
-Returns the total number of command-line arguments, including the program name itself at index 0.
+Import:
 
 ```arden
+import std.args.*;
+```
+
+## Basic Usage
+
+```arden
+import std.args.*;
 import std.io.*;
 
-count: Integer = Args.count();
-println("Received {count} arguments");
-```
+argc: Integer = Args.count();
+println("argc={argc}");
 
-You can also import the function directly by symbol:
-
-```arden
-import std.args.count as count;
-
-println("argc = {count()}");
-```
-
-That direct symbol alias can also be stored in a typed function value:
-
-```arden
-import std.args.get as get;
-
-fetch: (Integer) -> String = get;
-```
-
-The direct stdlib member works as a typed function value too:
-
-```arden
-argc: () -> Integer = Args.count;
-```
-
-### `Args.get(index: Integer): String`
-
-Returns the argument at the specified index as a `String`. 
-
-- Index `0` is always the path to the executable.
-- Indices `1` and above are user-provided arguments.
-
-```arden
-import std.io.*;
-
-if (Args.count() > 1) {
-    firstParam: String = Args.get(1);
-    println("First argument: {firstParam}");
+if (argc > 1) {
+    arg1: String = Args.get(1);
+    println("first={arg1}");
 }
 ```
+
+## Safe Pattern
+
+Always guard `Args.get(i)` by checking `Args.count()` first.
+
+```arden
+import std.args.*;
+
+function maybe_get(index: Integer): Option<String> {
+    if (Args.count() > index) {
+        return Option.Some(Args.get(index));
+    }
+    return Option.None;
+}
+```
+
+## Typed Function Value Usage
+
+```arden
+import std.args.*;
+
+count_fn: () -> Integer = Args.count;
+get_fn: (Integer) -> String = Args.get;
+```
+
+## Example In Repo
+
+- [`22_args`](../../examples/single_file/stdlib_and_system/22_args/22_args.arden)

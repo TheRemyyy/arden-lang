@@ -1,3 +1,4 @@
+// Showcase project entrypoint: wires modules and runs the app flow.
 package app;
 
 import analytics as analytics;

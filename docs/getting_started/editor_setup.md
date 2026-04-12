@@ -1,82 +1,36 @@
 # Editor Setup
 
-Arden does not yet ship a polished first-party editor extension, but you can still get a workable setup today.
+## Why This Matters
 
-The main thing is to separate what already exists from what is still manual:
+Good editor integration shortens feedback loops from minutes to seconds.
 
-- the compiler exposes `arden lsp`
-- `.arden` files can be associated with an existing grammar as a stopgap
-- most of the productive workflow still comes from terminal commands such as `arden check`, `arden fmt`, and `arden test`
+## Recommended Setup
 
-## Current State
-
-- the compiler exposes `arden lsp`
-- basic syntax highlighting can be approximated with existing C-family or Rust grammars
-- `.arden` file association is usually enough to make editing much less painful
-
-## VS Code
-
-Temporary file association:
-
-```json
-{
-  "files.associations": {
-    "*.arden": "rust"
-  }
-}
-```
-
-This is only a stopgap, but it gives you:
-
-- comments
-- strings
-- braces / indentation support
-- basic code coloration
-
-## LSP
-
-The CLI exposes:
+Use an editor that supports language-server integration and run the Arden LSP:
 
 ```bash
 arden lsp
 ```
 
-If you are wiring your own editor integration or experimenting with an LSP client, that is the entrypoint to use.
+## Baseline Workflow
 
-Practical rule: make sure `arden --help` and `arden run hello.arden` work first. Editor integration is much easier once the compiler itself is confirmed working.
+- keep `arden check` running frequently
+- run `arden fmt` before commits
+- use `arden lint` / `arden fix` for static hygiene
 
-## Useful Terminal Pairing
-
-Right now the best editing experience usually comes from combining a basic editor setup with a nearby terminal:
+## Practical Loop
 
 ```bash
 arden check
-arden fmt
 arden test
+arden fmt
+arden lint
 ```
 
-That loop already covers most of what a contributor needs while editor support is still maturing.
+## Troubleshooting
 
-## Practical Recommendation
+If completion/diagnostics do not appear:
 
-Right now the best experience is usually:
-
-1. file association for `.arden`
-2. external terminal running `arden check`, `arden fmt`, and `arden test`
-3. optional manual LSP integration if you want to experiment
-
-## If You Are Setting Up A Team Editor Workflow
-
-Prefer the conservative setup first:
-
-- standardize on `.arden` file association
-- standardize on formatter/test/check terminal commands
-- treat custom LSP integration as optional until it is stable enough for everyone
-
-That keeps the workflow reproducible even if editor-specific integration varies between machines.
-
-## Related Docs
-
-- [Compiler CLI](../compiler/cli.md)
-- [Quick Start](quick_start.md)
-- [Installation](installation.md)
+- ensure your editor is connected to the LSP process
+- ensure workspace root is the project root (`arden.toml` present for project mode)
+- run `arden check` in terminal to confirm compiler diagnostics directly

@@ -1,68 +1,59 @@
 # Math Module
 
-Mathematical functions and constants. All functions are available as static methods on the `Math` object.
+## Why This Matters
 
-Import requirement:
+Math functions are core utility tools for deterministic numeric logic.
+
+Import:
 
 ```arden
 import std.math.*;
 ```
 
-Calls like `Math.abs(...)` are import-checked and require `std.math` to be imported.
-
-Typed function-value aliases work too:
-
-```arden
-import std.math.abs as abs;
-
-f: (Integer) -> Integer = abs;
-```
-
-Direct `Math.*` members can also be stored as typed function values:
-
-```arden
-root: (Integer) -> Float = Math.sqrt;
-rand: () -> Float = Math.random;
-pow_ints: (Integer, Integer) -> Float = Math.pow;
-pick: (Integer, Float) -> Float = Math.min;
-widened_abs: (Integer) -> Float = Math.abs;
-```
-
-Safe higher-order numeric adaptation applies there too, so `Math.abs`, `Math.min`, and `Math.max` can widen an `Integer` result to `Float` in typed function-value contexts just like named functions can.
-
 ## Constants
 
-### `Math.pi(): Float`
-Returns the value of PI (~3.14159).
+- `Math.pi(): Float`
+- `Math.e(): Float`
 
-### `Math.e(): Float`
-Returns the value of Euler's number (~2.71828).
+## Frequently Used Functions
 
-## Functions
+- `Math.abs(x: Integer): Integer`
+- `Math.sqrt(x: Float): Float`
+- `Math.pow(base: Float, exp: Float): Float`
+- `Math.min/max<T>(a: T, b: T): T`
+- `Math.floor/ceil/round(x: Float): Float`
+- `Math.log/log10/exp(x: Float): Float`
+- `Math.random(): Float`
 
-| Function | Type Signature | Description |
-| :--- | :--- | :--- |
-| `Math.abs` | `(x: Integer) -> Integer` | Absolute value of an integer. |
-| `Math.sqrt` | `(x: Float) -> Float` | Square root. |
-| `Math.pow` | `(base: Float, exp: Float) -> Float` | Power function. |
-| `Math.sin` | `(x: Float) -> Float` | Sine (radians). |
-| `Math.cos` | `(x: Float) -> Float` | Cosine (radians). |
-| `Math.tan` | `(x: Float) -> Float` | Tangent (radians). |
-| `Math.floor` | `(x: Float) -> Float` | Floor rounding. |
-| `Math.ceil` | `(x: Float) -> Float` | Ceiling rounding. |
-| `Math.round` | `(x: Float) -> Float` | Nearest integer rounding. |
-| `Math.log` | `(x: Float) -> Float` | Natural logarithm. |
-| `Math.log10` | `(x: Float) -> Float` | Base 10 logarithm. |
-| `Math.exp` | `(x: Float) -> Float` | Exponential (e^x). |
-| `Math.random` | `() -> Float` | Random number between 0.0 and 1.0. |
-| `Math.min` | `<T>(a: T, b: T) -> T` | Smaller of two values. |
-| `Math.max` | `<T>(a: T, b: T) -> T` | Larger of two values. |
+## Example
 
-`Math.abs(Integer)` fails fast on the minimum signed `Integer` value because its positive counterpart cannot be represented in the same type.
+```arden
+import std.io.*;
+import std.math.*;
+
+x: Integer = Math.abs(-7);
+root: Float = Math.sqrt(9.0);
+power: Float = Math.pow(2.0, 8.0);
+
+println("abs={x}, sqrt={root}, pow={power}");
+```
 
 ## Conversions
 
-| Function | Type Signature | Description |
-| :--- | :--- | :--- |
-| `to_int` | `(x: Float | Integer | String) -> Integer` | Float to Integer (truncates), Integer identity, or decimal String to Integer. |
-| `to_float` | `(x: Integer | Float) -> Float` | Integer to Float, or Float identity. |
+- `to_int(x: Float | Integer | String): Integer`
+- `to_float(x: Integer | Float): Float`
+
+## Typed Function Values
+
+```arden
+import std.math.*;
+
+root_fn: (Integer) -> Float = Math.sqrt;
+rand_fn: () -> Float = Math.random;
+```
+
+`Math.abs(Integer)` rejects the minimum signed overflow edge case explicitly.
+
+## Example In Repo
+
+- [`03_math`](../../examples/single_file/basics/03_math/03_math.arden)

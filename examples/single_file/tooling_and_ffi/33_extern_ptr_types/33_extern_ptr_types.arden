@@ -1,3 +1,4 @@
+// FFI pointer-signature example: demonstrates extern pointer parameters/returns safely.
 import std.io.*;
 
 extern(c) function malloc(size: Integer): Ptr<None>;

@@ -1,3 +1,4 @@
+// Domain model: entities and core data contracts used by the showcase app.
 package domain;
 
 import std.string.*;

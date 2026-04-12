@@ -110,7 +110,7 @@ function helperFunction(): Integer {
 
 // Main function for direct execution (runs tests manually)
 function main(): None {
-    println("This file contains tests. Run with: arden test --path 24_test_attributes.arden");
+    println("This file contains tests. Run with: arden test --path examples/single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden");
     println("Or run tests directly:");
     println("");
     

@@ -1,3 +1,4 @@
+// Analytics helpers: computes aggregate metrics for showcase reporting.
 package analytics;
 
 import domain.Box;

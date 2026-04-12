@@ -1,14 +1,40 @@
 # Projects
 
-Project support is documented in detail in:
+## Why This Matters
+
+Single-file mode is great for experiments. Project mode is what you want for real multi-file development.
+
+## What Project Mode Gives You
+
+- explicit source graph (`files` in `arden.toml`)
+- explicit entrypoint (`entry`)
+- deterministic project `check/build/run/test`
+- cache reuse via `.ardencache/`
+
+## Minimal `arden.toml`
+
+```toml
+name = "app"
+version = "0.1.0"
+entry = "src/main.arden"
+files = ["src/main.arden"]
+```
+
+## Typical Loop
+
+```bash
+arden info
+arden check
+arden run
+```
+
+## Practical Guidance
+
+- keep file list explicit and reviewed
+- use `arden check` in CI for fast semantic validation
+- use `--timings` on `check/build` to inspect phase cost
+
+## Deep Dive
 
 - [Multi-File Projects](features/projects.md)
-
-Quick summary:
-
-- Arden projects are configured with `arden.toml`.
-- Source files are listed explicitly in `files`.
-- Project `opt_level` controls final binary optimization (`0/1/2/3/s/z/fast`, default `3`).
-- Single-file compile/run defaults to maximum-performance optimization.
-- Cross-file usage is validated by the import checker.
-- Top-level symbols are deterministically mangled during project build.
+- [CLI Reference](compiler/cli.md)

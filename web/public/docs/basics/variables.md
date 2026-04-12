@@ -1,44 +1,85 @@
 # Variables
 
-## Declaration
+Variables in Arden are explicit and static: each binding has a declared type and clear mutability.
 
-Variables in Arden are declared using the syntax `name: Type = value;`.
+## Why This Matters
+
+Most production bugs around state come from hidden mutation and unclear ownership.
+Arden forces you to answer two questions at declaration time:
+
+- what type is this value?
+- can this binding be reassigned (`mut`) or not?
+
+That keeps state transitions visible in code review.
+
+## Declaration Syntax
+
+Use `name: Type = value;`.
 
 ```arden
 age: Integer = 30;
 name: String = "Alice";
 ```
 
-> **Note:** The `let` keyword is optional. Both `let x: Integer = 10;` and `x: Integer = 10;` are valid and equivalent.
+`let` is optional and equivalent:
 
-## Mutability
+```arden
+let score: Integer = 10;
+level: Integer = 10;
+```
 
-By default, variables are **immutable**. Once assigned, their value cannot be changed.
+## Mutability (`mut`)
+
+Bindings are immutable by default.
 
 ```arden
 x: Integer = 10;
-// x = 20; // Error: Cannot assign to immutable variable
+// x = 20; // Error: immutable variable
 ```
 
-To make a variable mutable, use the `mut` keyword:
+Mark the binding as mutable when reassignment is intentional:
 
 ```arden
 mut count: Integer = 0;
-count = count + 1; // OK
+count = count + 1;
+count += 1;
 ```
+
+### Quick Rule
+
+- use immutable bindings by default
+- add `mut` only when the variable models real changing state
 
 ## Shadowing
 
-Arden supports variable shadowing. You can declare a new variable with the same name as a previous one.
-
-```arden
-x: Integer = 5;
-x: Integer = x + 1; // New variable 'x' shadows the old one
-```
-
-This is often useful for type transformations:
+You can create a new binding with the same name in the same scope.
 
 ```arden
 input: String = "100";
-input: Integer = to_int(input); // Shadowing with different type
+input: Integer = to_int(input); // new binding, new type
 ```
+
+Use this for staged transformations, not as a replacement for clear naming.
+
+## Variables vs References
+
+A variable owns its value by default. References borrow access:
+
+- `&T` read-only borrow
+- `&mut T` mutable borrow
+
+```arden
+mut n: Integer = 5;
+read: &Integer = &n;
+write: &mut Integer = &mut n;
+*write = 9;
+```
+
+See [Ownership and Borrowing](../advanced/ownership.md) for full rules.
+
+## Common Mistakes
+
+- trying to reassign a non-`mut` binding
+- treating shadowing as mutation
+- borrowing mutably from an immutable binding
+

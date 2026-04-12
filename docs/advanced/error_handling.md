@@ -1,10 +1,12 @@
 # Error Handling
 
-Arden provides robust error handling using the `Option<T>` and `Result<T, E>` types.
+## Why This Matters
 
-## Option<T>
+Arden makes recoverable failure explicit in types, so callers cannot ignore error paths accidentally.
 
-Represents a value that might be present or missing.
+## `Option<T>`
+
+Use for optional presence.
 
 ```arden
 enum Option<T> {
@@ -13,26 +15,9 @@ enum Option<T> {
 }
 ```
 
-Usage:
+## `Result<T, E>`
 
-```arden
-function findParams(id: Integer): Option<String> {
-    if (id == 0) {
-        return Option.None;
-    }
-    return Option.Some("Param");
-}
-```
-
-### Option Methods
-
-- `is_some(): Boolean` - Returns `true` if the option is a `Some` value.
-- `is_none(): Boolean` - Returns `true` if the option is a `None` value.
-- `unwrap(): T` - Returns the inner value or panics if `None`.
-
-## Result<T, E>
-
-Represents a success (`Ok`) or failure (`Error`).
+Use for success/error outcomes.
 
 ```arden
 enum Result<T, E> {
@@ -41,36 +26,31 @@ enum Result<T, E> {
 }
 ```
 
-Usage:
+## `?` Operator
+
+`?` unwraps success and returns early on failure.
 
 ```arden
 function divide(a: Integer, b: Integer): Result<Integer, String> {
     if (b == 0) {
-        return Result.Error("Division by zero");
+        return Result.Error("division by zero");
     }
     return Result.Ok(a / b);
 }
-```
 
-### Result Methods
-
-- `is_ok(): Boolean` - Returns `true` if the result is `Ok`.
-- `is_error(): Boolean` - Returns `true` if the result is `Error`.
-- `unwrap(): T` - Returns the success value or panics if `Error`.
-
-## The `?` Operator
-
-The `?` operator simplifies error propagation. If a Result is `Error`, it returns early.
-
-```arden
-function computation(): Result<Integer, String> {
-    val: Integer = divide(10, 2)?; // Unwraps or returns Error
-    val2: Integer = divide(val, 0)?; // Returns Error("Division by zero")
-    return Result.Ok(val2);
+function compute(): Result<Integer, String> {
+    x: Integer = divide(10, 2)?;
+    y: Integer = divide(x, 5)?;
+    return Result.Ok(y);
 }
 ```
 
-`arden check` validates `?` at the function boundary:
-- `Option<T>?` requires the enclosing function to return `Option<...>`
-- `Result<T, E>?` requires the enclosing function to return `Result<..., E-compatible>`
-- nested lambda bodies are checked against their own lambda return context, not the outer function's `Option`/`Result` return type
+## Compile-Time Validation
+
+`arden check` enforces that `?` matches surrounding function/lambda return kind.
+
+## Practical Guidance
+
+- `Option<T>` for expected absence
+- `Result<T, E>` for actionable failure context
+- avoid `unwrap()` outside tests/proven invariants

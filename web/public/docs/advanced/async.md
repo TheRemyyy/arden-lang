@@ -1,66 +1,51 @@
 # Async / Await
 
-Arden has first-class support for asynchronous programming.
+## Why This Matters
 
-## Async Functions
+Async lets you model concurrent or latency-heavy work while keeping types explicit and flow readable.
 
-Define an async function using `async`. It returns a `Task<T>`.
+## Core Model
+
+- `async function` returns `Task<T>`
+- `await` converts `Task<T>` into `T`
+- `async { ... }` creates inline task expressions
+
+## Basic Usage
 
 ```arden
 async function fetchData(): Task<String> {
     return "Data";
 }
-```
 
-## Await
-
-Use `await` to resolve a `Task<T>` into `T`.
-
-```arden
-async function loadMessage(): Task<String> {
-    data: String = await fetchData();
-    return data;
+async function load(): Task<String> {
+    value: String = await fetchData();
+    return value;
 }
 ```
 
-## Tasks
-
-`Task<T>` is runtime-scheduled:
-
-- Creating a task (`async function` call or `async { ... }`) immediately spawns a runtime worker thread.
-- The task body runs concurrently in that worker.
-- Subsequent `await` calls return the cached result.
-
-Current runtime behavior is thread-backed: Unix-like platforms use the `pthread` runtime, while Windows uses Win32 thread primitives. Multiple tasks can run in parallel, and `await` joins the task if it is not finished yet.
-
-### Task Methods
-
-- `task.is_done(): Boolean`
-- `task.cancel(): None`
-- `task.await_timeout(ms: Integer): Option<T>`
-
-Reference examples:
-- `examples/14_async.arden`
-- `examples/28_async_runtime_control.arden`
-
 ## Async Blocks
-
-`async { ... }` creates a `Task<T>` expression.
 
 ```arden
 task: Task<Integer> = async {
     return 21 * 2;
 };
 
-value: Integer = await task; // value == 42
+result: Integer = await task;
 ```
 
-Expression-bodied async blocks also infer the tail expression type directly, so builtin/static calls, lambdas, ranges, and assertion-style expressions work without an explicit `return`.
+## Task Methods
 
-```arden
-import std.string.*;
+- `task.is_done(): Boolean`
+- `task.cancel(): None`
+- `task.await_timeout(ms: Integer): Option<T>`
 
-task: Task<String> = async { Str.upper("arden") };
-f: Task<(Integer) -> Integer> = async { (x: Integer) => x + 1 };
-r: Task<Range<Integer>> = async { range(0, 3) };
-```
+## Borrowing Interaction
+
+Captures inside async blocks participate in borrow-check rules. Invalid moves/mutations after borrowed capture are rejected.
+
+See [Ownership and Borrowing](ownership.md).
+
+## Examples
+
+- [`14_async`](../../examples/single_file/safety_and_async/14_async/14_async.arden)
+- [`28_async_runtime_control`](../../examples/single_file/tooling_and_ffi/28_async_runtime_control/28_async_runtime_control.arden)

@@ -1,6 +1,10 @@
 # Syntax
 
-Arden syntax is inspired by C, C++, Rust, and TypeScript. It is designed to be familiar yet modern.
+Arden syntax is intentionally familiar for C-family / Rust / TypeScript users, with explicit blocks and types.
+
+## Why This Matters
+
+Readable syntax is only useful if semantics stay obvious. Arden syntax favors explicitness where mistakes are costly (types, mutability, scopes).
 
 ## Comments
 
@@ -9,54 +13,44 @@ Arden syntax is inspired by C, C++, Rust, and TypeScript. It is designed to be f
 
 /*
  * Multi-line comment
- * (Nested comments are not currently supported)
  */
 ```
 
-## Blocks and Scoping
+Nested block comments are not currently supported.
 
-Arden uses curly braces `{}` to define blocks of code. Variables defined inside a block are scoped to that block.
+## Blocks and Scope
+
+Blocks use `{}` and define lexical scope.
 
 ```arden
 function main(): None {
-    // Outer scope
     x: Integer = 10;
-    
+
     {
-        // Inner scope
         y: Integer = 20;
-        println("{x} {y}"); // Access outer and inner
+        println("{x} {y}");
     }
-    
-    // y is not accessible here
+
+    // y is out of scope here
+    return None;
 }
 ```
 
-String interpolation embeds supported scalar expressions directly inside string literals:
+## Statements and Semicolons
+
+Semicolons are required after statements:
 
 ```arden
-println("{10} {true} {'🚀'} {None}");
+x: Integer = 5;
+return None;
 ```
 
-Interpolation currently supports `Integer`, `Float`, `Boolean`, `String`, `Char`, and `None`.
+Declarations like `function`, `class`, `if`, `while`, and `match` do not need `;` after their closing brace.
 
-## Semicolons
-
-Semicolons `;` are required at the end of statements.
+## Assignment and Compound Assignment
 
 ```arden
-x: Integer = 5; // Required
-return None;    // Required if you write an explicit return statement
-```
-
-Some constructs like `if`, `while`, `function` definitions do not require a semicolon after their closing brace.
-
-## Assignment
-
-Basic assignment and compound assignment are supported:
-
-```arden
-x: Integer = 10;
+mut x: Integer = 10;
 x = x + 1;
 x += 2;
 x -= 1;
@@ -65,22 +59,31 @@ x /= 2;
 x %= 3;
 ```
 
-Compound assignment also works with index and field targets:
+Compound assignment works with fields and indexes too:
 
 ```arden
-arr[i] += 1;
-obj.count -= 1;
+obj.count += 1;
+arr[i] -= 2;
 ```
+
+## String Interpolation
+
+```arden
+println("count={10}, ok={true}, mark={'🚀'}");
+```
+
+Interpolation currently supports scalar display types (`Integer`, `Float`, `Boolean`, `String`, `Char`, `None`).
 
 ## Identifiers
 
-Identifiers (variable names, function names) must start with a letter or underscore, followed by letters, numbers, or underscores.
+Identifier rule: start with letter/underscore, continue with letters/digits/underscore.
 
-- Valid: `name`, `_id`, `value2`, `camelCase`
-- Invalid: `2name`, `class` (keyword)
+- valid: `name`, `_id`, `value2`
+- invalid: `2name`, reserved keywords
 
-## Code Style
+## Style Conventions
 
-- **Functions/Variables**: `camelCase` (recommended)
-- **Types/Classes/Interfaces**: `PascalCase` (enforced by convention)
-- **Constants**: `SCREAMING_SNAKE_CASE` (convention)
+- variables/functions: `camelCase`
+- types/classes/interfaces: `PascalCase`
+- constants: `SCREAMING_SNAKE_CASE`
+

@@ -32,6 +32,22 @@ pub(crate) fn stable_hasher() -> XxHash64 {
     XxHash64::with_seed(0)
 }
 
+fn hash_compiler_identity(hasher: &mut impl Hasher) {
+    env!("CARGO_PKG_VERSION").hash(hasher);
+    if let Ok(exe_path) = std::env::current_exe() {
+        exe_path.hash(hasher);
+        if let Ok(metadata) = fs::metadata(&exe_path) {
+            metadata.len().hash(hasher);
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(duration) = modified.duration_since(UNIX_EPOCH) {
+                    duration.as_secs().hash(hasher);
+                    duration.subsec_nanos().hash(hasher);
+                }
+            }
+        }
+    }
+}
+
 pub(crate) fn read_cache_blob_raw(path: &Path, label: &str) -> Result<Option<Vec<u8>>, String> {
     let raw = match fs::read(path) {
         Ok(raw) => raw,
@@ -205,7 +221,7 @@ pub(crate) fn compute_project_fingerprint(
 ) -> Result<String, String> {
     let mut hasher = stable_hasher();
 
-    env!("CARGO_PKG_VERSION").hash(&mut hasher);
+    hash_compiler_identity(&mut hasher);
     config.name.hash(&mut hasher);
     config.version.hash(&mut hasher);
     config.entry.hash(&mut hasher);
@@ -1509,7 +1525,7 @@ pub(crate) fn compute_semantic_project_fingerprint(
     do_check: bool,
 ) -> String {
     let mut hasher = stable_hasher();
-    env!("CARGO_PKG_VERSION").hash(&mut hasher);
+    hash_compiler_identity(&mut hasher);
     config.name.hash(&mut hasher);
     config.version.hash(&mut hasher);
     config.entry.hash(&mut hasher);
@@ -1862,7 +1878,7 @@ pub(crate) fn compute_object_build_fingerprint(link: &LinkConfig<'_>) -> String 
     let linker = detect_linker_flavor()
         .map(|flavor| flavor.cache_key())
         .unwrap_or("missing");
-    env!("CARGO_PKG_VERSION").hash(&mut hasher);
+    hash_compiler_identity(&mut hasher);
     link.opt_level.hash(&mut hasher);
     link.target.hash(&mut hasher);
     linker.hash(&mut hasher);

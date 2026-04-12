@@ -40,6 +40,47 @@ fn check_import_errors(source: &str) -> Vec<ImportError> {
 }
 
 #[test]
+fn stdlib_registry_does_not_expose_unimplemented_surface_symbols() {
+    let registry = stdlib_registry();
+
+    assert!(
+        registry.get_namespace("System__args").is_none(),
+        "System__args should not be exposed until callable surface is implemented"
+    );
+    assert!(
+        registry.get_namespace("assert_null").is_none(),
+        "assert_null should not be exposed as builtin"
+    );
+    assert!(
+        registry.get_namespace("assert_not_null").is_none(),
+        "assert_not_null should not be exposed as builtin"
+    );
+    assert!(
+        registry.get_namespace("length").is_none(),
+        "global length builtin should not be exposed; use receiver length() APIs"
+    );
+}
+
+fn strip_ansi_escape_sequences(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' && chars.next_if_eq(&'[').is_some() {
+            while let Some(next) = chars.next() {
+                if ('@'..='~').contains(&next) {
+                    break;
+                }
+            }
+            continue;
+        }
+        output.push(ch);
+    }
+
+    output
+}
+
+#[test]
 fn module_local_namespace_alias_does_not_leak_to_top_level_import_check() {
     let source = r#"
 module Inner {
@@ -246,17 +287,21 @@ function main(): None {
     assert_eq!(errors.len(), 1, "{errors:?}");
 
     let rendered = errors[0].format_with_source(source, "main.arden");
-    assert!(rendered.contains("--> main.arden:"), "{rendered}");
+    let normalized = strip_ansi_escape_sequences(&rendered);
+    assert!(normalized.contains("--> main.arden:"), "{rendered}");
     assert!(
-        rendered.contains("Function 'abs' is defined in 'std.math'"),
+        normalized.contains("Function 'abs' is defined in 'std.math'"),
         "{rendered}"
     );
     assert!(
-        rendered.contains("Add 'import std.math.abs;' to the top of your file"),
+        normalized.contains("Add 'import std.math.abs;' to the top of your file"),
         "{rendered}"
     );
-    assert!(rendered.contains("did you mean 'main'?"), "{rendered}");
-    assert!(rendered.contains("current namespace: global"), "{rendered}");
+    assert!(normalized.contains("did you mean 'main'?"), "{rendered}");
+    assert!(
+        normalized.contains("current namespace: global"),
+        "{rendered}"
+    );
 }
 
 #[test]

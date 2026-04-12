@@ -1,184 +1,55 @@
 # Testing
 
-Arden includes a built-in test framework based on attributes and assertion helpers.
+## Why This Matters
 
-The goal is to keep normal test workflows inside the same compiler CLI instead of forcing a separate external runner.
+Tests are a built-in part of Arden workflow, so verification stays close to source and CI.
 
-## Minimal Test
-
-```arden
-@Test
-function testAddition(): None {
-    assert_eq(2 + 2, 4);
-}
-```
-
-Run it with:
-
-```bash
-arden test --path test_math.arden
-```
-
-## Test Attributes
-
-### `@Test`
-
-Marks a function as a test case.
-
-### `@Ignore`
-
-Skips a test.
+## Basic Test
 
 ```arden
 @Test
-@Ignore("waiting for feature")
-function skipped(): None {
-    fail("should not run");
+function sampleTest(): None {
+    assert_eq(1, 1);
+    return None;
 }
 ```
 
-### `@Before` / `@After`
-
-Run before and after each test.
-
-Use these for per-test setup/cleanup.
-
-### `@BeforeAll` / `@AfterAll`
-
-Run once per suite.
-
-Use these when repeated setup would be wasteful.
-
-## Assertion Helpers
-
-Common built-ins:
-
-- `assert(condition)`
-- `assert_true(condition)`
-- `assert_false(condition)`
-- `assert_eq(a, b)`
-- `assert_ne(a, b)`
-- `fail()`
-- `fail("message")`
-
-Assertion helpers can also be stored as typed function values.
-
-How to read them:
-
-- `assert(condition)` passes when `condition` is `true`
-- `assert_true(condition)` is the explicit version of `assert(condition)`
-- `assert_false(condition)` passes when `condition` is `false`
-- `assert_eq(a, b)` passes when `a == b`
-- `assert_ne(a, b)` passes when `a != b`
-- `fail("message")` always aborts the current test immediately
-
-Typical usage:
-
-```arden
-@Test
-function testFlags(): None {
-    ready: Boolean = true;
-    assert(ready);
-    assert_true(ready);
-    assert_false(!ready);
-}
-
-@Test
-function testValues(): None {
-    result: Integer = 3 * 7;
-    assert_eq(result, 21);
-    assert_ne(result, 20);
-}
-```
-
-Tests do not need an explicit `return None;` if the body already ends naturally.
-
-## CLI
-
-```bash
-arden test
-arden test --list
-arden test --filter math
-arden test --path tests/
-arden test --path tests/math_test.arden
-```
-
-Options:
-
-- `-p, --path <file-or-dir>`
-- `-l, --list`
-- `-f, --filter <pattern>`
-
-## Typical Workflows
-
-### Run The Current Project's Tests
+Run tests:
 
 ```bash
 arden test
 ```
 
-### List Tests Without Executing
+Single file:
 
 ```bash
-arden test --list
+arden test --path examples/single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden
 ```
 
-### Run A Focused Subset
+List tests without running:
 
 ```bash
-arden test --filter math
+arden test --list --path examples/single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden
 ```
 
-### Point At A Specific Directory Or File
+Filter by substring:
 
 ```bash
-arden test --path tests/
-arden test --path tests/math_test.arden
+arden test --filter Addition --path examples/single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden
 ```
 
-## Behavior Notes
+## Useful Features
 
-- without `--path`, project mode uses the current project's configured files
-- directory discovery walks nested folders
-- generated runner files are isolated from the source tree
-- ignored tests are reported but not executed
-- `--list` shows discovered tests without running them
+- test listing
+- ignored tests with optional reason
+- suite setup/teardown patterns (by example)
 
-## Complete Example
+## Practical Guidance
 
-```arden
-@BeforeAll
-function initSuite(): None {
-    println("starting tests");
-}
+- keep tests deterministic
+- favor small focused tests for language semantics
+- keep integration-style flows in dedicated suites
 
-@Test
-function testNumbers(): None {
-    assert_eq(3 * 7, 21);
-}
+## Example
 
-@Test
-@Ignore("example")
-function skipped(): None {
-    fail("should not run");
-}
-```
-
-## When To Prefer `arden test`
-
-Use the built-in test runner when:
-
-- you want attribute-driven unit-style coverage
-- you are already in project mode
-- you want test discovery integrated with the compiler
-
-Use the repository example sweep scripts when:
-
-- you changed compiler behavior broadly
-- you want to validate the public example corpus
-- you need a regression pass beyond one project's tests
-
-Reference example:
-
-- [examples/24_test_attributes.arden](../../examples/24_test_attributes.arden)
-- [scripts/README.md](../../scripts/README.md)
+- [`24_test_attributes`](../../examples/single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden)

@@ -1,39 +1,44 @@
 # Enums
 
-Enums allow you to define a type by enumerating its possible variants. Arden enums are algebraic data types, meaning they can hold data.
+## Why This Matters
 
-## Basic Enums
+Enums model finite states explicitly and pair naturally with exhaustive `match` logic.
+
+## Basic Enum
 
 ```arden
-enum Color {
-    Red,
-    Green,
-    Blue
+enum Status {
+    Active,
+    Inactive,
+    Pending
 }
 ```
 
-## Enums with Data
+## Payload Variants
 
 ```arden
-enum Message {
-    Quit,
-    Move(x: Integer, y: Integer),
-    Write(String),
-    ChangeColor(r: Integer, g: Integer, b: Integer)
+enum Result<T, E> {
+    Ok(T),
+    Error(E)
 }
 ```
 
-## Pattern Matching with Enums
-
-You use `match` to extract data from enums.
+## Pattern Matching
 
 ```arden
-msg: Message = Message.Write("Hello");
-
-match (msg) {
-    Quit => { println("Quitting"); }
-    Move(x, y) => { println("Moving to {x}, {y}"); }
-    Write(s) => { println("Message: {s}"); }
-    _ => { println("Other"); }
+match (status) {
+    Status.Active => { println("active"); },
+    Status.Inactive => { println("inactive"); },
+    _ => { println("other"); }
 }
 ```
+
+## Best Practices
+
+- use enums instead of magic strings/ints for state machines
+- prefer exhaustive `match` to long `if` chains
+
+## Related
+
+- [Control Flow](../basics/control_flow.md)
+- Example: [`06_enums`](../../examples/single_file/language_core/06_enums/06_enums.arden)

@@ -1,3 +1,4 @@
+// Bindgen workflow example: shows generated extern declarations in a runnable flow.
 import std.io.*;
 
 // Typical output shape from `arden bindgen`.

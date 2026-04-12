@@ -1,88 +1,137 @@
 # System Module
 
-The `System` module provides functions for interacting with the operating system and environment.
+## Why This Matters
 
-## Functions
+`System` is the boundary between your Arden program and the host operating system.
+If you are not sure when to read env vars, run shell commands, inspect cwd/OS, or return explicit exit codes, start here.
 
-The `System` object provides static methods for system-level operations.
+## Quick Mental Model
 
-### `System.getenv(name: String): String`
+- `System.getenv(...)` -> read an environment variable
+- `System.cwd()` -> get current working directory
+- `System.os()` -> detect operating system
+- `System.shell(...)` -> run command, get exit code
+- `System.exec(...)` -> run command, capture stdout text
+- `System.exit(...)` -> terminate program with explicit exit code
 
-Retrieves the value of an environment variable. Returns an empty string if the variable is not set.
-Invalid UTF-8 environment values are rejected immediately instead of slipping into a broken `String`.
+Import:
+
+```arden
+import std.system.*;
+```
+
+For console output, also import I/O:
 
 ```arden
 import std.io.*;
-
-path: String = System.getenv("PATH");
-println("Path: {path}");
 ```
 
-### `System.shell(command: String): Integer`
+## 1. Environment Variables: `System.getenv(name)`
 
-Executes a command in the system shell and returns the exit code.
-On POSIX hosts this is now the decoded process exit code, not the raw `system()` wait-status word.
-
-```arden
-exitCode: Integer = System.shell("echo Hello");
-```
-
-### `System.exec(command: String): String`
-
-Executes a command in the system shell and captures its standard output (stdout).
-The full stdout stream is returned; longer output is no longer truncated to a small fixed buffer.
-Binary-looking stdout is rejected: embedded NUL bytes and invalid UTF-8 now fail immediately instead of slipping into a broken `String`.
+Use this for runtime configuration (`APP_ENV`, `API_URL`, feature flags).
 
 ```arden
 import std.io.*;
+import std.system.*;
 
-output: String = System.exec("whoami");
-println("Current user: {output}");
-```
-
-### `System.cwd(): String`
-
-Returns the current working directory.
-Deep working directories are supported without truncating or collapsing the result to an empty string.
-
-```arden
-import std.io.*;
-
-currentDir: String = System.cwd();
-println("Working in: {currentDir}");
-```
-
-### `System.os(): String`
-
-Returns the name of the operating system ("windows", "macos", "linux", or "unknown").
-
-```arden
-import std.io.*;
-
-os: String = System.os();
-println("Running on {os}");
-```
-
-### `System.exit(code: Integer): None`
-
-Terminates the program immediately with the specified exit code. `0` usually indicates success, while any other value indicates an error.
-
-```arden
-if (error_occurred) {
-    System.exit(1);
+env: String = System.getenv("APP_ENV");
+if (env == "") {
+    println("APP_ENV not set");
+} else {
+    println("APP_ENV={env}");
 }
 ```
 
-The global builtin `exit` is also available without import and can be assigned to a typed function value:
+If the variable is missing, Arden returns an empty string.
+
+## 2. Working Directory: `System.cwd()`
+
+Returns the directory where the process currently runs.
+
+```arden
+import std.io.*;
+import std.system.*;
+
+cwd: String = System.cwd();
+println("cwd={cwd}");
+```
+
+Useful for debugging path issues in CI and scripts.
+
+## 3. OS Detection: `System.os()`
+
+Returns one of: `windows`, `macos`, `linux`, `unknown`.
+
+```arden
+import std.io.*;
+import std.system.*;
+
+os: String = System.os();
+if (os == "windows") {
+    println("Using Windows-specific behavior");
+} else {
+    println("Using Unix-like behavior");
+}
+```
+
+## 4. Run Command + Exit Code: `System.shell(command)`
+
+Use when you only care whether a command succeeded.
+
+```arden
+import std.io.*;
+import std.system.*;
+
+code: Integer = System.shell("echo hello");
+println("exit code={code}");
+```
+
+## 5. Run Command + Capture Output: `System.exec(command)`
+
+Use when you need stdout text (`whoami`, `git rev-parse`, etc.).
+
+```arden
+import std.io.*;
+import std.system.*;
+
+user: String = System.exec("whoami");
+println("current user={user}");
+```
+
+### `shell` vs `exec`
+
+- need status code only -> `System.shell(...)`
+- need command output text -> `System.exec(...)`
+
+## 6. Explicit Exit: `System.exit(code)`
+
+Useful for CLI tools that must return clear OS status.
+
+```arden
+import std.system.*;
+
+function main(): None {
+    ok: Boolean = true;
+    if (!ok) {
+        System.exit(1);
+    }
+    System.exit(0);
+}
+```
+
+The global builtin `exit` is also available:
 
 ```arden
 stop: (Integer) -> None = exit;
 ```
 
-Direct `System.*` members can be stored as typed function values too:
+## Safety Notes (Important)
 
-```arden
-cwd: () -> String = System.cwd;
-platform: () -> String = System.os;
-run_shell: (String) -> Integer = System.shell;
-```
+- Never pass unvalidated user input directly into `System.shell`/`System.exec`.
+  - that is a command-injection risk
+- Always check shell exit codes for command-based workflows.
+- Do not rely on exact command output formatting across OSes without fallback logic.
+
+## Example In Repo
+
+- [`20_system`](../../examples/single_file/stdlib_and_system/20_system/20_system.arden)

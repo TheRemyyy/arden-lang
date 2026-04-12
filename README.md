@@ -212,11 +212,11 @@ The repo includes both focused feature examples and larger project-style samples
 
 Recommended first passes:
 
-- [examples/01_hello.arden](examples/01_hello.arden)
-- [examples/10_ownership.arden](examples/10_ownership.arden)
-- [examples/14_async.arden](examples/14_async.arden)
-- [examples/24_test_attributes.arden](examples/24_test_attributes.arden)
-- [examples/35_visibility_enforcement.arden](examples/35_visibility_enforcement.arden)
+- [examples/single_file/basics/01_hello/01_hello.arden](examples/single_file/basics/01_hello/01_hello.arden)
+- [examples/single_file/safety_and_async/10_ownership/10_ownership.arden](examples/single_file/safety_and_async/10_ownership/10_ownership.arden)
+- [examples/single_file/safety_and_async/14_async/14_async.arden](examples/single_file/safety_and_async/14_async/14_async.arden)
+- [examples/single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden](examples/single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden)
+- [examples/single_file/language_edges/35_visibility_enforcement/35_visibility_enforcement.arden](examples/single_file/language_edges/35_visibility_enforcement/35_visibility_enforcement.arden)
 - [examples/starter_project/README.md](examples/starter_project/README.md)
 - [examples/showcase_project/README.md](examples/showcase_project/README.md)
 

@@ -43,7 +43,22 @@ echo.
 echo [2/5] Running Single-File Examples...
 echo.
 
-for %%f in ("%REPO_ROOT%\examples\*.arden") do (
+for /R "%REPO_ROOT%\examples\single_file" %%f in (*.arden) do (
+    echo ----------------------------------------
+    echo Testing %%f...
+
+    "%COMPILER%" run "%%f"
+
+    if !ERRORLEVEL! EQU 0 (
+        echo [PASS] %%~nxf
+        set /a PASS_COUNT+=1
+    ) else (
+        echo [FAIL] %%~nxf
+        set /a FAIL_COUNT+=1
+    )
+)
+
+for /R "%REPO_ROOT%\examples\demos" %%f in (*.arden) do (
     echo ----------------------------------------
     echo Testing %%f...
 

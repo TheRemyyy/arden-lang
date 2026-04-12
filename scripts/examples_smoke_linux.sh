@@ -38,8 +38,12 @@ echo
 echo "[2/5] Running single-file examples..."
 echo
 
-shopt -s nullglob
-for file in "${REPO_ROOT}"/examples/*.arden; do
+mapfile -t SINGLE_FILE_EXAMPLES < <(
+  find "${REPO_ROOT}/examples/single_file" "${REPO_ROOT}/examples/demos" \
+    -type f -name '*.arden' | LC_ALL=C sort
+)
+
+for file in "${SINGLE_FILE_EXAMPLES[@]}"; do
   echo "----------------------------------------"
   echo "Testing ${file}..."
   if "${COMPILER}" run "${file}"; then

@@ -189,7 +189,7 @@ EOF_TEST
 
 "${COMPILER}" test --list --path "${TEST_FILE}" >/dev/null
 "${COMPILER}" test --path "${TEST_FILE}" >/dev/null
-"${COMPILER}" test --path "${REPO_ROOT}/examples/24_test_attributes.arden" >"${BORROW_ERR_OUT}" 2>&1
+"${COMPILER}" test --path "${REPO_ROOT}/examples/single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden" >"${BORROW_ERR_OUT}" 2>&1
 grep -q "8 passed;" "${BORROW_ERR_OUT}"
 grep -q "2 ignored;" "${BORROW_ERR_OUT}"
 
@@ -229,16 +229,16 @@ if actual != expected:
     )
 PY
 
-"${COMPILER}" run "${REPO_ROOT}/examples/35_visibility_enforcement.arden" >"${EXAMPLE_STDOUT}"
+"${COMPILER}" run "${REPO_ROOT}/examples/single_file/language_edges/35_visibility_enforcement/35_visibility_enforcement.arden" >"${EXAMPLE_STDOUT}"
 grep -Fq 'Account: Standard, balance=150' "${EXAMPLE_STDOUT}"
 grep -Fq 'Premium owner code=77' "${EXAMPLE_STDOUT}"
-"${COMPILER}" run "${REPO_ROOT}/examples/36_inheritance_extends.arden" >"${EXAMPLE_STDOUT}"
+"${COMPILER}" run "${REPO_ROOT}/examples/single_file/language_edges/36_inheritance_extends/36_inheritance_extends.arden" >"${EXAMPLE_STDOUT}"
 grep -Fq 'Animal(Buddy)' "${EXAMPLE_STDOUT}"
 grep -Fq 'sound=woof' "${EXAMPLE_STDOUT}"
-"${COMPILER}" run "${REPO_ROOT}/examples/37_interfaces_contracts.arden" >"${EXAMPLE_STDOUT}"
+"${COMPILER}" run "${REPO_ROOT}/examples/single_file/language_edges/37_interfaces_contracts/37_interfaces_contracts.arden" >"${EXAMPLE_STDOUT}"
 grep -Fq 'name=Arden Language' "${EXAMPLE_STDOUT}"
 grep -Fq 'Book: Arden Language' "${EXAMPLE_STDOUT}"
-"${COMPILER}" run "${REPO_ROOT}/examples/38_import_aliases.arden" >"${EXAMPLE_STDOUT}"
+"${COMPILER}" run "${REPO_ROOT}/examples/single_file/language_edges/38_import_aliases/38_import_aliases.arden" >"${EXAMPLE_STDOUT}"
 grep -Fq 'abs=42, upper=ARDEN' "${EXAMPLE_STDOUT}"
 
 cat <<'EOF_RANGE_FLOAT' > "${RANGE_FLOAT_FILE}"

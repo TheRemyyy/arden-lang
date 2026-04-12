@@ -267,7 +267,7 @@ export function Home() {
                     </div>
                     <div className="mt-10 max-w-5xl">
                         <p className="max-w-4xl font-display text-2xl italic leading-9 tracking-[-0.03em] text-[var(--text)] md:text-3xl">
-                            Arden is for people who want low-level control, readable semantics, and a toolchain that still feels clean once the codebase stops being tiny.
+                            Arden is for people who want multi-level control, readable semantics, and a toolchain that still feels clean once the codebase stops being tiny.
                         </p>
                         <div className="mt-8 grid gap-6 md:grid-cols-2">
                             <p className="text-sm leading-8 text-[var(--text-muted)]">

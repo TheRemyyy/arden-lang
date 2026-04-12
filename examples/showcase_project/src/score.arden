@@ -1,3 +1,4 @@
+// Scoring logic: deterministic evaluation rules used by the showcase pipeline.
 package analytics;
 
 import std.math as math;

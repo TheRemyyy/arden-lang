@@ -1,264 +1,19 @@
 //! Import checker - verifies that all used functions are imported
 
+mod error;
+mod extraction;
+mod helpers;
+
 use crate::ast::*;
-use crate::diagnostics::{render_source_diagnostic, SourceDiagnostic};
 use crate::stdlib::StdLib;
-use colored::Colorize;
+pub use error::ImportError;
+pub use extraction::{extract_function_namespaces, extract_known_namespace_paths};
+use helpers::{
+    did_you_mean, direct_stdlib_wildcard_member_name, direct_wildcard_member_name,
+    flatten_field_chain, looks_like_function_symbol, parse_alias_member_path,
+};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-
-/// Error when using function without importing it
-#[derive(Debug, Clone)]
-pub struct ImportError {
-    pub function_name: String,
-    pub defined_in: String,
-    pub used_in: String,
-    pub span: Span,
-    pub suggestion: Option<String>,
-}
-
-impl ImportError {
-    fn source_summary(&self) -> String {
-        match self.defined_in.as_str() {
-            "<unknown namespace alias>" => {
-                format!("Unknown namespace alias usage '{}'", self.function_name)
-            }
-            "<unresolved import alias>" => {
-                format!("Imported alias '{}' no longer resolves", self.function_name)
-            }
-            "<unresolved namespace alias member>" => {
-                let (alias, member) = self
-                    .function_name
-                    .split_once('.')
-                    .unwrap_or((self.function_name.as_str(), ""));
-                format!("Imported namespace alias '{alias}' has no member '{member}'")
-            }
-            "<unresolved wildcard import>" => {
-                format!(
-                    "Wildcard import '{}.*' no longer provides '{}'",
-                    self.suggestion.as_deref().unwrap_or(""),
-                    self.function_name
-                )
-            }
-            _ => format!(
-                "Function '{}' is defined in '{}' but not imported here",
-                self.function_name, self.defined_in
-            ),
-        }
-    }
-
-    fn import_hint(&self) -> String {
-        if self.function_name.contains("__") {
-            format!("import {}.*;", self.defined_in)
-        } else {
-            format!("import {}.{};", self.defined_in, self.function_name)
-        }
-    }
-
-    fn source_help_message(&self) -> String {
-        match self.defined_in.as_str() {
-            "<unknown namespace alias>" => {
-                "Import an existing namespace with 'import <namespace> as <alias>;'".to_string()
-            }
-            "<unresolved import alias>" => {
-                format!(
-                    "Update or remove the stale import for '{}'",
-                    self.function_name
-                )
-            }
-            "<unresolved namespace alias member>" => {
-                "Update the import target or the member access".to_string()
-            }
-            "<unresolved wildcard import>" => {
-                format!(
-                    "Update the wildcard import target or import '{}' explicitly",
-                    self.function_name
-                )
-            }
-            _ => format!("Add '{}' to the top of your file", self.import_hint()),
-        }
-    }
-
-    fn source_note_message(&self) -> String {
-        let mut note = format!("current namespace: {}", self.used_in);
-        if let Some(suggestion) = &self.suggestion {
-            note.push_str(&format!("; did you mean '{}'?", suggestion));
-        }
-        note
-    }
-
-    pub fn format(&self) -> String {
-        if self.defined_in == "<unknown namespace alias>" {
-            return format!(
-                "Unknown namespace alias usage '{}' in '{}'\n  \
-                 Hint: Import an existing namespace with 'import <namespace> as <alias>;'",
-                self.function_name, self.used_in
-            );
-        }
-
-        if self.defined_in == "<unresolved import alias>" {
-            return format!(
-                "Imported alias '{}' no longer resolves in '{}'\n  \
-                 Hint: Update or remove the stale import for '{}'",
-                self.function_name, self.used_in, self.function_name
-            );
-        }
-
-        if self.defined_in == "<unresolved namespace alias member>" {
-            let (alias, member) = self
-                .function_name
-                .split_once('.')
-                .unwrap_or((self.function_name.as_str(), ""));
-            return format!(
-                "Imported namespace alias '{}' has no member '{}' in '{}'\n  \
-                 Hint: Update the import target or the member access",
-                alias, member, self.used_in
-            );
-        }
-
-        if self.defined_in == "<unresolved wildcard import>" {
-            return format!(
-                "Wildcard import '{}.*' no longer provides '{}' in '{}'\n  \
-                 Hint: Update the wildcard import target or the referenced symbol",
-                self.suggestion.as_deref().unwrap_or(""),
-                self.function_name,
-                self.used_in
-            );
-        }
-
-        let mut result = format!(
-            "Function '{}' is defined in '{}' but not imported in '{}'\n  \
-             Hint: Add '{}' to the top of your file",
-            self.function_name,
-            self.defined_in,
-            self.used_in,
-            self.import_hint()
-        );
-
-        if let Some(suggestion) = &self.suggestion {
-            result.push_str(&format!("\n  Or did you mean: '{}'?", suggestion));
-        }
-
-        result
-    }
-
-    pub fn format_with_source(&self, source: &str, filename: &str) -> String {
-        render_source_diagnostic(
-            source,
-            &SourceDiagnostic {
-                header: format!("{}: {}", "error".red().bold(), self.source_summary()),
-                filename,
-                span: self.span.clone(),
-                help: Some(self.source_help_message()),
-                note: Some(self.source_note_message()),
-            },
-        )
-    }
-}
-
-/// Calculate Levenshtein distance between two strings
-fn levenshtein_distance(a: &str, b: &str) -> usize {
-    let a_chars: Vec<char> = a.chars().collect();
-    let b_chars: Vec<char> = b.chars().collect();
-    let len_a = a_chars.len();
-    let len_b = b_chars.len();
-
-    if len_a == 0 {
-        return len_b;
-    }
-    if len_b == 0 {
-        return len_a;
-    }
-
-    let mut prev: Vec<usize> = (0..=len_b).collect();
-    let mut curr: Vec<usize> = vec![0; len_b + 1];
-
-    for (i, ca) in a_chars.iter().enumerate() {
-        curr[0] = i + 1;
-        for (j, cb) in b_chars.iter().enumerate() {
-            let cost = if ca == cb { 0 } else { 1 };
-            curr[j + 1] = (prev[j + 1] + 1).min(curr[j] + 1).min(prev[j] + cost);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-
-    prev[len_b]
-}
-
-/// Find the closest matching string from candidates
-fn did_you_mean(name: &str, candidates: &[String]) -> Option<String> {
-    let mut best_match: Option<(String, usize)> = None;
-
-    for candidate in candidates {
-        let distance = levenshtein_distance(name, candidate);
-        // Only suggest if distance is reasonable (<= 3 and less than half the length)
-        let threshold = (name.len() / 2).max(3);
-        if distance <= threshold {
-            if let Some((_, best_distance)) = &best_match {
-                if distance < *best_distance {
-                    best_match = Some((candidate.clone(), distance));
-                }
-            } else {
-                best_match = Some((candidate.clone(), distance));
-            }
-        }
-    }
-
-    best_match.map(|(s, _)| s)
-}
-
-fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
-    match expr {
-        Expr::Ident(name) => Some(vec![name.clone()]),
-        Expr::Field { object, field } => {
-            let mut parts = flatten_field_chain(&object.node)?;
-            parts.push(field.clone());
-            Some(parts)
-        }
-        _ => None,
-    }
-}
-
-fn looks_like_function_symbol(name: &str) -> bool {
-    name.chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_lowercase() || ch == '_')
-}
-
-fn direct_wildcard_member_name(
-    import_path: &str,
-    owner_ns: &str,
-    symbol_name: &str,
-) -> Option<String> {
-    if owner_ns == import_path {
-        return (!symbol_name.contains("__")).then(|| symbol_name.to_string());
-    }
-
-    let module_path = import_path.strip_prefix(owner_ns)?.strip_prefix('.')?;
-    if module_path.is_empty() {
-        return None;
-    }
-    let module_prefix = module_path.replace('.', "__");
-    let remainder = symbol_name.strip_prefix(&format!("{}__", module_prefix))?;
-    (!remainder.is_empty() && !remainder.contains("__")).then(|| remainder.to_string())
-}
-
-fn direct_stdlib_wildcard_member_name(
-    import_path: &str,
-    owner_ns: &str,
-    symbol_name: &str,
-) -> Option<String> {
-    if owner_ns != import_path {
-        return None;
-    }
-    Some(
-        symbol_name
-            .split_once("__")
-            .map(|(_, member)| member)
-            .unwrap_or(symbol_name)
-            .to_string(),
-    )
-}
 
 /// Tracks which functions are defined in which files/namespaces
 pub struct ImportChecker<'a> {
@@ -1563,129 +1318,125 @@ impl<'a> ImportChecker<'a> {
         }
     }
 
+    fn check_decl(&mut self, decl: &Spanned<Decl>) {
+        let fallback_span = decl.span.clone();
+        match &decl.node {
+            Decl::Function(func) => {
+                self.check_generic_param_bounds(&func.generic_params);
+                let check_signature_type = |checker: &mut ImportChecker<'_>, ty: &Type| {
+                    if func.is_extern || func.extern_abi.is_some() {
+                        checker.check_decl_type(ty, fallback_span.clone());
+                    } else {
+                        checker.check_type(ty, fallback_span.clone());
+                    }
+                };
+                for param in &func.params {
+                    check_signature_type(self, &param.ty);
+                }
+                check_signature_type(self, &func.return_type);
+                self.enter_scope();
+                self.bind_parameter_locals(&func.params);
+                for stmt in &func.body {
+                    self.check_stmt(stmt);
+                }
+                self.exit_scope();
+            }
+            Decl::Class(class) => {
+                self.check_generic_param_bounds(&class.generic_params);
+                if let Some(parent) = &class.extends {
+                    if let Ok(parsed_ty) = crate::parser::parse_type_source(parent) {
+                        self.check_decl_type(&parsed_ty, fallback_span.clone());
+                    } else {
+                        self.check_qualified_name_alias_usage(parent, fallback_span.clone());
+                    }
+                }
+                for implemented in &class.implements {
+                    if let Ok(parsed_ty) = crate::parser::parse_type_source(implemented) {
+                        self.check_decl_type(&parsed_ty, fallback_span.clone());
+                    } else {
+                        self.check_qualified_name_alias_usage(implemented, fallback_span.clone());
+                    }
+                }
+                for field in &class.fields {
+                    self.check_decl_type(&field.ty, fallback_span.clone());
+                }
+                if let Some(ctor) = &class.constructor {
+                    for param in &ctor.params {
+                        self.check_decl_type(&param.ty, fallback_span.clone());
+                    }
+                    self.enter_scope();
+                    self.bind_parameter_locals(&ctor.params);
+                    for stmt in &ctor.body {
+                        self.check_stmt(stmt);
+                    }
+                    self.exit_scope();
+                }
+                if let Some(dtor) = &class.destructor {
+                    self.check_block_in_scope(&dtor.body);
+                }
+                for method in &class.methods {
+                    self.check_generic_param_bounds(&method.generic_params);
+                    for param in &method.params {
+                        self.check_decl_type(&param.ty, fallback_span.clone());
+                    }
+                    self.check_decl_type(&method.return_type, fallback_span.clone());
+                    self.enter_scope();
+                    self.bind_parameter_locals(&method.params);
+                    for stmt in &method.body {
+                        self.check_stmt(stmt);
+                    }
+                    self.exit_scope();
+                }
+            }
+            Decl::Module(module) => {
+                let saved_import_scope = self.push_module_import_scope(module);
+                for inner in &module.declarations {
+                    self.check_decl(inner);
+                }
+                self.pop_module_import_scope(saved_import_scope);
+            }
+            Decl::Interface(interface) => {
+                self.check_generic_param_bounds(&interface.generic_params);
+                for extended in &interface.extends {
+                    if let Ok(parsed_ty) = crate::parser::parse_type_source(extended) {
+                        self.check_decl_type(&parsed_ty, fallback_span.clone());
+                    } else {
+                        self.check_qualified_name_alias_usage(extended, fallback_span.clone());
+                    }
+                }
+                for method in &interface.methods {
+                    for param in &method.params {
+                        self.check_decl_type(&param.ty, fallback_span.clone());
+                    }
+                    self.check_decl_type(&method.return_type, fallback_span.clone());
+                    if let Some(default_impl) = &method.default_impl {
+                        self.enter_scope();
+                        self.bind_parameter_locals(&method.params);
+                        for stmt in default_impl {
+                            self.check_stmt(stmt);
+                        }
+                        self.exit_scope();
+                    }
+                }
+            }
+            Decl::Enum(en) => {
+                self.check_generic_param_bounds(&en.generic_params);
+                for variant in &en.variants {
+                    for field in &variant.fields {
+                        self.check_decl_type(&field.ty, fallback_span.clone());
+                    }
+                }
+            }
+            Decl::Import(_) => {}
+        }
+    }
+
     /// Check entire program for import violations
     pub fn check_program(&mut self, program: &Program) -> Result<(), Vec<ImportError>> {
-        fn check_decl(checker: &mut ImportChecker<'_>, decl: &Spanned<Decl>) {
-            let fallback_span = decl.span.clone();
-            match &decl.node {
-                Decl::Function(func) => {
-                    checker.check_generic_param_bounds(&func.generic_params);
-                    let check_signature_type = |checker: &mut ImportChecker<'_>, ty: &Type| {
-                        if func.is_extern || func.extern_abi.is_some() {
-                            checker.check_decl_type(ty, fallback_span.clone());
-                        } else {
-                            checker.check_type(ty, fallback_span.clone());
-                        }
-                    };
-                    for param in &func.params {
-                        check_signature_type(checker, &param.ty);
-                    }
-                    check_signature_type(checker, &func.return_type);
-                    checker.enter_scope();
-                    checker.bind_parameter_locals(&func.params);
-                    for stmt in &func.body {
-                        checker.check_stmt(stmt);
-                    }
-                    checker.exit_scope();
-                }
-                Decl::Class(class) => {
-                    checker.check_generic_param_bounds(&class.generic_params);
-                    if let Some(parent) = &class.extends {
-                        if let Ok(parsed_ty) = crate::parser::parse_type_source(parent) {
-                            checker.check_decl_type(&parsed_ty, fallback_span.clone());
-                        } else {
-                            checker.check_qualified_name_alias_usage(parent, fallback_span.clone());
-                        }
-                    }
-                    for implemented in &class.implements {
-                        if let Ok(parsed_ty) = crate::parser::parse_type_source(implemented) {
-                            checker.check_decl_type(&parsed_ty, fallback_span.clone());
-                        } else {
-                            checker.check_qualified_name_alias_usage(
-                                implemented,
-                                fallback_span.clone(),
-                            );
-                        }
-                    }
-                    for field in &class.fields {
-                        checker.check_decl_type(&field.ty, fallback_span.clone());
-                    }
-                    if let Some(ctor) = &class.constructor {
-                        for param in &ctor.params {
-                            checker.check_decl_type(&param.ty, fallback_span.clone());
-                        }
-                        checker.enter_scope();
-                        checker.bind_parameter_locals(&ctor.params);
-                        for stmt in &ctor.body {
-                            checker.check_stmt(stmt);
-                        }
-                        checker.exit_scope();
-                    }
-                    if let Some(dtor) = &class.destructor {
-                        checker.check_block_in_scope(&dtor.body);
-                    }
-                    for method in &class.methods {
-                        checker.check_generic_param_bounds(&method.generic_params);
-                        for param in &method.params {
-                            checker.check_decl_type(&param.ty, fallback_span.clone());
-                        }
-                        checker.check_decl_type(&method.return_type, fallback_span.clone());
-                        checker.enter_scope();
-                        checker.bind_parameter_locals(&method.params);
-                        for stmt in &method.body {
-                            checker.check_stmt(stmt);
-                        }
-                        checker.exit_scope();
-                    }
-                }
-                Decl::Module(module) => {
-                    let saved_import_scope = checker.push_module_import_scope(module);
-                    for inner in &module.declarations {
-                        check_decl(checker, inner);
-                    }
-                    checker.pop_module_import_scope(saved_import_scope);
-                }
-                Decl::Interface(interface) => {
-                    checker.check_generic_param_bounds(&interface.generic_params);
-                    for extended in &interface.extends {
-                        if let Ok(parsed_ty) = crate::parser::parse_type_source(extended) {
-                            checker.check_decl_type(&parsed_ty, fallback_span.clone());
-                        } else {
-                            checker
-                                .check_qualified_name_alias_usage(extended, fallback_span.clone());
-                        }
-                    }
-                    for method in &interface.methods {
-                        for param in &method.params {
-                            checker.check_decl_type(&param.ty, fallback_span.clone());
-                        }
-                        checker.check_decl_type(&method.return_type, fallback_span.clone());
-                        if let Some(default_impl) = &method.default_impl {
-                            checker.enter_scope();
-                            checker.bind_parameter_locals(&method.params);
-                            for stmt in default_impl {
-                                checker.check_stmt(stmt);
-                            }
-                            checker.exit_scope();
-                        }
-                    }
-                }
-                Decl::Enum(en) => {
-                    checker.check_generic_param_bounds(&en.generic_params);
-                    for variant in &en.variants {
-                        for field in &variant.fields {
-                            checker.check_decl_type(&field.ty, fallback_span.clone());
-                        }
-                    }
-                }
-                Decl::Import(_) => {}
-            }
-        }
-
         self.collect_local_functions(program);
 
         for decl in &program.declarations {
-            check_decl(self, decl);
+            self.check_decl(decl);
         }
 
         let mut seen = HashSet::new();
@@ -1704,124 +1455,4 @@ impl<'a> ImportChecker<'a> {
             Err(self.errors.clone())
         }
     }
-}
-
-fn parse_alias_member_path(name: &str) -> Option<Vec<String>> {
-    let mut parts = name
-        .split('.')
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    if parts.len() < 2 {
-        return None;
-    }
-    if let Some(last) = parts.last_mut() {
-        if let Some((base, _)) = last.split_once('<') {
-            *last = base.to_string();
-        }
-    }
-    Some(parts)
-}
-
-/// Extract all function definitions from a program with their namespace
-pub fn extract_function_namespaces(program: &Program, namespace: &str) -> HashMap<String, String> {
-    let mut result = HashMap::new();
-
-    fn walk_decl(
-        out: &mut HashMap<String, String>,
-        decl: &Decl,
-        namespace: &str,
-        module_prefix: Option<String>,
-    ) {
-        match decl {
-            Decl::Function(func) => {
-                if let Some(module) = module_prefix {
-                    out.insert(format!("{}__{}", module, func.name), namespace.to_string());
-                } else {
-                    out.insert(func.name.clone(), namespace.to_string());
-                }
-            }
-            Decl::Module(module) => {
-                let next_prefix = if let Some(prefix) = module_prefix {
-                    format!("{}__{}", prefix, module.name)
-                } else {
-                    module.name.clone()
-                };
-                for inner in &module.declarations {
-                    walk_decl(out, &inner.node, namespace, Some(next_prefix.clone()));
-                }
-            }
-            Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
-        }
-    }
-    for decl in &program.declarations {
-        walk_decl(&mut result, &decl.node, namespace, None);
-    }
-
-    result
-}
-
-pub fn extract_known_namespace_paths(program: &Program, namespace: &str) -> HashSet<String> {
-    let mut result = HashSet::from([namespace.to_string()]);
-
-    fn walk_decl(
-        out: &mut HashSet<String>,
-        decl: &Decl,
-        namespace: &str,
-        module_prefix: Option<String>,
-    ) {
-        match decl {
-            Decl::Class(class) => {
-                let path = if let Some(prefix) = module_prefix {
-                    format!("{}.{}", prefix, class.name)
-                } else {
-                    format!("{}.{}", namespace, class.name)
-                };
-                out.insert(path);
-            }
-            Decl::Enum(en) => {
-                let path = if let Some(prefix) = module_prefix.as_ref() {
-                    format!("{}.{}", prefix, en.name)
-                } else {
-                    format!("{}.{}", namespace, en.name)
-                };
-                out.insert(path);
-                for variant in &en.variants {
-                    let variant_path = if let Some(prefix) = module_prefix.as_ref() {
-                        format!("{}.{}.{}", prefix, en.name, variant.name)
-                    } else {
-                        format!("{}.{}.{}", namespace, en.name, variant.name)
-                    };
-                    out.insert(variant_path);
-                }
-            }
-            Decl::Interface(interface) => {
-                let path = if let Some(prefix) = module_prefix {
-                    format!("{}.{}", prefix, interface.name)
-                } else {
-                    format!("{}.{}", namespace, interface.name)
-                };
-                out.insert(path);
-            }
-            Decl::Module(module) => {
-                let next_prefix = if let Some(prefix) = module_prefix {
-                    format!("{}.{}", prefix, module.name)
-                } else {
-                    format!("{}.{}", namespace, module.name)
-                };
-                out.insert(next_prefix.clone());
-                for inner in &module.declarations {
-                    walk_decl(out, &inner.node, namespace, Some(next_prefix.clone()));
-                }
-            }
-            Decl::Function(_) | Decl::Import(_) => {}
-        }
-    }
-
-    for decl in &program.declarations {
-        walk_decl(&mut result, &decl.node, namespace, None);
-    }
-
-    result
 }

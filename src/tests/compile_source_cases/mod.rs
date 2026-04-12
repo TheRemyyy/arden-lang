@@ -22,6 +22,7 @@ mod compile_source_generic_nested_runtime;
 mod compile_source_imported_type_alias_runtime;
 mod compile_source_interface_runtime;
 mod compile_source_iteration_numeric_edges;
+mod compile_source_large_list_runtime;
 mod compile_source_map_set_runtime;
 mod compile_source_member_diagnostics;
 mod compile_source_mixed_numeric_runtime;
