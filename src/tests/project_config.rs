@@ -1,4 +1,4 @@
-use super::{TestExpectErrExt, TestExpectExt};
+use super::{with_current_dir, TestExpectErrExt, TestExpectExt};
 use crate::project::{find_project_root, OutputKind, ProjectConfig};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -423,10 +423,7 @@ fn find_project_root_accepts_relative_existing_directory_inside_project() {
     )
     .must("project config should be written");
 
-    let previous_dir = std::env::current_dir().must("current dir");
-    std::env::set_current_dir(&project_root).must("enter project root");
-    let discovered = find_project_root(Path::new("src"));
-    let _ = std::env::set_current_dir(previous_dir);
+    let discovered = with_current_dir(&project_root, || find_project_root(Path::new("src")));
 
     let _ = std::fs::remove_dir_all(&project_root);
 
