@@ -1,5 +1,7 @@
+mod graph;
 mod lookup_prep;
 
+pub(crate) use graph::{run_dependency_graph_phase, DependencyGraphInputs, DependencyGraphOutputs};
 pub(crate) use lookup_prep::build_namespace_files_lookup;
 
 use crate::ast::{ImportDecl, Program};

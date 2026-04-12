@@ -1,5 +1,5 @@
-use super::dependency_graph_metrics::record_dependency_graph_metrics;
-use super::dependency_graph_types::DependencyGraphOutputs;
+use super::metrics::record_dependency_graph_metrics;
+use super::types::DependencyGraphOutputs;
 use crate::cache::{
     BuildTimings, DependencyGraphTimingTotals, ParsedProjectUnit, ProjectSymbolLookup,
 };

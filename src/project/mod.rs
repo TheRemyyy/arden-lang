@@ -3,6 +3,9 @@
 //! Supports multi-file projects with arden.toml configuration
 
 pub(crate) mod pipeline;
+pub(crate) mod runtime;
+
+pub(crate) use runtime::{ensure_project_is_runnable, resolve_project_output_path};
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

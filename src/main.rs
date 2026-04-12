@@ -36,41 +36,45 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Instant;
 use std::time::UNIX_EPOCH;
 
-use crate::ast::{Block, Decl, Expr, ImportDecl, Pattern, Program, Stmt, Type};
-use crate::borrowck::BorrowChecker;
+use crate::ast::{Block, Decl, Expr, ImportDecl, Pattern, Program, Stmt};
 use crate::cache::*;
+use crate::cli::commands::{fix_target, format_targets, lint_target};
+pub(crate) use crate::cli::commands::{lex_file, parse_file, show_project_info};
 use crate::cli::output::*;
-pub(crate) use crate::cli::paths::collect_arden_files;
-use crate::cli::paths::{
-    current_dir_checked, format_target_label, validate_source_file_path, with_process_current_dir,
-};
+use crate::cli::paths::{current_dir_checked, validate_source_file_path, with_process_current_dir};
 use crate::cli::test_discovery::find_test_files;
 use crate::codegen::Codegen;
 #[cfg(test)]
 use crate::dependency::*;
+use crate::dependency::{
+    run_dependency_graph_phase, DependencyGraphInputs, DependencyGraphOutputs,
+};
 use crate::diagnostics::*;
-use crate::import_check::ImportChecker;
 use crate::linker::*;
 use crate::parser::Parser;
 use crate::project::pipeline::{
     build_rewrite_fingerprint_context, compute_project_change_impact, evaluate_semantic_cache_gate,
-    run_dependency_graph_phase, run_entry_validation_phase, run_full_codegen_phase,
-    run_import_check_phase, run_object_pipeline, run_parse_index_phase, run_rewrite_phase,
-    run_rewrite_prep_phase, run_semantic_phase, validate_symbol_collisions, DependencyGraphInputs,
-    DependencyGraphOutputs, FullCodegenInputs, FullCodegenRoute, ImportCheckInputs,
-    ObjectPipelineInputs, ParseIndexOutputs, RewriteContextInputs, RewritePhaseInputs,
-    RewritePrepInputs, RewritePreparation, SemanticGateInputs, SemanticPhaseInputs,
+    finalize_completed_build, run_compile_dispatch_phase, run_entry_validation_phase,
+    run_parse_index_phase, run_postcheck_phase, run_rewrite_pipeline, run_rewrite_prep_phase,
+    validate_symbol_collisions, CompileDispatchInputs, CompileDispatchOutcome, FinalizeBuildInputs,
+    ParseIndexOutputs, PostcheckInputs, PostcheckOutcome, RewriteContextInputs,
+    RewritePipelineInputs, RewritePrepInputs, RewritePreparation, SemanticGateInputs,
+    SemanticPhaseInputs,
 };
-use crate::project::{find_project_root, OutputKind, ProjectConfig};
+use crate::project::{
+    ensure_project_is_runnable, find_project_root, resolve_project_output_path, OutputKind,
+    ProjectConfig,
+};
+pub(crate) use crate::shared::frontend::{
+    extract_imports, extract_top_level_imports, parse_program_from_source,
+    run_single_file_semantic_checks, validate_entry_main_signature,
+};
 use crate::specialization::*;
-use crate::stdlib::stdlib_registry;
 use crate::symbol_lookup::GlobalSymbolMaps;
 use crate::test_runner::{discover_tests, generate_test_runner_with_source, print_discovery};
-use crate::typeck::TypeChecker;
 
 #[derive(Clone)]
 pub(crate) struct ObjectCodegenShard {
@@ -1406,32 +1410,17 @@ fn build_project(
         project_symbol_lookup: &project_symbol_lookup,
     });
 
-    // Phase 2: Check imports for each file
-    if do_check {
-        print_cli_step("Checking imports");
-        run_import_check_phase(
-            &mut build_timings,
-            ImportCheckInputs {
-                project_root: &project_root,
-                parsed_files: &parsed_files,
-                global_function_map: &global_function_map,
-                entry_namespace: &entry_namespace,
-                rewrite_fingerprint_ctx: &rewrite_fingerprint_ctx,
-            },
-        )?;
-    }
-
-    // Phase 3: Build combined AST with deterministic namespace mangling.
-    let rewritten_files = run_rewrite_phase(
+    let rewritten_files = run_rewrite_pipeline(
         &mut build_timings,
-        RewritePhaseInputs {
+        RewritePipelineInputs {
+            do_check,
             project_root: &project_root,
             parsed_files: &parsed_files,
-            safe_rewrite_cache_files: &safe_rewrite_cache_files,
+            global_function_map: &global_function_map,
             entry_namespace: &entry_namespace,
             rewrite_fingerprint_ctx: &rewrite_fingerprint_ctx,
+            safe_rewrite_cache_files: &safe_rewrite_cache_files,
             namespace_functions: &namespace_functions,
-            global_function_map: &global_function_map,
             namespace_class_map: &namespace_class_map,
             global_class_map: &global_class_map,
             namespace_interface_map: &namespace_interface_map,
@@ -1443,10 +1432,13 @@ fn build_project(
         },
     )?;
 
-    if do_check {
-        run_semantic_phase(
-            &mut build_timings,
-            SemanticPhaseInputs {
+    if let PostcheckOutcome::Completed = run_postcheck_phase(
+        &mut build_timings,
+        PostcheckInputs {
+            do_check,
+            check_only,
+            config_name: &config.name,
+            semantic_inputs: SemanticPhaseInputs {
                 project_root: &project_root,
                 parsed_files: &parsed_files,
                 rewritten_files: &rewritten_files,
@@ -1458,24 +1450,11 @@ fn build_project(
                 api_changed: &impact.api_changed,
                 dependent_api_impact: &impact.dependent_api_impact,
             },
-        )?;
-    }
-
-    if check_only {
-        println!(
-            "{} {} {}",
-            cli_success("Check passed"),
-            cli_accent(&config.name),
-            cli_soft(format!(
-                "({})",
-                cli_elapsed(build_timings.started_at.elapsed())
-            ))
-        );
-        build_timings.print();
+        },
+    )? {
         return Ok(());
     }
 
-    // Compile combined program AST (import/type checks already done above).
     let link = LinkConfig {
         opt_level: Some(&config.opt_level),
         target: config.target.as_deref(),
@@ -1484,73 +1463,49 @@ fn build_project(
         link_libs: &config.link_libs,
         link_args: &config.link_args,
     };
-    match run_full_codegen_phase(
+    if let CompileDispatchOutcome::Completed = run_compile_dispatch_phase(
         &mut build_timings,
-        FullCodegenInputs {
+        CompileDispatchInputs {
             rewritten_files: &rewritten_files,
             entry_path: &entry_path,
             output_path: &output_path,
             emit_llvm,
             link: &link,
+            project_root: &project_root,
+            config_name: &config.name,
+            fingerprint: &fingerprint,
+            parsed_files: &parsed_files,
+            file_dependency_graph: &file_dependency_graph,
+            entry_namespace: &entry_namespace,
+            project_symbol_lookup: &project_symbol_lookup,
+            global_maps: GlobalSymbolMaps {
+                function_map: &global_function_map,
+                function_file_map: &global_function_file_map,
+                class_map: &global_class_map,
+                class_file_map: &global_class_file_map,
+                interface_map: &global_interface_map,
+                interface_file_map: &global_interface_file_map,
+                enum_map: &global_enum_map,
+                enum_file_map: &global_enum_file_map,
+                module_map: &global_module_map,
+                module_file_map: &global_module_file_map,
+            },
         },
     )? {
-        FullCodegenRoute::EmitLlvmCompleted => {}
-        FullCodegenRoute::FullProgramCompleted => {
-            save_cached_fingerprint(&project_root, &fingerprint)?;
-            print_cli_artifact_result(
-                "Built",
-                &config.name,
-                &output_path,
-                build_timings.started_at.elapsed(),
-            );
-            build_timings.print();
-            return Ok(());
-        }
-        FullCodegenRoute::ObjectsRequired => {
-            run_object_pipeline(
-                &mut build_timings,
-                ObjectPipelineInputs {
-                    project_root: &project_root,
-                    output_path: &output_path,
-                    parsed_files: &parsed_files,
-                    rewritten_files: &rewritten_files,
-                    file_dependency_graph: &file_dependency_graph,
-                    link: &link,
-                    entry_namespace: &entry_namespace,
-                    project_symbol_lookup: &project_symbol_lookup,
-                    global_maps: GlobalSymbolMaps {
-                        function_map: &global_function_map,
-                        function_file_map: &global_function_file_map,
-                        class_map: &global_class_map,
-                        class_file_map: &global_class_file_map,
-                        interface_map: &global_interface_map,
-                        interface_file_map: &global_interface_file_map,
-                        enum_map: &global_enum_map,
-                        enum_file_map: &global_enum_file_map,
-                        module_map: &global_module_map,
-                        module_file_map: &global_module_file_map,
-                    },
-                },
-            )?;
-        }
+        return Ok(());
     }
 
-    if !check_only {
-        build_timings.measure("build cache save", || {
-            save_cached_fingerprint(&project_root, &fingerprint)?;
-            save_semantic_cached_fingerprint(&project_root, &semantic_fingerprint)?;
-            save_dependency_graph_cache(&project_root, &current_dependency_graph_cache)
-        })?;
-    }
-
-    print_cli_artifact_result(
-        "Built",
-        &config.name,
-        &output_path,
-        build_timings.started_at.elapsed(),
-    );
-
-    build_timings.print();
+    finalize_completed_build(
+        &mut build_timings,
+        FinalizeBuildInputs {
+            project_root: &project_root,
+            config_name: &config.name,
+            output_path: &output_path,
+            fingerprint: &fingerprint,
+            semantic_fingerprint: &semantic_fingerprint,
+            current_dependency_graph_cache: &current_dependency_graph_cache,
+        },
+    )?;
 
     Ok(())
 }
@@ -1708,29 +1663,6 @@ fn run_project(
     run_binary(&output_path, args)
 }
 
-fn ensure_project_is_runnable(output_kind: &OutputKind) -> Result<(), String> {
-    if *output_kind == OutputKind::Bin {
-        return Ok(());
-    }
-
-    Err(format!(
-        "{}: `arden run` requires `output_kind = \"bin\"`, found {:?}. Use `arden build` for library targets.",
-        "error".red().bold(),
-        output_kind
-    ))
-}
-
-fn resolve_project_output_path(project_root: &Path, config: &ProjectConfig) -> PathBuf {
-    let output_path = project_root.join(&config.output);
-    #[cfg(windows)]
-    {
-        if config.output_kind == OutputKind::Bin && output_path.extension().is_none() {
-            return output_path.with_extension("exe");
-        }
-    }
-    output_path
-}
-
 /// Run a single file (legacy mode)
 fn run_single_file(
     file: &Path,
@@ -1765,53 +1697,6 @@ fn check_command(file: Option<&Path>, show_timings: bool) -> Result<(), String> 
         return build_project(false, false, true, true, show_timings);
     }
     check_file(file)
-}
-
-fn parse_program_from_source(source: &str, filename: &str) -> Result<Program, String> {
-    let tokens = lexer::tokenize(source)
-        .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
-    let mut parser = Parser::new(tokens);
-    parser
-        .parse_program()
-        .map_err(|e| format_parse_error(&e, source, filename))
-}
-
-fn run_single_file_semantic_checks(
-    source: &str,
-    filename: &str,
-    program: &Program,
-) -> Result<(), String> {
-    let namespace = extract_namespace(program);
-    let imports = extract_top_level_imports(program);
-    let function_namespaces = import_check::extract_function_namespaces(program, &namespace);
-    let known_namespace_paths = import_check::extract_known_namespace_paths(program, &namespace);
-    let mut import_checker = ImportChecker::new(
-        Arc::new(function_namespaces),
-        Arc::new(known_namespace_paths),
-        namespace,
-        imports,
-        stdlib_registry(),
-    );
-    if let Err(errors) = import_checker.check_program(program) {
-        let mut rendered = String::new();
-        for err in errors {
-            rendered.push_str(&err.format_with_source(source, filename));
-            rendered.push('\n');
-        }
-        return Err(rendered.trim_end().to_string());
-    }
-
-    let mut type_checker = TypeChecker::new();
-    if let Err(errors) = type_checker.check(program) {
-        return Err(typeck::format_errors(&errors, source, filename));
-    }
-
-    let mut borrow_checker = BorrowChecker::new();
-    if let Err(errors) = borrow_checker.check(program) {
-        return Err(borrowck::format_borrow_errors(&errors, source, filename));
-    }
-
-    Ok(())
 }
 
 /// Compile a single file (legacy mode)
@@ -1988,310 +1873,6 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
     Ok(())
 }
 
-/// Extract namespace from a program
-fn extract_namespace(program: &ast::Program) -> String {
-    program
-        .package
-        .clone()
-        .unwrap_or_else(|| "global".to_string())
-}
-
-pub(crate) fn validate_entry_main_signature(
-    program: &Program,
-    source: &str,
-    filename: &str,
-) -> Result<(), String> {
-    let mut errors = Vec::new();
-    for decl in &program.declarations {
-        let Decl::Function(func) = &decl.node else {
-            continue;
-        };
-        if func.name != "main" {
-            continue;
-        }
-
-        if !func.generic_params.is_empty() {
-            errors.push(typeck::TypeError::new(
-                "main() cannot declare generic parameters",
-                decl.span.clone(),
-            ));
-        }
-        if !func.params.is_empty() {
-            errors.push(typeck::TypeError::new(
-                "main() cannot declare parameters",
-                decl.span.clone(),
-            ));
-        }
-        if func.is_async {
-            errors.push(typeck::TypeError::new(
-                "main() cannot be async; use a synchronous main() entrypoint",
-                decl.span.clone(),
-            ));
-        }
-        if func.is_extern || func.extern_abi.is_some() {
-            errors.push(typeck::TypeError::new(
-                "main() cannot be declared extern",
-                decl.span.clone(),
-            ));
-        }
-        if func.is_variadic {
-            errors.push(typeck::TypeError::new(
-                "main() cannot be variadic",
-                decl.span.clone(),
-            ));
-        }
-        if !matches!(func.return_type, Type::None | Type::Integer) {
-            errors.push(typeck::TypeError::new(
-                "main() must return None or Integer",
-                decl.span.clone(),
-            ));
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(typeck::format_errors(&errors, source, filename))
-    }
-}
-
-/// Extract imports from a program
-fn extract_imports(program: &ast::Program) -> Vec<ast::ImportDecl> {
-    fn collect_imports(
-        declarations: &[ast::Spanned<ast::Decl>],
-        imports: &mut Vec<ast::ImportDecl>,
-    ) {
-        for decl in declarations {
-            match &decl.node {
-                ast::Decl::Import(import) => imports.push(import.clone()),
-                ast::Decl::Module(module) => collect_imports(&module.declarations, imports),
-                _ => {}
-            }
-        }
-    }
-
-    let mut imports = Vec::new();
-    collect_imports(&program.declarations, &mut imports);
-    imports
-}
-
-fn extract_top_level_imports(program: &ast::Program) -> Vec<ast::ImportDecl> {
-    program
-        .declarations
-        .iter()
-        .filter_map(|decl| match &decl.node {
-            ast::Decl::Import(import) => Some(import.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-/// Show project information
-fn show_project_info() -> Result<(), String> {
-    let project_root = find_project_root(&current_dir_checked()?).ok_or_else(|| {
-        format!(
-            "{}: No arden.toml found in current directory or parents.",
-            "error".red().bold()
-        )
-    })?;
-
-    let config_path = project_root.join("arden.toml");
-    let config = ProjectConfig::load(&config_path)?;
-    config.validate(&project_root)?;
-    validate_opt_level(Some(&config.opt_level))?;
-    for file in config.get_source_files(&project_root) {
-        validate_source_file_path(&file)?;
-    }
-
-    println!("{}", cli_accent("Project"));
-    println!("  {}: {}", cli_tertiary("name"), cli_soft(&config.name));
-    println!(
-        "  {}: {}",
-        cli_tertiary("version"),
-        cli_soft(&config.version)
-    );
-    println!("  {}: {}", cli_tertiary("entry"), cli_soft(&config.entry));
-    println!("  {}: {}", cli_tertiary("output"), cli_soft(&config.output));
-    println!(
-        "  {}: {}",
-        cli_tertiary("output kind"),
-        cli_soft(format!("{:?}", config.output_kind))
-    );
-    println!(
-        "  {}: {}",
-        cli_tertiary("opt level"),
-        cli_soft(&config.opt_level)
-    );
-    println!(
-        "  {}: {}",
-        cli_tertiary("target"),
-        cli_soft(config.target.as_deref().unwrap_or("native/default"))
-    );
-    println!("  {}: {}", cli_tertiary("root"), cli_path(&project_root));
-
-    println!("\n{}", cli_tertiary("source files"));
-    for file in &config.files {
-        println!("  - {}", cli_soft(file));
-    }
-
-    if !config.dependencies.is_empty() {
-        println!("\n{}", cli_tertiary("dependencies"));
-        for (name, version) in &config.dependencies {
-            println!("  - {} = {}", cli_soft(name), cli_soft(version));
-        }
-    }
-
-    if !config.link_search.is_empty() {
-        println!("\n{}", cli_tertiary("link search"));
-        for path in &config.link_search {
-            println!("  - {}", cli_soft(path));
-        }
-    }
-
-    if !config.link_libs.is_empty() {
-        println!("\n{}", cli_tertiary("link libraries"));
-        for lib in &config.link_libs {
-            println!("  - {}", cli_soft(lib));
-        }
-    }
-
-    Ok(())
-}
-
-fn format_targets(path: Option<&Path>, check_only: bool) -> Result<(), String> {
-    let current_dir = current_dir_checked()?;
-    let target_label = format_target_label(path, &current_dir);
-    let targets = if let Some(path) = path {
-        collect_arden_files(path)?
-    } else if let Some(project_root) = find_project_root(&current_dir) {
-        let config = ProjectConfig::load(&project_root.join("arden.toml"))?;
-        config.validate(&project_root)?;
-        config.get_source_files(&project_root)
-    } else {
-        collect_arden_files(&current_dir)?
-    };
-
-    if targets.is_empty() {
-        return Err("No .arden files found to format".to_string());
-    }
-
-    let mut changed = Vec::new();
-    for file in targets {
-        let source = fs::read_to_string(&file)
-            .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
-        let formatted = formatter::format_source(&source)
-            .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
-
-        if source != formatted {
-            if check_only {
-                changed.push(file);
-            } else {
-                fs::write(&file, formatted).map_err(|e| {
-                    format!(
-                        "{}: Failed to write '{}': {}",
-                        "error".red().bold(),
-                        file.display(),
-                        e
-                    )
-                })?;
-                changed.push(file);
-            }
-        }
-    }
-
-    if check_only {
-        if changed.is_empty() {
-            println!(
-                "{} {}",
-                cli_success("Fmt check passed"),
-                cli_soft(&target_label)
-            );
-            return Ok(());
-        }
-
-        eprintln!("{} format check failed for:", cli_error("error"));
-        for file in changed {
-            eprintln!("  - {}", cli_path(&file));
-        }
-        return Err("format check failed".to_string());
-    }
-
-    if changed.is_empty() {
-        println!("{} {}", cli_success("Fmt clean"), cli_soft(&target_label));
-    } else {
-        println!("{} {} file(s)", cli_success("Formatted"), changed.len());
-        for file in changed {
-            println!("  - {}", cli_path(&file));
-        }
-    }
-
-    Ok(())
-}
-
-fn resolve_default_file(path: Option<&Path>) -> Result<PathBuf, String> {
-    if let Some(path) = path {
-        validate_source_file_path(path)?;
-        return Ok(path.to_path_buf());
-    }
-
-    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
-    if let Some(project_root) = find_project_root(&current_dir) {
-        let config = ProjectConfig::load(&project_root.join("arden.toml"))?;
-        config.validate(&project_root)?;
-        for source_file in config.get_source_files(&project_root) {
-            validate_source_file_path(&source_file)?;
-        }
-        return Ok(config.get_entry_path(&project_root));
-    }
-
-    Err("No file specified and no arden.toml found in the current directory".to_string())
-}
-
-fn lint_target(path: Option<&Path>) -> Result<(), String> {
-    let file = resolve_default_file(path)?;
-    let source = fs::read_to_string(&file)
-        .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
-    let result = lint::lint_source(&source, false)
-        .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
-
-    if result.findings.is_empty() {
-        println!("{} {}", cli_success("Lint clean"), cli_path(&file));
-        return Ok(());
-    }
-
-    eprintln!(
-        "{} lint findings in {}:",
-        cli_warning("warning"),
-        cli_path(&file)
-    );
-    for finding in result.findings {
-        eprintln!("  {}", finding.format());
-    }
-    Err("lint failed".to_string())
-}
-
-fn fix_target(path: Option<&Path>) -> Result<(), String> {
-    let file = resolve_default_file(path)?;
-    let source = fs::read_to_string(&file)
-        .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
-    let result = lint::lint_source(&source, true)
-        .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
-    let fixed_source = result.fixed_source.unwrap_or(source.clone());
-
-    let formatted_source = formatter::format_source(&fixed_source)
-        .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
-
-    if source == formatted_source {
-        println!("{} {}", cli_success("Fix clean"), cli_path(&file));
-        return Ok(());
-    }
-
-    fs::write(&file, formatted_source)
-        .map_err(|e| format!("{}: Failed to write file: {}", "error".red().bold(), e))?;
-    println!("{} {}", cli_success("Updated"), cli_path(&file));
-    Ok(())
-}
-
 fn run_binary(exe_path: &Path, args: &[String]) -> Result<(), String> {
     let status = Command::new(exe_path)
         .args(args)
@@ -2415,49 +1996,6 @@ fn profile_target(file: Option<&Path>) -> Result<(), String> {
         cli_tertiary("total"),
         cli_soft(cli_elapsed(build_elapsed + run_elapsed))
     );
-    Ok(())
-}
-
-/// Show tokens (debug)
-fn lex_file(file: &Path) -> Result<(), String> {
-    validate_source_file_path(file)?;
-
-    let source = fs::read_to_string(file)
-        .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
-
-    let tokens = lexer::tokenize(&source)
-        .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
-
-    println!("{}", cli_accent("Tokens"));
-    for (token, span) in tokens {
-        println!("  {:?} @ {}..{}", token, span.start, span.end);
-    }
-
-    Ok(())
-}
-
-/// Show AST (debug)
-fn parse_file(file: &Path) -> Result<(), String> {
-    validate_source_file_path(file)?;
-
-    let source = fs::read_to_string(file)
-        .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
-
-    let tokens = lexer::tokenize(&source)
-        .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
-
-    let filename = file
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("input.arden");
-    let mut parser = Parser::new(tokens);
-    let program = parser
-        .parse_program()
-        .map_err(|e| format_parse_error(&e, &source, filename))?;
-
-    println!("{}", cli_accent("AST"));
-    println!("{:#?}", program);
-
     Ok(())
 }
 
