@@ -1,4 +1,3 @@
-use super::TestExpectExt;
 use std::path::Path;
 
 #[cfg(unix)]
@@ -6,6 +5,8 @@ use std::fs;
 
 #[cfg(unix)]
 use super::make_temp_project_root;
+#[cfg(unix)]
+use super::TestExpectExt;
 
 #[test]
 fn is_test_like_file_matches_test_and_spec_suffixes() {

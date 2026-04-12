@@ -86,27 +86,27 @@ const audienceCards = [
 const discoveryLinks = [
     {
         href: '/docs/overview',
-        label: 'Read the documentation overview',
+        label: 'Docs Overview',
         description: 'Start with the language surface, projects, ownership, async support, and the command model.',
     },
     {
         href: '/install',
-        label: 'Open the installation guide',
+        label: 'Install Arden',
         description: 'Download the latest portable bundle or follow the source build path for local development.',
     },
     {
         href: '/changelog',
-        label: 'Browse release history',
+        label: 'Release Notes',
         description: 'See how Arden evolves across correctness, diagnostics, developer experience, and project-system work.',
     },
     {
         href: GITHUB_REPO_URL,
-        label: 'Inspect the repository',
+        label: 'GitHub Repository',
         description: 'Review implementation details, examples, benchmarks, issues, and development history on GitHub.',
     },
     {
         href: SITE_CREATOR_URL,
-        label: 'Visit TheRemyyy',
+        label: 'TheRemyyy',
         description: 'See the broader portfolio, linked projects, and the creator behind Arden on theremyyy.dev.',
     },
 ];
@@ -126,25 +126,28 @@ export function Home() {
                         <p className="mt-4 max-w-2xl text-[15px] leading-8 text-[var(--text-muted)] md:text-base">
                             It is built for teams that want readable ownership rules, practical diagnostics, explicit project structure, and feedback that stays useful as the codebase grows.
                         </p>
+                        <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">
+                            Build native software with a sharper workflow and cleaner feedback is the core focus behind Arden.
+                        </p>
                         <div className="mt-8 flex flex-wrap gap-3">
                             <a
                                 href="/docs/overview"
                                 className="inline-flex h-12 items-center gap-2 rounded-full bg-[var(--bg-strong)] px-6 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5"
                             >
-                                Open documentation
+                                Docs overview
                                 <ArrowRight size={16} />
                             </a>
                             <a
                                 href="/install"
                                 className="inline-flex h-12 items-center rounded-full border border-[rgba(57,52,46,0.16)] bg-white/80 px-6 text-sm font-semibold text-[var(--text)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
                             >
-                                Installation
+                                Install guide
                             </a>
                             <a
                                 href="/docs/getting_started/quick_start"
                                 className="inline-flex h-12 items-center rounded-full border border-[rgba(57,52,46,0.16)] bg-white/80 px-6 text-sm font-semibold text-[var(--text)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
                             >
-                                Quick start
+                                5-minute quickstart
                             </a>
                         </div>
                     </div>
@@ -369,28 +372,30 @@ export function Home() {
 
                     <div className="space-y-5">
                         {discoveryLinks.map((link, index) => (
-                            <a
+                            <article
                                 key={link.href}
-                                href={link.href}
-                                target={link.href.startsWith('http') ? '_blank' : undefined}
-                                rel={link.href.startsWith('http') ? 'noreferrer' : undefined}
-                                className="group grid gap-3 border-b border-[rgba(57,52,46,0.14)] pb-5 transition-colors last:border-b-0 sm:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)] sm:items-start"
+                                className="grid gap-3 border-b border-[rgba(57,52,46,0.14)] pb-5 last:border-b-0 sm:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)] sm:items-start"
                             >
                                 <div className="flex items-center justify-between gap-3">
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
                                             {String(index + 1).padStart(2, '0')}
                                         </p>
-                                        <h3 className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text)]">
+                                        <a
+                                            href={link.href}
+                                            target={link.href.startsWith('http') ? '_blank' : undefined}
+                                            rel={link.href.startsWith('http') ? 'noreferrer' : undefined}
+                                            className="group mt-2 inline-flex items-center gap-2 text-lg font-semibold tracking-[-0.02em] text-[var(--text)] transition-colors hover:text-[var(--accent)]"
+                                        >
                                             {link.label}
-                                        </h3>
+                                            <MoveRight className="h-4 w-4 shrink-0 text-[var(--accent)] transition-transform group-hover:translate-x-1" />
+                                        </a>
                                     </div>
-                                    <MoveRight className="h-4 w-4 shrink-0 text-[var(--accent)] transition-transform group-hover:translate-x-1" />
                                 </div>
                                 <p className="text-sm leading-7 text-[var(--text-muted)]">
                                     {link.description}
                                 </p>
-                            </a>
+                            </article>
                         ))}
                     </div>
                 </div>

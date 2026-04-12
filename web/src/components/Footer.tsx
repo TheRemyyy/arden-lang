@@ -25,11 +25,11 @@ export function Footer() {
                 <div>
                     <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-white/70">Resources</h3>
                     <ul className="space-y-3 text-sm">
-                        <li><a href="/docs/overview" className="transition-colors hover:text-white">Documentation</a></li>
-                        <li><a href="/install" className="transition-colors hover:text-white">Installation</a></li>
-                        <li><a href="/docs/stdlib/overview" className="transition-colors hover:text-white">Standard Library</a></li>
-                        <li><a href="/docs/getting_started/quick_start" className="transition-colors hover:text-white">Quick Start</a></li>
-                        <li><a href="/changelog" className="transition-colors hover:text-white">Changelog</a></li>
+                        <li><a href="/docs/overview" className="transition-colors hover:text-white">Docs Hub</a></li>
+                        <li><a href="/install" className="transition-colors hover:text-white">Install Guide</a></li>
+                        <li><a href="/docs/stdlib/overview" className="transition-colors hover:text-white">Stdlib Reference</a></li>
+                        <li><a href="/docs/getting_started/quick_start" className="transition-colors hover:text-white">Quickstart Guide</a></li>
+                        <li><a href="/changelog" className="transition-colors hover:text-white">Release Log</a></li>
                     </ul>
                 </div>
 
@@ -38,7 +38,7 @@ export function Footer() {
                     <ul className="space-y-3 text-sm">
                         <li><a href={GITHUB_REPO_URL} className="transition-colors hover:text-white">GitHub Repository</a></li>
                         <li><a href="/docs/compiler/architecture" className="transition-colors hover:text-white">Compiler Architecture</a></li>
-                        <li><a href="/docs/overview" className="transition-colors hover:text-white">Overview</a></li>
+                        <li><a href="/docs/overview" className="transition-colors hover:text-white">Project Overview</a></li>
                     </ul>
                 </div>
 
