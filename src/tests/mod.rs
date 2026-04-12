@@ -28,7 +28,7 @@ pub(crate) use project_rewrite_dependency_graph::{
 };
 
 mod bindgen;
-mod borrowck;
+mod borrowck_cases;
 mod cli_cases;
 mod compile_source_cases;
 mod helpers;

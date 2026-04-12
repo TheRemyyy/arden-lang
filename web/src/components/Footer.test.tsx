@@ -13,11 +13,11 @@ describe('Footer and docs metadata', () => {
             </MemoryRouter>,
         );
 
-        expect(screen.getByRole('link', { name: 'Documentation' })).toHaveAttribute(
+        expect(screen.getByRole('link', { name: 'Docs Hub' })).toHaveAttribute(
             'href',
             '/docs/overview',
         );
-        expect(screen.getByRole('link', { name: 'Standard Library' })).toHaveAttribute(
+        expect(screen.getByRole('link', { name: 'Stdlib Reference' })).toHaveAttribute(
             'href',
             '/docs/stdlib/overview',
         );
