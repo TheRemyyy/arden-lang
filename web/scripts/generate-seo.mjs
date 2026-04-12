@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 
 const siteUrl = 'https://www.arden-lang.dev';
 const indexNowKey = '5f16d52efed72638de1a80329fd512fb';
+const siteDescription = 'Official Arden documentation for native project build workflows: practical compiler feedback, fast iteration, and safe systems programming with clear docs, install guides, and release notes.';
 const projectRoot = path.resolve(process.cwd(), '..');
 const docsRoot = path.join(projectRoot, 'docs');
 const publicRoot = path.join(process.cwd(), 'public');
@@ -247,7 +248,7 @@ async function generateRouteOgImages(docRoutes, changelogMarkdown) {
     {
       path: '/',
       title: 'Arden',
-      description: 'Official documentation for Arden. A modern, safe, and efficient systems programming language targeting LLVM.',
+      description: siteDescription,
       eyebrow: 'Home',
     },
     {
@@ -508,7 +509,7 @@ function buildManifest() {
     {
       name: 'Arden',
       short_name: 'Arden',
-      description: 'Official documentation for Arden, a systems programming language targeting LLVM.',
+      description: siteDescription,
       start_url: '/',
       display: 'standalone',
       lang: 'en',
@@ -537,7 +538,7 @@ function buildLlmsTxt() {
   return [
     '# Arden',
     '',
-    '> Official documentation for Arden, a systems programming language targeting LLVM.',
+    `> ${siteDescription}`,
     '',
     '## Project',
     `- Homepage: ${siteUrl}/`,

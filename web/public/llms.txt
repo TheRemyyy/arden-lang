@@ -1,6 +1,6 @@
 # Arden
 
-> Official documentation for Arden, a systems programming language targeting LLVM.
+> Official Arden documentation for native project build workflows: practical compiler feedback, fast iteration, and safe systems programming with clear docs, install guides, and release notes.
 
 ## Project
 - Homepage: https://www.arden-lang.dev/

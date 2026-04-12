@@ -1,7 +1,7 @@
 {
   "name": "Arden",
   "short_name": "Arden",
-  "description": "Official documentation for Arden, a systems programming language targeting LLVM.",
+  "description": "Official Arden documentation for native project build workflows: practical compiler feedback, fast iteration, and safe systems programming with clear docs, install guides, and release notes.",
   "start_url": "/",
   "display": "standalone",
   "lang": "en",

@@ -236,6 +236,7 @@ export default function Head() {
     const robotsContent = isErrorPage || isSearchPage
         ? 'noindex, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
         : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+    const gaMeasurementId = (import.meta.env.PUBLIC_GA_MEASUREMENT_ID ?? import.meta.env.VITE_GA_MEASUREMENT_ID ?? '').trim();
 
     return (
         <>
@@ -250,6 +251,18 @@ export default function Head() {
             <link rel="icon" type="image/png" href={FAVICON_SRC} />
             <link rel="shortcut icon" href={FAVICON_SRC} />
             <link rel="preload" href={UI_LOGO_SRC} as="image" type="image/png" />
+            {gaMeasurementId && (
+                <>
+                    <link rel="preconnect" href="https://www.googletagmanager.com" />
+                    <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+                    <script async src={"https://www.googletagmanager.com/gtag/js?id=" + gaMeasurementId} />
+                    <script
+                        dangerouslySetInnerHTML={{
+                            __html: "window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag(\"js\", new Date()); gtag(\"config\", \"" + gaMeasurementId + "\", { anonymize_ip: true, transport_type: \"beacon\" });",
+                        }}
+                    />
+                </>
+            )}
             <meta name="robots" content={robotsContent} />
             <meta name="googlebot" content={robotsContent} />
             <meta name="referrer" content="strict-origin-when-cross-origin" />

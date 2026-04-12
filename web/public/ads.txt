@@ -1,0 +1,3 @@
+# Arden does not currently sell third-party ads.
+# Keep this file for crawler compatibility and add authorized sellers here if that changes.
+

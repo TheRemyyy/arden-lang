@@ -118,7 +118,7 @@ export function Home() {
                 <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-10 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.12fr_0.88fr] lg:items-end lg:pb-20 lg:pt-14">
                     <div className="relative z-10">
                         <h1 className="max-w-4xl font-display text-4xl font-bold leading-[0.95] tracking-[-0.04em] text-[var(--text)] md:text-6xl">
-                            Build native software with a sharper workflow and cleaner feedback.
+                            Arden native project build workflow with cleaner feedback.
                         </h1>
                         <p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-muted)] md:text-lg">
                             Arden combines native compilation, static safety checks, and an integrated command surface so teams can move from experiments to larger codebases without swapping mental models.
