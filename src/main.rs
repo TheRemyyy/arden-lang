@@ -58,10 +58,11 @@ use crate::import_check::ImportChecker;
 use crate::linker::*;
 use crate::parser::Parser;
 use crate::project::pipeline::{
-    compute_project_change_impact, evaluate_semantic_cache_gate, prepare_rewrite_inputs,
-    run_import_check_phase, run_rewrite_phase, run_semantic_phase, validate_symbol_collisions,
-    ImportCheckInputs, RewritePhaseInputs, RewritePreparation, SemanticGateInputs,
-    SemanticPhaseInputs,
+    build_object_sharding_plan, compute_project_change_impact, evaluate_semantic_cache_gate,
+    prepare_rewrite_inputs, run_final_link_phase, run_import_check_phase, run_object_cache_probe,
+    run_rewrite_phase, run_semantic_phase, validate_symbol_collisions, FinalLinkInputs,
+    ImportCheckInputs, ObjectCacheProbeInputs, ObjectCacheProbeOutputs, ObjectShardingPlan,
+    RewritePhaseInputs, RewritePreparation, SemanticGateInputs, SemanticPhaseInputs,
 };
 use crate::project::{find_project_root, OutputKind, ProjectConfig};
 use crate::specialization::*;
@@ -71,11 +72,11 @@ use crate::test_runner::{discover_tests, generate_test_runner_with_source, print
 use crate::typeck::TypeChecker;
 
 #[derive(Clone)]
-struct ObjectCodegenShard {
-    member_indices: Vec<usize>,
-    member_files: Vec<PathBuf>,
-    member_fingerprints: Vec<ObjectShardMemberFingerprint>,
-    cache_paths: Option<ObjectShardCachePaths>,
+pub(crate) struct ObjectCodegenShard {
+    pub(crate) member_indices: Vec<usize>,
+    pub(crate) member_files: Vec<PathBuf>,
+    pub(crate) member_fingerprints: Vec<ObjectShardMemberFingerprint>,
+    pub(crate) cache_paths: Option<ObjectShardCachePaths>,
 }
 
 #[derive(ClapParser)]
@@ -2017,157 +2018,28 @@ fn build_project(
                 precomputed_dependency_closures,
             )
         });
-        let mut object_paths: Vec<Option<PathBuf>> = vec![None; rewritten_files.len()];
-        let object_candidate_count = rewritten_files
-            .iter()
-            .filter(|unit| !unit.active_symbols.is_empty())
-            .count();
-        let active_indices = rewritten_files
-            .iter()
-            .enumerate()
-            .filter_map(|(index, unit)| (!unit.active_symbols.is_empty()).then_some(index))
-            .collect::<Vec<_>>();
-        let object_shard_size = object_codegen_shard_size();
-        let object_shard_threshold = object_codegen_shard_threshold();
-        let use_object_shards = active_indices.len() >= object_shard_threshold;
-        let object_shards = if use_object_shards {
-            active_indices
-                .chunks(object_shard_size)
-                .map(|chunk| {
-                    let member_indices = chunk.to_vec();
-                    let member_files = member_indices
-                        .iter()
-                        .map(|index| rewritten_files[*index].file.clone())
-                        .collect::<Vec<_>>();
-                    let member_fingerprints = member_indices
-                        .iter()
-                        .map(|index| {
-                            let unit = &rewritten_files[*index];
-                            ObjectShardMemberFingerprint {
-                                file: unit.file.clone(),
-                                semantic_fingerprint: unit.semantic_fingerprint.clone(),
-                                rewrite_context_fingerprint: unit
-                                    .rewrite_context_fingerprint
-                                    .clone(),
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    let cache_paths = Some(object_shard_cache_paths(&project_root, &member_files));
-                    ObjectCodegenShard {
-                        member_indices,
-                        member_files,
-                        member_fingerprints,
-                        cache_paths,
-                    }
-                })
-                .collect::<Vec<_>>()
-        } else {
-            active_indices
-                .iter()
-                .map(|index| {
-                    let unit = &rewritten_files[*index];
-                    ObjectCodegenShard {
-                        member_indices: vec![*index],
-                        member_files: vec![unit.file.clone()],
-                        member_fingerprints: vec![ObjectShardMemberFingerprint {
-                            file: unit.file.clone(),
-                            semantic_fingerprint: unit.semantic_fingerprint.clone(),
-                            rewrite_context_fingerprint: unit.rewrite_context_fingerprint.clone(),
-                        }],
-                        cache_paths: None,
-                    }
-                })
-                .collect::<Vec<_>>()
-        };
-        type ObjectCacheProbeResult = Result<(Vec<usize>, Option<PathBuf>), String>;
-        let cache_probe_results: Vec<ObjectCacheProbeResult> =
-            build_timings.measure("object cache probe", || {
-                Ok::<_, String>(
-                    object_shards
-                        .par_iter()
-                        .map(|shard| {
-                            let cached_obj = if let Some(cache_paths) = &shard.cache_paths {
-                                load_object_shard_cache_hit(
-                                    cache_paths,
-                                    &shard.member_fingerprints,
-                                    &object_build_fingerprint,
-                                )?
-                            } else {
-                                let index = shard.member_indices[0];
-                                let unit = &rewritten_files[index];
-                                let cache_paths = object_cache_paths_by_file
-                                    .get(&unit.file)
-                                    .ok_or_else(|| {
-                                        format!(
-                                            "{}: missing object cache paths for rewritten unit '{}'",
-                                            cli_error("error"),
-                                            unit.file.display()
-                                        )
-                                    })?;
-                                load_object_cache_hit(
-                                    cache_paths,
-                                    &unit.semantic_fingerprint,
-                                    &unit.rewrite_context_fingerprint,
-                                    &object_build_fingerprint,
-                                )?
-                            };
-                            Ok((shard.member_indices.clone(), cached_obj))
-                        })
-                        .collect(),
-                )
-            })?;
-
-        let mut object_cache_hits: usize = 0;
-        let mut cache_misses: Vec<ObjectCodegenShard> = Vec::new();
-        for (shard, result) in object_shards.iter().zip(cache_probe_results) {
-            let (member_indices, cached_obj) = result?;
-            if let Some(cached_obj) = cached_obj {
-                for index in member_indices {
-                    object_paths[index] = Some(cached_obj.clone());
-                    object_cache_hits += 1;
-                }
-            } else {
-                cache_misses.push(shard.clone());
-            }
-        }
-        build_timings.record_counts(
-            "object cache probe",
-            &[
-                ("candidates", object_candidate_count),
-                ("reused", object_cache_hits),
-                (
-                    "missed",
-                    object_candidate_count.saturating_sub(object_cache_hits),
-                ),
-                ("shard_size", object_shard_size),
-                ("shard_threshold", object_shard_threshold),
-                ("shards", object_shards.len()),
-                ("missed_shards", cache_misses.len()),
-            ],
-        );
-        build_timings.record_duration_ns(
-            "object cache meta/load",
-            OBJECT_CACHE_META_TIMING_TOTALS
-                .load_ns
-                .load(Ordering::Relaxed),
-        );
-        build_timings.record_counts(
-            "object cache meta/read",
-            &[
-                (
-                    "loads",
-                    OBJECT_CACHE_META_TIMING_TOTALS
-                        .load_count
-                        .load(Ordering::Relaxed),
-                ),
-                (
-                    "bytes_read",
-                    OBJECT_CACHE_META_TIMING_TOTALS
-                        .bytes_read
-                        .load(Ordering::Relaxed) as usize,
-                ),
-            ],
-        );
+        let ObjectShardingPlan {
+            object_candidate_count,
+            object_shard_size,
+            object_shard_threshold,
+            object_shards,
+        } = build_object_sharding_plan(&rewritten_files, &project_root);
+        let ObjectCacheProbeOutputs {
+            mut object_paths,
+            object_cache_hits,
+            cache_misses,
+        } = run_object_cache_probe(
+            &mut build_timings,
+            ObjectCacheProbeInputs {
+                object_build_fingerprint: &object_build_fingerprint,
+                rewritten_files: &rewritten_files,
+                object_cache_paths_by_file: &object_cache_paths_by_file,
+                object_shards: &object_shards,
+                object_candidate_count,
+                object_shard_size,
+                object_shard_threshold,
+            },
+        )?;
 
         let object_codegen_timing_totals = Arc::new(ObjectCodegenTimingTotals::default());
         let declaration_closure_timing_totals = Arc::new(DeclarationClosureTimingTotals::default());
@@ -2781,41 +2653,17 @@ fn build_project(
             ));
         }
 
-        let link_inputs = build_timings.measure_step("link input assembly", || {
-            dedupe_link_inputs(object_paths.into_iter().flatten().collect())
-        });
-        let current_link_manifest =
-            build_timings.measure_step("link manifest prep", || LinkManifestCache {
-                schema: LINK_MANIFEST_CACHE_SCHEMA.to_string(),
-                compiler_version: env!("CARGO_PKG_VERSION").to_string(),
-                link_fingerprint: compute_link_fingerprint(&output_path, &link_inputs, &link),
-                link_inputs: link_inputs.clone(),
-            });
-
-        if should_skip_final_link(
-            previous_link_manifest.as_ref(),
-            &current_link_manifest,
-            &output_path,
-            cache_misses.len(),
-        ) {
-            print_cli_cache("Reused final link output from manifest cache");
-            build_timings.record_counts(
-                "final link",
-                &[("objects", link_inputs.len()), ("linked", 0), ("reused", 1)],
-            );
-        } else {
-            print_cli_step("Linking final artifact");
-            build_timings.measure("final link", || {
-                link_objects(&link_inputs, &output_path, &link)
-            })?;
-            build_timings.record_counts(
-                "final link",
-                &[("objects", link_inputs.len()), ("linked", 1), ("reused", 0)],
-            );
-            build_timings.measure("link manifest save", || {
-                save_link_manifest_cache(&project_root, &current_link_manifest)
-            })?;
-        }
+        run_final_link_phase(
+            &mut build_timings,
+            FinalLinkInputs {
+                previous_link_manifest: previous_link_manifest.as_ref(),
+                output_path: &output_path,
+                link: &link,
+                project_root: &project_root,
+                object_paths,
+                cache_miss_count: cache_misses.len(),
+            },
+        )?;
     }
 
     if !check_only {
