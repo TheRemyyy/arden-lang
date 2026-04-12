@@ -121,13 +121,10 @@ export function Home() {
                             Arden is a native programming language with clearer compiler feedback.
                         </h1>
                         <p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-muted)] md:text-lg">
-                            Arden combines native compilation and an integrated command surface so teams can move from experiments to larger codebases without swapping mental models.
-                        </p>
-                        <p className="mt-4 max-w-2xl text-[15px] leading-8 text-[var(--text-muted)] md:text-base">
-                            It is built for teams that want readable ownership rules, practical diagnostics, explicit project structure, and feedback that stays useful as the codebase grows.
+                            Build native binaries with a modern language surface, readable diagnostics, and practical tooling that stays fast as codebases grow.
                         </p>
                         <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">
-                            The arden-lang programming language keeps native performance and readable feedback in everyday development.
+                            arden-lang keeps performance-first defaults without turning everyday development into ceremony.
                         </p>
                         <div className="mt-8 flex flex-wrap gap-3">
                             <a

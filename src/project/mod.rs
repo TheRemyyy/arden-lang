@@ -2,6 +2,8 @@
 //!
 //! Supports multi-file projects with arden.toml configuration
 
+pub(crate) mod pipeline;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;

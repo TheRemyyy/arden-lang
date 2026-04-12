@@ -4880,5 +4880,5 @@ fn rewrite_stmt_calls_for_project(
 }
 
 #[cfg(test)]
-#[path = "../tests/project_rewrite.rs"]
+#[path = "../../tests/project_rewrite.rs"]
 mod tests;
