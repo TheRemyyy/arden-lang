@@ -8,7 +8,7 @@ Examples are organized for progressive learning, not as a flat file dump.
 - `demos/` - larger app-shaped single-file programs
 - `starter_project/`, `minimal_project/`, `nested_package_project/`, `showcase_project/` - multi-file project examples
 
-Each single-file example has its own folder with:
+Each single-file example folder contains:
 
 - `<example>.arden`
 - `README.md`
@@ -33,7 +33,35 @@ Project example:
 
 ```bash
 cd examples/starter_project
-arden run
+arden check --timings
+arden run --timings
+```
+
+## Compiler Flags You Will Actually Use
+
+```bash
+arden compile examples/single_file/basics/01_hello/01_hello.arden --emit-llvm
+arden run examples/single_file/basics/01_hello/01_hello.arden --no-check
+```
+
+## Advanced Build Perf Knobs
+
+Large-project profiling / tuning:
+
+```bash
+ARDEN_OBJECT_SHARD_THRESHOLD=1 ARDEN_OBJECT_SHARD_SIZE=2 arden build --timings
+```
+
+Program args passthrough:
+
+```bash
+arden run examples/single_file/stdlib_and_system/22_args/22_args.arden -- --demo-arg
+```
+
+## No-build Smoke Loop
+
+```bash
+CI_SKIP_COMPILER_BUILD=1 ARDEN_COMPILER_PATH=target/release/arden bash scripts/examples_smoke_linux.sh
 ```
 
 ## Category Indexes

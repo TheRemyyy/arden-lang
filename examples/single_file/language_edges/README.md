@@ -1,9 +1,17 @@
 # Language Edges Examples
 
-Visibility, inheritance, contracts, aliasing, and assignment edge behavior.
+Behavior that matters for larger projects and API boundaries.
 
-- `35_visibility_enforcement/35_visibility_enforcement.arden`
-- `36_inheritance_extends/36_inheritance_extends.arden`
-- `37_interfaces_contracts/37_interfaces_contracts.arden`
-- `38_import_aliases/38_import_aliases.arden`
-- `39_compound_assign/39_compound_assign.arden`
+Includes:
+
+- visibility enforcement
+- inheritance via `extends`
+- interface contracts
+- import aliases
+- compound assignment
+
+Run all edge samples:
+
+```bash
+for f in examples/single_file/language_edges/*/*.arden; do arden run "$f"; done
+```

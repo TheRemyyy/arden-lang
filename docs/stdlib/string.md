@@ -33,10 +33,11 @@ import std.string.*;
 raw: String = "  arden lang  ";
 clean: String = Str.trim(raw);
 upper: String = Str.upper(clean);
+has_lang: Boolean = Str.contains(clean, "lang");
 
 println("clean={clean}");
 println("upper={upper}");
-println("has-lang={Str.contains(clean, "lang")}");
+println("has-lang={has_lang}");
 ```
 
 ## `to_string(...)`
@@ -47,7 +48,13 @@ Global helper for scalar conversion to `String`.
 text: String = to_string(42);
 ```
 
-Interpolation follows the same scalar display model as `to_string`.
+Interpolation follows same scalar display model as `to_string`.
+
+## Common Mistakes
+
+- confusing `String` type with `Str` module
+- chaining many string transforms without intermediate naming/debug points
+- forgetting normalization (`trim/lower`) before comparisons
 
 ## Example In Repo
 

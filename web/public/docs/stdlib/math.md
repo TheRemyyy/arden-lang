@@ -43,7 +43,7 @@ println("abs={x}, sqrt={root}, pow={power}");
 - `to_int(x: Float | Integer | String): Integer`
 - `to_float(x: Integer | Float): Float`
 
-## Typed Function Values
+## Function Value Usage
 
 ```arden
 import std.math.*;
@@ -52,7 +52,15 @@ root_fn: (Integer) -> Float = Math.sqrt;
 rand_fn: () -> Float = Math.random;
 ```
 
-`Math.abs(Integer)` rejects the minimum signed overflow edge case explicitly.
+## Edge Behavior
+
+`Math.abs(Integer)` rejects minimum signed overflow edge case explicitly.
+
+## Common Mistakes
+
+- mixing integer and float assumptions in one formula
+- using `Math.random()` for security-sensitive randomness
+- forgetting conversion when API expects `Float`
 
 ## Example In Repo
 

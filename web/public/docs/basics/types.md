@@ -35,6 +35,8 @@ Important constraints:
 ## Strings and `None`
 
 ```arden
+import std.io.*;
+
 text: String = "Arden";
 
 function logDone(): None {
@@ -77,3 +79,19 @@ Constructor argument shapes are checked statically:
 - `Map<K, V>()`, `Set<T>()`, `Option<T>()`, `Result<T, E>()` take no value args
 - incompatible arity/types are compile errors
 
+## `Task<T>` and `Ptr<T>` (Compiler Feature)
+
+Arden type system includes:
+
+- `Task<T>` for async values
+- `Ptr<T>` for low-level FFI pointer surfaces
+
+Important: these are not normal constructor-based runtime collections.
+Treat them as special language/runtime boundary types.
+
+Use `async`/`await` APIs for `Task<T>` flows and `extern` boundaries for `Ptr<T>` usage.
+
+## Related
+
+- [Async / Await](../advanced/async.md)
+- [Extern and FFI](../advanced/ffi.md)

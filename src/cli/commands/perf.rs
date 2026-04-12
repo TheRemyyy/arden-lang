@@ -1,6 +1,8 @@
-use crate::cli::output::{cli_accent, cli_elapsed, cli_soft, cli_tertiary};
-use crate::cli::paths::current_dir_checked;
-use crate::project::{ensure_project_is_runnable, find_project_root, ProjectConfig};
+use crate::cli::output::{cli_accent, cli_elapsed, cli_soft, cli_tertiary, cli_warning};
+use crate::cli::paths::{current_dir_checked, unique_temp_binary_path};
+use crate::project::{
+    ensure_project_is_runnable, find_project_root, resolve_project_output_path, ProjectConfig,
+};
 use crate::{build_project, compile_file};
 use colored::Colorize;
 use std::fs;
@@ -52,10 +54,7 @@ fn prepare_bench_binary(
     release: bool,
 ) -> Result<(PathBuf, Option<PathBuf>, Vec<String>), String> {
     if let Some(file) = file {
-        #[cfg(windows)]
-        let output = file.with_extension("bench.exe");
-        #[cfg(not(windows))]
-        let output = file.with_extension("bench");
+        let output = unique_temp_binary_path("arden-bench", file)?;
         compile_file(
             file,
             Some(&output),
@@ -75,7 +74,11 @@ fn prepare_bench_binary(
     config.validate(&project_root)?;
     ensure_project_is_runnable(&config.output_kind)?;
     build_project(release, false, true, false, false)?;
-    Ok((project_root.join(&config.output), None, Vec::new()))
+    Ok((
+        resolve_project_output_path(&project_root, &config),
+        None,
+        Vec::new(),
+    ))
 }
 
 pub(crate) fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(), String> {
@@ -94,7 +97,16 @@ pub(crate) fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(),
         Ok(samples_ms)
     })();
     if let Some(cleanup_path) = cleanup_path {
-        let _ = fs::remove_file(cleanup_path);
+        if let Err(err) = fs::remove_file(&cleanup_path) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "{}: failed to remove temporary benchmark binary '{}': {}",
+                    cli_warning("warning"),
+                    cleanup_path.display(),
+                    err
+                );
+            }
+        }
     }
     let samples_ms = run_result?;
 
@@ -142,7 +154,16 @@ pub(crate) fn profile_target(file: Option<&Path>) -> Result<(), String> {
         Ok(run_started.elapsed())
     })();
     if let Some(cleanup_path) = cleanup_path {
-        let _ = fs::remove_file(cleanup_path);
+        if let Err(err) = fs::remove_file(&cleanup_path) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "{}: failed to remove temporary profile binary '{}': {}",
+                    cli_warning("warning"),
+                    cleanup_path.display(),
+                    err
+                );
+            }
+        }
     }
     let run_elapsed = run_result?;
 

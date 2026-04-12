@@ -24,7 +24,14 @@ arden run examples/single_file/safety_and_async/10_ownership/10_ownership.arden
 arden run examples/single_file/safety_and_async/14_async/14_async.arden
 ```
 
-## 3. Use `check` During Development
+## 3. Learn Effects and Testing
+
+```bash
+arden run examples/single_file/tooling_and_ffi/26_effect_system/26_effect_system.arden
+arden test --path examples/single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden
+```
+
+## 4. Use `check` During Development
 
 ```bash
 arden check examples/single_file/safety_and_async/10_ownership/10_ownership.arden
@@ -32,7 +39,7 @@ arden check examples/single_file/safety_and_async/10_ownership/10_ownership.arde
 
 `check` is the fastest way to validate syntax + types + borrow rules without full final artifact flow.
 
-## 4. Start A Project
+## 5. Start A Project
 
 ```bash
 arden new my_project
@@ -46,7 +53,7 @@ Inspect project config:
 arden info
 ```
 
-## 5. Add Quality Commands
+## 6. Add Quality Commands
 
 ```bash
 arden test
@@ -59,7 +66,11 @@ arden lint
 - [Syntax](../basics/syntax.md)
 - [Types](../basics/types.md)
 - [Functions](../features/functions.md)
+- [Packages and Imports](../features/packages_imports.md)
+- [Language Edges](../features/language_edges.md)
 - [Ownership](../advanced/ownership.md)
+- [Effects](../advanced/effects.md)
+- [Extern and FFI](../advanced/ffi.md)
 - [CLI Reference](../compiler/cli.md)
 
 ## Full Example Index

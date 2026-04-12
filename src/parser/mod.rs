@@ -323,22 +323,34 @@ impl<'src> Parser<'src> {
                         Decl::Function(self.parse_function(attributes)?)
                     }
                     Some(Token::Extern) => Decl::Function(self.parse_extern_function(attributes)?),
-                    Some(Token::Class) => Decl::Class(self.parse_class(attributes)?),
-                    Some(Token::Enum) => Decl::Enum(self.parse_enum(attributes)?),
-                    Some(Token::Interface) => Decl::Interface(self.parse_interface(attributes)?),
+                    Some(Token::Class) => {
+                        self.reject_non_function_attributes(&attributes, "class")?;
+                        Decl::Class(self.parse_class(attributes)?)
+                    }
+                    Some(Token::Enum) => {
+                        self.reject_non_function_attributes(&attributes, "enum")?;
+                        Decl::Enum(self.parse_enum(attributes)?)
+                    }
+                    Some(Token::Interface) => {
+                        self.reject_non_function_attributes(&attributes, "interface")?;
+                        Decl::Interface(self.parse_interface(attributes)?)
+                    }
                     Some(Token::Module) => {
+                        self.reject_non_function_attributes(&attributes, "module")?;
                         return Err(ParseError::new(
                             "Visibility modifiers are not supported on modules",
                             self.current_span(),
                         ));
                     }
                     Some(Token::Import) => {
+                        self.reject_non_function_attributes(&attributes, "import")?;
                         return Err(ParseError::new(
                             "Visibility modifiers are not supported on imports",
                             self.current_span(),
                         ));
                     }
                     Some(Token::Package) => {
+                        self.reject_non_function_attributes(&attributes, "package declaration")?;
                         return Err(ParseError::new(
                             "Visibility modifiers are not supported on package declarations",
                             self.current_span(),
@@ -357,12 +369,28 @@ impl<'src> Parser<'src> {
                     }
                 }
             }
-            Some(Token::Class) => Decl::Class(self.parse_class(attributes)?),
-            Some(Token::Enum) => Decl::Enum(self.parse_enum(attributes)?),
-            Some(Token::Interface) => Decl::Interface(self.parse_interface(attributes)?),
-            Some(Token::Module) => Decl::Module(self.parse_module(attributes)?),
-            Some(Token::Import) => Decl::Import(self.parse_import()?),
+            Some(Token::Class) => {
+                self.reject_non_function_attributes(&attributes, "class")?;
+                Decl::Class(self.parse_class(attributes)?)
+            }
+            Some(Token::Enum) => {
+                self.reject_non_function_attributes(&attributes, "enum")?;
+                Decl::Enum(self.parse_enum(attributes)?)
+            }
+            Some(Token::Interface) => {
+                self.reject_non_function_attributes(&attributes, "interface")?;
+                Decl::Interface(self.parse_interface(attributes)?)
+            }
+            Some(Token::Module) => {
+                self.reject_non_function_attributes(&attributes, "module")?;
+                Decl::Module(self.parse_module(attributes)?)
+            }
+            Some(Token::Import) => {
+                self.reject_non_function_attributes(&attributes, "import")?;
+                Decl::Import(self.parse_import()?)
+            }
             Some(Token::Package) => {
+                self.reject_non_function_attributes(&attributes, "package declaration")?;
                 // Package is handled at program level, skip here
                 return Err(ParseError::new(
                     "Package declaration must be at the beginning of the file".to_string(),
@@ -382,6 +410,67 @@ impl<'src> Parser<'src> {
 
         let end = self.current_span().start;
         Ok(Spanned::new(decl, start..end))
+    }
+
+    fn reject_non_function_attributes(
+        &self,
+        attributes: &[Attribute],
+        declaration_kind: &str,
+    ) -> ParseResult<()> {
+        if attributes.is_empty() {
+            return Ok(());
+        }
+        Err(ParseError::new(
+            format!(
+                "Attributes are only supported on functions and class methods, not on {} declarations",
+                declaration_kind
+            ),
+            self.current_span(),
+        ))
+    }
+
+    fn validate_function_attributes(&self, attributes: &[Attribute]) -> ParseResult<()> {
+        let has_test = attributes
+            .iter()
+            .any(|attr| matches!(attr, Attribute::Test));
+        let has_ignore = attributes
+            .iter()
+            .any(|attr| matches!(attr, Attribute::Ignore(_)));
+        let lifecycle_count = attributes
+            .iter()
+            .filter(|attr| {
+                matches!(
+                    attr,
+                    Attribute::Before
+                        | Attribute::After
+                        | Attribute::BeforeAll
+                        | Attribute::AfterAll
+                )
+            })
+            .count();
+
+        if has_ignore && !has_test {
+            return Err(ParseError::new(
+                "@Ignore requires @Test on the same function",
+                self.current_span(),
+            ));
+        }
+
+        if lifecycle_count > 1 {
+            return Err(ParseError::new(
+                "Lifecycle attributes are mutually exclusive (@Before, @After, @BeforeAll, @AfterAll)",
+                self.current_span(),
+            ));
+        }
+
+        if has_test && lifecycle_count > 0 {
+            return Err(ParseError::new(
+                "@Test cannot be combined with lifecycle attributes",
+                self.current_span(),
+            ));
+        }
+
+        Ok(())
     }
 
     fn register_declaration_name(&mut self, decl: &Decl) {
@@ -405,6 +494,7 @@ impl<'src> Parser<'src> {
     /// Parse attributes (e.g., @Test, @Ignore)
     fn parse_attributes(&mut self) -> ParseResult<Vec<Attribute>> {
         let mut attributes = Vec::new();
+        let mut seen = HashSet::new();
 
         while self.check(&Token::At) {
             self.advance(); // consume @
@@ -442,6 +532,28 @@ impl<'src> Parser<'src> {
                     ));
                 }
             };
+
+            let key = match &attr {
+                Attribute::Test => "Test",
+                Attribute::Ignore(_) => "Ignore",
+                Attribute::Before => "Before",
+                Attribute::After => "After",
+                Attribute::BeforeAll => "BeforeAll",
+                Attribute::AfterAll => "AfterAll",
+                Attribute::Pure => "Pure",
+                Attribute::EffectIo => "Io",
+                Attribute::EffectNet => "Net",
+                Attribute::EffectAlloc => "Alloc",
+                Attribute::EffectUnsafe => "Unsafe",
+                Attribute::EffectThread => "Thread",
+                Attribute::EffectAny => "Any",
+            };
+            if !seen.insert(key) {
+                return Err(ParseError::new(
+                    format!("Duplicate attribute: @{}", key),
+                    self.current_span(),
+                ));
+            }
 
             attributes.push(attr);
         }
@@ -542,6 +654,7 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_function(&mut self, attributes: Vec<Attribute>) -> ParseResult<FunctionDecl> {
+        self.validate_function_attributes(&attributes)?;
         let visibility = self.parse_visibility();
 
         let is_async = if self.check(&Token::Async) {
@@ -640,6 +753,7 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_extern_function(&mut self, attributes: Vec<Attribute>) -> ParseResult<FunctionDecl> {
+        self.validate_function_attributes(&attributes)?;
         let visibility = self.parse_visibility();
         self.eat(&Token::Extern)?;
         let (extern_abi, extern_link_name) = if self.check(&Token::LParen) {

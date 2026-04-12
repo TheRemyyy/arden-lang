@@ -14,11 +14,11 @@ import std.io.*;
 
 ### `print(...): None`
 
-Writes scalar values without trailing newline.
+Writes scalar value(s) without trailing newline.
 
 ### `println(...): None`
 
-Writes scalar values with trailing newline.
+Writes scalar value(s) with trailing newline.
 
 ### `read_line(): String`
 
@@ -46,7 +46,7 @@ Reads full text file. Missing/invalid input fails explicitly.
 
 ### `File.write(path: String, content: String): Boolean`
 
-Writes full content (overwrite semantics). Returns `true` only on successful write+close.
+Writes full content (overwrite semantics). Returns `true` on successful write+close.
 
 ### `File.exists(path: String): Boolean`
 
@@ -66,7 +66,19 @@ if (File.exists("notes.txt")) {
 }
 ```
 
-## Notes
+## Behavioral Notes
 
 - invalid UTF-8 and NUL-containing file contents are rejected
 - non-seekable/unsupported paths fail with explicit runtime error
+- write/delete return `Boolean`; check return values in automation code
+
+## Effect Note
+
+I/O functions participate in effect checks and require `io` capability.
+See [Effects](../advanced/effects.md).
+
+## Common Mistakes
+
+- assuming `File.write` appends (it overwrites)
+- ignoring `File.write`/`File.delete` return values
+- using unvalidated user-controlled paths directly

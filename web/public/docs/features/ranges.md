@@ -2,7 +2,15 @@
 
 ## Why This Matters
 
-Ranges are Arden's core numeric iteration primitive and power `for` loops and manual iteration patterns.
+Ranges are Arden's core numeric iteration primitive.
+You use them in loops, manual iteration, and simple numeric traversal without building lists first.
+
+## Quick Mental Model
+
+- `range(start, end)` -> values from `start` up to `end` (end-exclusive)
+- optional third arg is `step`
+- works with `Integer` and `Float`
+- step must be non-zero
 
 ## Constructing Ranges
 
@@ -12,27 +20,41 @@ r2: Range<Integer> = range(0, 10, 2);
 rf: Range<Float> = range(0.0, 1.0, 0.25);
 ```
 
-## Rules
-
-- arguments must be consistently numeric (`Integer` set or `Float` set)
-- step must be non-zero
-
-## Iteration API
+## Manual Iteration (Runnable)
 
 ```arden
-while (r1.has_next()) {
-    value: Integer = r1.next();
-    println(to_string(value));
+import std.io.*;
+
+function main(): None {
+    r: Range<Integer> = range(0, 5);
+    while (r.has_next()) {
+        value: Integer = r.next();
+        println("value={value}");
+    }
+    return None;
 }
 ```
 
 ## In `for` Loops
 
 ```arden
-for (i in 5) {
-    println("{i}");
+import std.io.*;
+
+function main(): None {
+    for (i in 5) {
+        println("i={i}");
+    }
+    return None;
 }
 ```
+
+`for (i in 5)` is shorthand numeric iteration and is often the cleanest option.
+
+## Common Mistakes
+
+- assuming end is included (it is excluded)
+- using zero step (`range(0, 10, 0)`) which is invalid
+- mismatching numeric kinds across arguments
 
 ## Related
 

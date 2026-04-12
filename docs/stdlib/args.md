@@ -7,8 +7,8 @@ If you build command-driven apps, this is usually your first runtime boundary.
 
 ## Quick Mental Model
 
-- `Args.count()` tells you how many argv entries exist
-- `Args.get(i)` returns argv entry at index `i`
+- `Args.count()` -> number of argv entries
+- `Args.get(i)` -> argument at index `i`
 - index `0` is executable path
 - user arguments start at index `1`
 
@@ -33,7 +33,7 @@ if (argc > 1) {
 }
 ```
 
-## Safe Pattern
+## Safe Access Pattern
 
 Always guard `Args.get(i)` by checking `Args.count()` first.
 
@@ -48,7 +48,7 @@ function maybe_get(index: Integer): Option<String> {
 }
 ```
 
-## Typed Function Value Usage
+## Function Value Usage
 
 ```arden
 import std.args.*;
@@ -56,6 +56,17 @@ import std.args.*;
 count_fn: () -> Integer = Args.count;
 get_fn: (Integer) -> String = Args.get;
 ```
+
+## Effect Note
+
+`Args.*` calls participate in effect checks and require `io` capability on caller context.
+See [Effects](../advanced/effects.md).
+
+## Common Mistakes
+
+- treating `argv[0]` as first user argument
+- calling `Args.get(i)` without bounds guard
+- parsing numeric flags without validation/error branch
 
 ## Example In Repo
 

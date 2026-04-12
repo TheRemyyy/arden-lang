@@ -10,7 +10,12 @@ const CLI_TERTIARY_RGB: (u8, u8, u8) = (217, 178, 158);
 
 pub(crate) fn configure_cli_colors() {
     #[cfg(windows)]
-    let _ = enable_ansi_support::enable_ansi_support();
+    {
+        if enable_ansi_support::enable_ansi_support().is_err() {
+            control::set_override(false);
+            return;
+        }
+    }
 
     control::set_override(true);
 }

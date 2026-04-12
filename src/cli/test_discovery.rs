@@ -8,6 +8,14 @@ pub(crate) fn find_test_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     if !dir.is_dir() {
         return Err(format!("Path '{}' is not a directory", dir.display()));
     }
+    let metadata = fs::symlink_metadata(dir)
+        .map_err(|e| format!("Failed to inspect directory '{}': {}", dir.display(), e))?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "Path '{}' must not be a symlinked directory",
+            dir.display()
+        ));
+    }
 
     let mut test_files = Vec::new();
     find_test_files_recursive(dir, &mut test_files)?;

@@ -1,0 +1,16 @@
+import std.args.*;
+import std.io.*;
+
+function main(): None {
+    argc: Integer = Args.count();
+    println("argc={argc}");
+
+    if (argc > 1) {
+        first: String = Args.get(1);
+        println("first_arg={first}");
+    } else {
+        println("no user args provided");
+    }
+
+    return None;
+}

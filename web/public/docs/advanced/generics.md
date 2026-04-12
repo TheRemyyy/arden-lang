@@ -49,6 +49,8 @@ interface Reader<T> {
 Use interface bounds to require capabilities:
 
 ```arden
+import std.io.*;
+
 interface Named { function name(): String; }
 
 function printName<T extends Named>(value: T): None {

@@ -32,6 +32,8 @@ The compiler guarantees:
 Each non-trivial value has exactly one owner at a time.
 
 ```arden
+import std.io.*;
+
 s: String = "hello";
 t: String = s; // move ownership from s -> t
 // println(s); // Error: s is moved
@@ -59,6 +61,8 @@ If a variable is not `mut`, Arden blocks reassignment even if you try through ne
 Use `&` when you need read access without transferring ownership.
 
 ```arden
+import std.io.*;
+
 function len(s: &String): Integer {
     return Str.len(*s);
 }
@@ -72,6 +76,8 @@ println(name); // still valid, not moved
 You can create multiple immutable borrows at the same time:
 
 ```arden
+import std.io.*;
+
 n: Integer = 42;
 a: &Integer = &n;
 b: &Integer = &n;
@@ -106,6 +112,8 @@ n: Integer = view.get(0);
 Use `&mut` when another function/path should mutate your value.
 
 ```arden
+import std.io.*;
+
 function write_ref(r: &mut Integer): None {
     *r = 17;
     return None;
@@ -139,6 +147,8 @@ Arden function parameters have explicit ownership modes:
 - `borrow mut value: T`: mutable borrow
 
 ```arden
+import std.io.*;
+
 function consume(owned s: String): None { return None; }
 function read(borrow s: String): None { println(s); return None; }
 function edit(borrow mut x: Integer): None { x += 1; return None; }
@@ -221,6 +231,8 @@ Practical rule:
 - borrow state is released when the relevant scope ends
 
 ```arden
+import std.io.*;
+
 function consume(owned s: String): None { return None; }
 
 function main(): None {
@@ -243,6 +255,8 @@ So: lifetimes are real, checked, and important, but implicit in current Arden sy
 ### 1. Use After Move Is Rejected
 
 ```arden
+import std.io.*;
+
 function consume(owned s: String): None { return None; }
 
 s: String = "x";
@@ -279,6 +293,8 @@ r: &mut Integer = &mut x;
 ### 5. Lambda/Async Captures Participate In Borrow Analysis
 
 ```arden
+import std.io.*;
+
 function consume(owned s: String): None { return None; }
 
 s: String = "x";

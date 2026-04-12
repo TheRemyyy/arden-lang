@@ -1357,7 +1357,16 @@ pub(crate) fn compile_program_ast(
                 )
             })?;
         let link_result = link_objects(std::slice::from_ref(&object_path), output_path, link);
-        let _ = fs::remove_file(&object_path);
+        if let Err(err) = fs::remove_file(&object_path) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "{}: failed to remove temporary object '{}': {}",
+                    cli_warning("warning"),
+                    object_path.display(),
+                    err
+                );
+            }
+        }
         link_result?;
     }
 
@@ -1574,7 +1583,16 @@ pub(crate) fn compile_source(
                 )
             })?;
         let link_result = link_objects(std::slice::from_ref(&object_path), output_path, &link);
-        let _ = fs::remove_file(&object_path);
+        if let Err(err) = fs::remove_file(&object_path) {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "{}: failed to remove temporary object '{}': {}",
+                    cli_warning("warning"),
+                    object_path.display(),
+                    err
+                );
+            }
+        }
         link_result?;
     }
 

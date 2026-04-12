@@ -2,9 +2,10 @@
 
 ## Why This Matters
 
-Functions are your primary API boundary for types, ownership, effects, and error behavior.
+Functions are your primary API boundary for data ownership, effects, and behavior.
+If your function signatures are clear, the rest of the codebase stays predictable.
 
-## Function Shape
+## Basic Shape
 
 ```arden
 function add(a: Integer, b: Integer): Integer {
@@ -12,24 +13,33 @@ function add(a: Integer, b: Integer): Integer {
 }
 ```
 
-## Parameter Ownership Modes
+## Ownership Modes In Parameters
 
-- `owned` (default): takes ownership
+- `owned` (default): function takes ownership
 - `borrow`: read-only borrow
 - `borrow mut`: mutable borrow
 
 ```arden
-function consume(owned s: String): None { return None; }
-function read(borrow s: String): None { println(s); return None; }
+import std.io.*;
+
+function consume(owned s: String): None {
+    println("consumed={s}");
+    return None;
+}
+
+function readName(borrow s: String): None {
+    println("read={s}");
+    return None;
+}
 ```
 
 ## Return Style
 
-A function can return explicitly or use an expression tail when type-compatible.
+Use explicit `return` for clarity, especially in beginner-facing code and non-trivial branches.
 
 ## Higher-Order Functions
 
-Function values are first-class and can be typed.
+Functions are first-class values and can be passed around.
 
 ```arden
 function apply(x: Integer, f: (Integer) -> Integer): Integer {
@@ -37,16 +47,37 @@ function apply(x: Integer, f: (Integer) -> Integer): Integer {
 }
 ```
 
-## Extern and FFI Surfaces
+## Runnable Example
 
-For C interop patterns, see:
+```arden
+import std.io.*;
 
-- [`27_extern_c_interop`](../../examples/single_file/tooling_and_ffi/27_extern_c_interop/27_extern_c_interop.arden)
-- [`30_extern_variadic_printf`](../../examples/single_file/tooling_and_ffi/30_extern_variadic_printf/30_extern_variadic_printf.arden)
-- [`31_extern_abi_link_name`](../../examples/single_file/tooling_and_ffi/31_extern_abi_link_name/31_extern_abi_link_name.arden)
-- [`32_extern_safe_wrapper`](../../examples/single_file/tooling_and_ffi/32_extern_safe_wrapper/32_extern_safe_wrapper.arden)
+function square(x: Integer): Integer {
+    return x * x;
+}
+
+function apply(x: Integer, f: (Integer) -> Integer): Integer {
+    return f(x);
+}
+
+function main(): None {
+    println("result={apply(7, square)}");
+    return None;
+}
+```
+
+## Common Mistakes
+
+- oversized functions mixing validation, logic, and side effects
+- unclear ownership in signatures when borrowing is intended
+- returning sentinel values instead of explicit `Option`/`Result` style
 
 ## Related
 
 - [Generics](../advanced/generics.md)
 - [Ownership](../advanced/ownership.md)
+- FFI examples:
+  - [`27_extern_c_interop`](../../examples/single_file/tooling_and_ffi/27_extern_c_interop/27_extern_c_interop.arden)
+  - [`30_extern_variadic_printf`](../../examples/single_file/tooling_and_ffi/30_extern_variadic_printf/30_extern_variadic_printf.arden)
+  - [`31_extern_abi_link_name`](../../examples/single_file/tooling_and_ffi/31_extern_abi_link_name/31_extern_abi_link_name.arden)
+  - [`32_extern_safe_wrapper`](../../examples/single_file/tooling_and_ffi/32_extern_safe_wrapper/32_extern_safe_wrapper.arden)

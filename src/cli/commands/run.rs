@@ -1,6 +1,6 @@
 use crate::build_project;
-use crate::cli::output::{cli_accent, cli_path};
-use crate::cli::paths::current_dir_checked;
+use crate::cli::output::{cli_accent, cli_path, cli_warning};
+use crate::cli::paths::{current_dir_checked, unique_temp_binary_path};
 use crate::compile_file;
 use crate::linker::validate_opt_level;
 use crate::project::{
@@ -83,10 +83,7 @@ pub(crate) fn run_single_file(
     release: bool,
     do_check: bool,
 ) -> Result<(), String> {
-    #[cfg(windows)]
-    let output = file.with_extension("run.exe");
-    #[cfg(not(windows))]
-    let output = file.with_extension("run");
+    let output = unique_temp_binary_path("arden-run", file)?;
 
     compile_file(
         file,
@@ -101,6 +98,15 @@ pub(crate) fn run_single_file(
     println!();
 
     let result = run_binary(&output, args);
-    let _ = fs::remove_file(&output);
+    if let Err(err) = fs::remove_file(&output) {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            eprintln!(
+                "{}: failed to remove temporary run binary '{}': {}",
+                cli_warning("warning"),
+                output.display(),
+                err
+            );
+        }
+    }
     result
 }

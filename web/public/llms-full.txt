@@ -28,7 +28,7 @@
 - Range Types: https://www.arden-lang.dev/docs/features/ranges
 - Modules: https://www.arden-lang.dev/docs/features/modules
 - Multi-File Projects: https://www.arden-lang.dev/docs/features/projects
-- Multi-File Projects: https://www.arden-lang.dev/docs/features/projects/README
+- Projects Guide Index: https://www.arden-lang.dev/docs/features/projects/README
 - Testing: https://www.arden-lang.dev/docs/features/testing
 - Standard Library: https://www.arden-lang.dev/docs/stdlib/overview
 - Math Module: https://www.arden-lang.dev/docs/stdlib/math
@@ -46,6 +46,11 @@
 - CLI Reference: https://www.arden-lang.dev/docs/compiler/cli
 - Compiler Architecture: https://www.arden-lang.dev/docs/compiler/architecture
 - Projects: https://www.arden-lang.dev/docs/projects
+- Effects: https://www.arden-lang.dev/docs/advanced/effects
+- Extern and FFI: https://www.arden-lang.dev/docs/advanced/ffi
+- Attributes: https://www.arden-lang.dev/docs/features/attributes
+- Language Edges: https://www.arden-lang.dev/docs/features/language_edges
+- Packages and Imports: https://www.arden-lang.dev/docs/features/packages_imports
 
 ## Machine Endpoints
 - Sitemap: https://www.arden-lang.dev/sitemap.xml

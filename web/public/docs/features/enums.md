@@ -2,7 +2,8 @@
 
 ## Why This Matters
 
-Enums model finite states explicitly and pair naturally with exhaustive `match` logic.
+Enums model finite states explicitly and make impossible states harder to represent.
+For beginners: use an enum instead of magic strings like `"active"`, `"inactive"`, `"pending"`.
 
 ## Basic Enum
 
@@ -11,6 +12,32 @@ enum Status {
     Active,
     Inactive,
     Pending
+}
+```
+
+## Runnable Matching Example
+
+```arden
+import std.io.*;
+
+enum Status {
+    Active,
+    Inactive,
+    Pending
+}
+
+function describe(status: Status): String {
+    match (status) {
+        Status.Active => { return "active"; },
+        Status.Inactive => { return "inactive"; },
+        _ => { return "pending"; }
+    }
+}
+
+function main(): None {
+    s: Status = Status.Active;
+    println(describe(s));
+    return None;
 }
 ```
 
@@ -23,20 +50,19 @@ enum Result<T, E> {
 }
 ```
 
-## Pattern Matching
+Payload variants let each state carry data.
+Example: successful value in `Ok`, error value in `Error`.
 
-```arden
-match (status) {
-    Status.Active => { println("active"); },
-    Status.Inactive => { println("inactive"); },
-    _ => { println("other"); }
-}
-```
+## Common Mistakes
 
-## Best Practices
+- using strings for state when enum variants are safer
+- adding wildcard (`_`) too early and losing clarity on handled cases
+- mixing unrelated concepts in one large enum
 
-- use enums instead of magic strings/ints for state machines
-- prefer exhaustive `match` to long `if` chains
+## Decision Rule
+
+If the set of states is known and finite, start with an enum.
+If the data needs evolving behavior and methods, consider a class.
 
 ## Related
 

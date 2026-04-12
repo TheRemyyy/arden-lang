@@ -3418,3 +3418,103 @@ fn resolve_function_value_name_returns_none_for_ambiguous_leaf() {
 
     assert_eq!(checker.resolve_function_value_name("dup"), None);
 }
+
+#[test]
+fn effect_attributes_accept_all_explicit_effect_kinds() {
+    let src = r#"
+        @Io function f1(): None { return None; }
+        @Net function f2(): None { return None; }
+        @Alloc function f3(): None { return None; }
+        @Unsafe function f4(): None { return None; }
+        @Thread function f5(): None { return None; }
+        @Any function f6(): None { return None; }
+
+        @Io function main(): None {
+            f1();
+            return None;
+        }
+    "#;
+
+    check_source(src).must("all explicit effect attributes should type-check");
+}
+
+#[test]
+fn effect_attributes_reject_pure_combined_with_explicit_effect() {
+    let src = r#"
+        @Pure
+        @Io
+        function f(): None { return None; }
+    "#;
+
+    let errs = check_source(src).must_err("pure+effect should fail");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("cannot combine @Pure with explicit effects"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_pure_combined_with_any() {
+    let src = r#"
+        @Pure
+        @Any
+        function f(): None { return None; }
+    "#;
+
+    let errs = check_source(src).must_err("pure+any should fail");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("cannot use both @Pure and @Any"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_effectful_function() {
+    let src = r#"
+        @Io
+        function ioCall(): None { return None; }
+
+        @Pure
+        function main(): None {
+            ioCall();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err("pure caller invoking io should fail");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_allow_caller_when_effect_is_declared() {
+    let src = r#"
+        @Io
+        function ioCall(): None { return None; }
+
+        @Io
+        function main(): None {
+            ioCall();
+            return None;
+        }
+    "#;
+
+    check_source(src).must("matching caller effect should type-check");
+}

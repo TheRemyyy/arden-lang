@@ -57,6 +57,38 @@ Project mode centers around `arden.toml`:
 - import graph validation
 - semantic/build cache reuse via `.ardencache/`
 
+### Build Cache Layers (Project Mode)
+
+High-level cache flow:
+
+1. parse/index cache
+2. semantic cache gate
+3. rewrite cache
+4. object cache (including shard-level cache for large projects)
+5. final link manifest cache
+
+The compiler can reuse different layers independently, which is why `--timings`
+often shows partial rebuilds instead of all-or-nothing behavior.
+
+### Object Codegen Sharding
+
+For large projects, object codegen is grouped into shards to reduce fixed LLVM
+module/object overhead.
+
+Current tuning env vars:
+
+- `ARDEN_OBJECT_SHARD_THRESHOLD` (default `256`)
+- `ARDEN_OBJECT_SHARD_SIZE` (default `4`)
+
+Example profiling command:
+
+```bash
+ARDEN_OBJECT_SHARD_THRESHOLD=1 ARDEN_OBJECT_SHARD_SIZE=2 arden build --timings
+```
+
+These knobs are intended for performance investigation and CI tuning.
+They are not language-level syntax/settings.
+
 ## Linker Policy
 
 Repo-default linkers:

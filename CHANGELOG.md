@@ -17,22 +17,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
-- Fixed a codegen/runtime crash on larger nested `List` workloads by forcing `let`-statement stack slots to be allocated in function entry blocks instead of loop bodies, preventing stack growth across loop iterations (`SIGSEGV`/signal 11 in `arden run`/`arden profile` scenarios).
-- Fixed stale whole-project/object cache reuse across local compiler rebuilds by hashing the active compiler binary identity (path/size/mtime) into project/object fingerprints, so changed compiler binaries no longer reuse previously built artifacts.
-- Fixed runtime crash reporting in `arden run`/`arden profile` to surface signal-based exits as explicit crash diagnostics with actionable guidance instead of the ambiguous `process exited with code -1`.
-- Fixed `arden test` failure reporting to include explicit process exit/signal diagnostics (instead of only `test run failed`) when the generated test runner crashes or exits non-zero.
-- Fixed single-file `arden bench`/`arden profile` cleanup so temporary `*.bench` binaries are removed even when program execution fails, avoiding stale artifacts after non-zero exits.
-- Fixed checked and unchecked ordered comparisons for `Char`, so Windows project builds that validate drive-letter prefixes from `std.system.cwd` no longer fail on expressions like `letter >= 'A'`.
-- Fixed macOS portable release bundles after the LLVM 22 upgrade by collecting transitive non-system dylib dependencies such as `libz3`, so packaged `arden-real` no longer aborts during smoke tests on clean runners.
-- Fixed nested Cargo test runs and CLI/test-runner cwd recovery across Linux/macOS CI.
-- Fixed a parallel-test cwd race in `arden test` project runners that could leave the process inside a deleted temp workspace and randomly break later Linux links with mold.
-- Fixed direct linker invocations to anchor their working directory to the output location instead of inheriting the process cwd, which avoids CI-only `mold` crashes after unrelated tests delete temporary directories.
-- Fixed macOS SDK probing to fall back to `/usr/bin/xcrun` when PATH gets scrubbed inside nested CI test runners.
-- Fixed Windows `lld-link` CRT selection so Arden no longer mixes static `libcmt`/`libucrt` style libraries with the import CRT provided by the MSVC toolchain, eliminating duplicate-symbol link failures in project builds and benchmark CI.
-- Fixed the quick CI benchmark job to install Go on every platform, matching the benchmark runner requirements already used by the fuller linker benchmark workflow.
-- Fixed Windows benchmark harness output naming so Rust/Go compile jobs and Arden project builds all agree on `.exe` artifact paths.
-- Corrected Windows `lld-link` machine detection so `x86_64` targets no longer get mislinked as `x86`.
-- Replaced several build-path panic-style invariants with explicit user-facing errors and warnings, including parse cache reuse, typecheck cache reuse, object cache path lookup, and invalid object shard env overrides.
+- Runtime/codegen: fixed nested `List` crash (`SIGSEGV`) in `run/profile`, improved signal-based crash diagnostics, and hardened temporary object cleanup warnings.
+- Caching/rebuild correctness: invalidated stale project/object caches when compiler binary identity changes; improved project-mode rebuild reliability.
+- CLI/test tooling: fixed `run/bench/profile/test` temporary artifact handling (unique temp outputs, consistent cleanup, explicit cleanup warnings), improved `arden test` failure diagnostics, fixed project-mode test/bench/profile output path resolution (including Windows `.exe` cases), corrected `arden bindgen` status stream routing so generated stdout output is not polluted, and prevented duplicate `std.io` import injection in generated test-runner sources when inline block comments precede imports.
+- Path safety/concurrency: rejected symlinked root directories during source/test discovery and made scoped cwd switching panic-safe with explicit error propagation.
+- Linking/platform fixes: stabilized linker cwd/response-file cleanup handling, improved macOS SDK/protable bundle behavior, and fixed Windows `lld-link` machine/CRT/output-path issues.
+- CI/tooling robustness: fixed benchmark workflow setup/output consistency and replaced panic-style build-path invariants with explicit user-facing errors/warnings.
+- Frontend/runtime correctness: fixed checked/unchecked `Char` ordered comparisons affecting Windows drive-letter path checks, and removed a panic-only fallback in call-arity codegen diagnostics in favor of safe error-path handling.
+- Attribute handling: reject misplaced/invalid attribute combinations (including duplicate attributes, `@Ignore` without `@Test`, and `@Test` mixed with lifecycle hooks), fail fast for invalid test-runner signatures (`@Test/@Before/...` on async/extern/parameterized/generic/non-`None` functions), reject duplicate lifecycle hooks per suite, and keep module-scoped `main` intact while stripping only top-level entry `main` in generated test runners.
 
 ## [1.3.7] - 2026-04-10
 

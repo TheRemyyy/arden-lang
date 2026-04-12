@@ -3,6 +3,7 @@ use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::time::UNIX_EPOCH;
 
 use crate::project::find_project_root;
 
@@ -10,12 +11,14 @@ pub(crate) struct CwdRestore {
     previous: PathBuf,
 }
 
+struct DirLockDepthGuard;
+
 fn fallback_working_dir() -> PathBuf {
     std::env::temp_dir()
 }
 
-pub(crate) fn capture_working_dir() -> PathBuf {
-    std::env::current_dir().unwrap_or_else(|_| fallback_working_dir())
+pub(crate) fn capture_working_dir() -> Result<PathBuf, String> {
+    current_dir_checked()
 }
 
 pub(crate) fn process_current_dir_lock() -> &'static Mutex<()> {
@@ -30,8 +33,22 @@ thread_local! {
 impl Drop for CwdRestore {
     fn drop(&mut self) {
         if std::env::set_current_dir(&self.previous).is_err() {
-            let _ = std::env::set_current_dir(fallback_working_dir());
+            if let Err(err) = std::env::set_current_dir(fallback_working_dir()) {
+                eprintln!(
+                    "warning: failed to restore process current directory to '{}' and failed fallback: {}",
+                    self.previous.display(),
+                    err
+                );
+            }
         }
+    }
+}
+
+impl Drop for DirLockDepthGuard {
+    fn drop(&mut self) {
+        CURRENT_DIR_LOCK_DEPTH.with(|depth| {
+            depth.set(depth.get().saturating_sub(1));
+        });
     }
 }
 
@@ -48,9 +65,8 @@ pub(crate) fn with_process_current_dir<T>(
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         depth.set(depth.get() + 1);
-        let result = with_process_current_dir_locked(dir, f);
-        depth.set(depth.get().saturating_sub(1));
-        result
+        let _guard = DirLockDepthGuard;
+        with_process_current_dir_locked(dir, f)
     })
 }
 
@@ -58,7 +74,7 @@ fn with_process_current_dir_locked<T>(
     dir: &Path,
     f: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
-    let previous = capture_working_dir();
+    let previous = capture_working_dir()?;
     std::env::set_current_dir(dir).map_err(|e| {
         format!(
             "{}: Failed to change current directory to '{}': {}",
@@ -101,7 +117,11 @@ pub(crate) fn format_target_label(path: Option<&Path>, current_dir: &Path) -> St
 }
 
 pub(crate) fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, String> {
-    let mut current = path.parent();
+    let mut current = if path.is_dir() {
+        Some(path)
+    } else {
+        path.parent()
+    };
     while let Some(dir) = current {
         if dir.as_os_str().is_empty() {
             break;
@@ -193,6 +213,32 @@ pub(crate) fn collect_arden_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
+pub(crate) fn unique_temp_binary_path(tag: &str, source: &Path) -> Result<PathBuf, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| {
+            format!(
+                "{}: Failed to create unique temporary binary name: {}",
+                "error".red().bold(),
+                e
+            )
+        })?
+        .as_nanos();
+    let stem = source
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("input");
+    let filename = format!("{tag}-{stem}-{}-{now}", std::process::id());
+
+    #[cfg(windows)]
+    let path = std::env::temp_dir().join(format!("{filename}.exe"));
+    #[cfg(not(windows))]
+    let path = std::env::temp_dir().join(filename);
+
+    Ok(path)
+}
+
 fn collect_arden_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
     for entry in fs::read_dir(dir)
         .map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?
@@ -221,4 +267,68 @@ fn collect_arden_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn collect_arden_files_rejects_symlinked_root_directory() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should move forward")
+            .as_nanos();
+        let temp_root = std::env::temp_dir().join(format!(
+            "arden-paths-symlink-root-{}-{suffix}",
+            std::process::id()
+        ));
+        let real_dir = temp_root.join("real");
+        let linked_dir = temp_root.join("linked");
+        fs::create_dir_all(&real_dir).expect("create real directory");
+        fs::write(
+            real_dir.join("demo.arden"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("write source file");
+        std::os::unix::fs::symlink(&real_dir, &linked_dir).expect("create symlink directory");
+
+        let err = collect_arden_files(&linked_dir).expect_err("symlinked root should be rejected");
+        assert!(
+            err.contains("must not traverse symlinked directories"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn with_process_current_dir_recovers_lock_depth_after_panic() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should move forward")
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!(
+            "arden-paths-lock-depth-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&temp_dir).expect("create temp directory");
+
+        let panic_result = catch_unwind(AssertUnwindSafe(|| {
+            let _ = with_process_current_dir(&temp_dir, || -> Result<(), String> {
+                panic!("intentional panic for lock-depth regression test");
+            });
+        }));
+        assert!(panic_result.is_err(), "closure should panic");
+
+        with_process_current_dir(&temp_dir, || Ok(())).expect("lock depth should recover");
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
 }

@@ -625,6 +625,78 @@ fn cli_run_tests_accepts_relative_single_file_path_in_current_directory() {
 }
 
 #[test]
+fn cli_run_single_file_preserves_existing_neighbor_run_artifact() {
+    let temp_root = make_temp_project_root("cli-run-neighbor-artifact");
+    let source_file = temp_root.join("smoke.arden");
+    fs::write(&source_file, "function main(): None { return None; }\n").must("write source file");
+
+    #[cfg(windows)]
+    let neighbor_artifact = source_file.with_extension("run.exe");
+    #[cfg(not(windows))]
+    let neighbor_artifact = source_file.with_extension("run");
+
+    fs::write(&neighbor_artifact, "KEEP_ME").must("write neighboring run artifact");
+
+    crate::cli::commands::run_single_file(&source_file, &[], false, true)
+        .must("single-file run should succeed");
+
+    assert_eq!(
+        fs::read_to_string(&neighbor_artifact).must("read neighboring run artifact"),
+        "KEEP_ME"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_bench_single_file_preserves_existing_neighbor_bench_artifact() {
+    let temp_root = make_temp_project_root("cli-bench-neighbor-artifact");
+    let source_file = temp_root.join("smoke.arden");
+    fs::write(&source_file, "function main(): None { return None; }\n").must("write source file");
+
+    #[cfg(windows)]
+    let neighbor_artifact = source_file.with_extension("bench.exe");
+    #[cfg(not(windows))]
+    let neighbor_artifact = source_file.with_extension("bench");
+
+    fs::write(&neighbor_artifact, "KEEP_ME").must("write neighboring bench artifact");
+
+    crate::cli::commands::bench_target(Some(&source_file), 1)
+        .must("single-file bench should succeed");
+
+    assert_eq!(
+        fs::read_to_string(&neighbor_artifact).must("read neighboring bench artifact"),
+        "KEEP_ME"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_profile_single_file_preserves_existing_neighbor_bench_artifact() {
+    let temp_root = make_temp_project_root("cli-profile-neighbor-artifact");
+    let source_file = temp_root.join("smoke.arden");
+    fs::write(&source_file, "function main(): None { return None; }\n").must("write source file");
+
+    #[cfg(windows)]
+    let neighbor_artifact = source_file.with_extension("bench.exe");
+    #[cfg(not(windows))]
+    let neighbor_artifact = source_file.with_extension("bench");
+
+    fs::write(&neighbor_artifact, "KEEP_ME").must("write neighboring bench artifact");
+
+    crate::cli::commands::profile_target(Some(&source_file))
+        .must("single-file profile should succeed");
+
+    assert_eq!(
+        fs::read_to_string(&neighbor_artifact).must("read neighboring bench artifact"),
+        "KEEP_ME"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn cli_run_tests_reports_exit_status_for_failing_tests() {
     let temp_root = make_temp_project_root("cli-test-failure-status");
     let test_file = temp_root.join("failing_test.arden");
@@ -640,6 +712,242 @@ fn cli_run_tests_reports_exit_status_for_failing_tests() {
     let err = run_tests(Some(&test_file), false, Some("failingCase"))
         .must_err("failing tests should report process exit details");
     assert!(err.contains("test run failed: exited with code"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_test_functions_with_parameters() {
+    let temp_root = make_temp_project_root("cli-test-params");
+    let test_file = temp_root.join("param_test.arden");
+    fs::write(
+        &test_file,
+        "@Test\nfunction smoke(value: Integer): None { return None; }\n",
+    )
+    .must("write parameterized test file");
+
+    let err = run_tests(Some(&test_file), false, Some("smoke"))
+        .must_err("parameterized @Test should fail fast");
+    assert!(
+        err.contains("@Test function 'smoke' cannot declare parameters"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_async_test_functions() {
+    let temp_root = make_temp_project_root("cli-test-async");
+    let test_file = temp_root.join("async_test.arden");
+    fs::write(
+        &test_file,
+        "@Test\nasync function smoke(): None { return None; }\n",
+    )
+    .must("write async test file");
+
+    let err =
+        run_tests(Some(&test_file), false, Some("smoke")).must_err("async @Test should fail fast");
+    assert!(
+        err.contains("@Test function 'smoke' cannot be async"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_async_before_hooks() {
+    let temp_root = make_temp_project_root("cli-test-async-before");
+    let test_file = temp_root.join("async_before_test.arden");
+    fs::write(
+        &test_file,
+        "@Before\nasync function setup(): None { return None; }\n@Test\nfunction smoke(): None { return None; }\n",
+    )
+    .must("write async before hook test");
+
+    let err = run_tests(Some(&test_file), false, Some("smoke"))
+        .must_err("async @Before should fail fast");
+    assert!(
+        err.contains("@Before function 'setup' cannot be async"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_extern_tests() {
+    let temp_root = make_temp_project_root("cli-test-extern");
+    let test_file = temp_root.join("extern_test.arden");
+    fs::write(&test_file, "@Test\nextern(c) function smoke(): None;\n").must("write extern test");
+
+    let err =
+        run_tests(Some(&test_file), false, Some("smoke")).must_err("extern @Test should fail fast");
+    assert!(
+        err.contains("@Test function 'smoke' cannot be extern"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_non_none_test_return_type() {
+    let temp_root = make_temp_project_root("cli-test-return-type");
+    let test_file = temp_root.join("return_test.arden");
+    fs::write(
+        &test_file,
+        "@Test\nfunction smoke(): Integer { return 0; }\n",
+    )
+    .must("write non-none test");
+
+    let err = run_tests(Some(&test_file), false, Some("smoke"))
+        .must_err("non-none @Test return should fail fast");
+    assert!(
+        err.contains("@Test function 'smoke' must return None"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_generic_test_functions() {
+    let temp_root = make_temp_project_root("cli-test-generic");
+    let test_file = temp_root.join("generic_test.arden");
+    fs::write(
+        &test_file,
+        "@Test\nfunction smoke<T>(): None { return None; }\n",
+    )
+    .must("write generic test");
+
+    let err = run_tests(Some(&test_file), false, Some("smoke"))
+        .must_err("generic @Test should fail fast");
+    assert!(
+        err.contains("@Test function 'smoke' cannot declare generic parameters"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_duplicate_before_hooks_in_suite() {
+    let temp_root = make_temp_project_root("cli-test-duplicate-before");
+    let test_file = temp_root.join("duplicate_before_test.arden");
+    fs::write(
+        &test_file,
+        "@Before\nfunction setup1(): None { return None; }\n@Before\nfunction setup2(): None { return None; }\n@Test\nfunction smoke(): None { return None; }\n",
+    )
+    .must("write duplicate before hooks");
+
+    let err = run_tests(Some(&test_file), false, Some("smoke"))
+        .must_err("duplicate @Before should fail fast");
+    assert!(
+        err.contains("Multiple @Before hooks in suite 'default'"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_duplicate_after_hooks_in_suite() {
+    let temp_root = make_temp_project_root("cli-test-duplicate-after");
+    let test_file = temp_root.join("duplicate_after_test.arden");
+    fs::write(
+        &test_file,
+        "@After\nfunction teardown1(): None { return None; }\n@After\nfunction teardown2(): None { return None; }\n@Test\nfunction smoke(): None { return None; }\n",
+    )
+    .must("write duplicate after hooks");
+
+    let err = run_tests(Some(&test_file), false, Some("smoke"))
+        .must_err("duplicate @After should fail fast");
+    assert!(
+        err.contains("Multiple @After hooks in suite 'default'"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_duplicate_before_all_hooks_in_suite() {
+    let temp_root = make_temp_project_root("cli-test-duplicate-before-all");
+    let test_file = temp_root.join("duplicate_before_all_test.arden");
+    fs::write(
+        &test_file,
+        "@BeforeAll\nfunction setup1(): None { return None; }\n@BeforeAll\nfunction setup2(): None { return None; }\n@Test\nfunction smoke(): None { return None; }\n",
+    )
+    .must("write duplicate before_all hooks");
+
+    let err = run_tests(Some(&test_file), false, Some("smoke"))
+        .must_err("duplicate @BeforeAll should fail fast");
+    assert!(
+        err.contains("Multiple @BeforeAll hooks in suite 'default'"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_duplicate_after_all_hooks_in_suite() {
+    let temp_root = make_temp_project_root("cli-test-duplicate-after-all");
+    let test_file = temp_root.join("duplicate_after_all_test.arden");
+    fs::write(
+        &test_file,
+        "@AfterAll\nfunction teardown1(): None { return None; }\n@AfterAll\nfunction teardown2(): None { return None; }\n@Test\nfunction smoke(): None { return None; }\n",
+    )
+    .must("write duplicate after_all hooks");
+
+    let err = run_tests(Some(&test_file), false, Some("smoke"))
+        .must_err("duplicate @AfterAll should fail fast");
+    assert!(
+        err.contains("Multiple @AfterAll hooks in suite 'default'"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_non_none_before_hook_return_type() {
+    let temp_root = make_temp_project_root("cli-test-before-return-type");
+    let test_file = temp_root.join("before_return_type_test.arden");
+    fs::write(
+        &test_file,
+        "@Before\nfunction setup(): Integer { return 1; }\n@Test\nfunction smoke(): None { return None; }\n",
+    )
+    .must("write non-none before hook");
+
+    let err = run_tests(Some(&test_file), false, Some("smoke"))
+        .must_err("non-none @Before should fail fast");
+    assert!(
+        err.contains("@Before function 'setup' must return None"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_generic_before_hook() {
+    let temp_root = make_temp_project_root("cli-test-before-generic");
+    let test_file = temp_root.join("before_generic_test.arden");
+    fs::write(
+        &test_file,
+        "@Before\nfunction setup<T>(): None { return None; }\n@Test\nfunction smoke(): None { return None; }\n",
+    )
+    .must("write generic before hook");
+
+    let err = run_tests(Some(&test_file), false, Some("smoke"))
+        .must_err("generic @Before should fail fast");
+    assert!(
+        err.contains("@Before function 'setup' cannot declare generic parameters"),
+        "{err}"
+    );
 
     let _ = fs::remove_dir_all(temp_root);
 }

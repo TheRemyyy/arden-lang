@@ -77,12 +77,24 @@
         "path": "/docs/features/projects"
       },
       {
-        "title": "Multi-File Projects Guide",
+        "title": "Projects Guide Index Guide",
         "path": "/docs/features/projects/README"
       },
       {
         "title": "Testing",
         "path": "/docs/features/testing"
+      },
+      {
+        "title": "Attributes",
+        "path": "/docs/features/attributes"
+      },
+      {
+        "title": "Language Edges",
+        "path": "/docs/features/language_edges"
+      },
+      {
+        "title": "Packages and Imports",
+        "path": "/docs/features/packages_imports"
       }
     ]
   },
@@ -145,6 +157,14 @@
       {
         "title": "Memory Management",
         "path": "/docs/advanced/memory_management"
+      },
+      {
+        "title": "Effects",
+        "path": "/docs/advanced/effects"
+      },
+      {
+        "title": "Extern and FFI",
+        "path": "/docs/advanced/ffi"
       }
     ]
   },

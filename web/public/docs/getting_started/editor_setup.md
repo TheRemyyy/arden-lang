@@ -4,21 +4,17 @@
 
 Good editor integration shortens feedback loops from minutes to seconds.
 
-## Recommended Setup
+## Core Setup
 
-Use an editor that supports language-server integration and run the Arden LSP:
+Run Arden language server:
 
 ```bash
 arden lsp
 ```
 
-## Baseline Workflow
+Use an editor/client that can connect to a stdio language server.
 
-- keep `arden check` running frequently
-- run `arden fmt` before commits
-- use `arden lint` / `arden fix` for static hygiene
-
-## Practical Loop
+## Recommended Daily Loop
 
 ```bash
 arden check
@@ -27,10 +23,29 @@ arden fmt
 arden lint
 ```
 
+## Project Root Rule
+
+Open the project at directory containing `arden.toml` when in project mode.
+That keeps diagnostics/import resolution consistent with CLI behavior.
+
+## Practical LSP Sanity Check
+
+If editor diagnostics look suspicious, compare with terminal truth:
+
+```bash
+arden check
+```
+
+If terminal and editor disagree, LSP wiring/workspace root is usually the cause.
+
 ## Troubleshooting
 
-If completion/diagnostics do not appear:
+- no completions/diagnostics: ensure editor actually starts `arden lsp`
+- stale diagnostics: restart LSP process and rerun `arden check`
+- wrong imports in diagnostics: verify opened workspace root
+- formatting mismatch: run `arden fmt` and compare with editor formatter output
 
-- ensure your editor is connected to the LSP process
-- ensure workspace root is the project root (`arden.toml` present for project mode)
-- run `arden check` in terminal to confirm compiler diagnostics directly
+## Related
+
+- [Installation](installation.md)
+- [CLI Reference](../compiler/cli.md)

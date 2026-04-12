@@ -23,6 +23,8 @@ Nested block comments are not currently supported.
 Blocks use `{}` and define lexical scope.
 
 ```arden
+import std.io.*;
+
 function main(): None {
     x: Integer = 10;
 
@@ -45,7 +47,7 @@ x: Integer = 5;
 return None;
 ```
 
-Declarations like `function`, `class`, `if`, `while`, and `match` do not need `;` after their closing brace.
+Declarations like `function`, `class`, `if`, `while`, and `match` do not need `;` after closing brace.
 
 ## Assignment and Compound Assignment
 
@@ -69,10 +71,45 @@ arr[i] -= 2;
 ## String Interpolation
 
 ```arden
+import std.io.*;
+
 println("count={10}, ok={true}, mark={'🚀'}");
 ```
 
-Interpolation currently supports scalar display types (`Integer`, `Float`, `Boolean`, `String`, `Char`, `None`).
+Interpolation supports scalar display types (`Integer`, `Float`, `Boolean`, `String`, `Char`, `None`).
+
+## Parser Rules That Often Surprise People
+
+### No trailing commas in many lists
+
+Compiler currently rejects trailing commas in many syntax forms, including:
+
+- function parameter lists
+- argument lists
+- lambda parameter lists
+- function type parameters
+- generic type argument lists and generic call type argument lists
+- `implements` / `interface extends` lists
+- extern option lists and extern parameter lists
+
+### Match must have at least one arm
+
+Empty `match` statements/expressions are rejected.
+
+### `None` pattern form
+
+Use `None` pattern without empty binding list `None()`.
+
+### Import/package path shape
+
+- path cannot start with `.`
+- path cannot contain empty segment (`..`)
+- package path cannot end with `.`
+
+### Lambda syntax
+
+Pipe-style lambda syntax is not supported (`|x| ...`).
+Use Arden lambda syntax from existing examples/docs.
 
 ## Identifiers
 
@@ -86,4 +123,3 @@ Identifier rule: start with letter/underscore, continue with letters/digits/unde
 - variables/functions: `camelCase`
 - types/classes/interfaces: `PascalCase`
 - constants: `SCREAMING_SNAKE_CASE`
-

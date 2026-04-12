@@ -9,6 +9,8 @@ Control flow is where state bugs hide. Arden keeps it explicit: typed conditions
 ## `if` / `else if` / `else`
 
 ```arden
+import std.io.*;
+
 x: Integer = 10;
 if (x > 5) {
     println("Large");
@@ -24,6 +26,8 @@ if (x > 5) {
 Use for condition-driven loops.
 
 ```arden
+import std.io.*;
+
 mut i: Integer = 0;
 while (i < 5) {
     println("{i}");
@@ -38,6 +42,8 @@ Use for range/iterable-driven loops.
 ### Range iteration
 
 ```arden
+import std.io.*;
+
 for (i in 5) {
     println("{i}"); // 0..4
 }
@@ -53,11 +59,13 @@ while (r.has_next()) {
 }
 ```
 
-`for (i: Float in 5)` widens the loop variable, not the iterable type itself.
+`for (i: Float in 5)` widens the loop variable, not iterable type itself.
 
 ### Collection iteration
 
 ```arden
+import std.io.*;
+
 numbers: List<Integer> = List<Integer>();
 numbers.push(1);
 numbers.push(2);
@@ -75,6 +83,8 @@ for (ch in text) {
 Borrowed views are also iterable:
 
 ```arden
+import std.io.*;
+
 view: &List<Integer> = &numbers;
 for (n in view) {
     println("{n}");
@@ -86,6 +96,8 @@ for (n in view) {
 `match` is exhaustive and suited for enum/pattern branching.
 
 ```arden
+import std.io.*;
+
 value: Integer = 2;
 match (value) {
     1 => { println("One"); },
@@ -96,9 +108,18 @@ match (value) {
 
 Use `_` as explicit catch-all when needed.
 
+### Important Rule
+
+`match` must contain at least one arm; empty match statement/expression is rejected.
+
+## Common Mistakes
+
+- using long `if/else` chain where enum+`match` would be clearer
+- assuming `for (i in N)` includes `N` (it is end-exclusive)
+- forgetting explicit catch-all `_` when not handling all values explicitly
+
 ## Related
 
 - [Range Types](../features/ranges.md)
 - [Enums](../features/enums.md)
 - [Pattern Matching Example](../../examples/single_file/safety_and_async/16_pattern_matching/16_pattern_matching.arden)
-

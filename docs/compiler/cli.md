@@ -10,25 +10,25 @@ This is the operational contract for day-to-day Arden development and CI.
 arden <command> [options]
 ```
 
-## Core Commands
+## Command Map
 
 | Command | Purpose |
 | :--- | :--- |
 | `new` | create a project scaffold |
-| `build` | build project artifact |
-| `run` | build + run project or file |
+| `build` | build current project |
+| `run` | build + run project or single file |
 | `compile` | compile single file |
 | `check` | parse + type + borrow checks |
 | `info` | print resolved project settings |
-| `test` | run `@Test` suites |
+| `test` | discover/run `@Test` suites |
 | `fmt` | format source |
 | `lint` | report static findings |
 | `fix` | apply safe fixes + format |
-| `lex` | print tokens |
-| `parse` | print AST |
-| `bench` | run benchmark flow |
+| `lex` | print lexer tokens |
+| `parse` | print parsed AST |
+| `bench` | measure end-to-end runtime |
 | `profile` | one-run timing summary |
-| `bindgen` | generate extern bindings |
+| `bindgen` | generate Arden extern bindings from C header |
 | `lsp` | start language server |
 
 ## New User Starter Set
@@ -60,6 +60,12 @@ arden check
 arden run
 ```
 
+Program args passthrough:
+
+```bash
+arden run app.arden -- --mode ci --limit 10
+```
+
 Quality loop:
 
 ```bash
@@ -68,47 +74,148 @@ arden fmt
 arden lint
 ```
 
-## Command Options Snapshot
+## Detailed Options
+
+### `arden new`
+
+```bash
+arden new <NAME> [--path <DIR>]
+```
+
+- `name` required
+- `--path` optional output directory (default `./<NAME>`)
+
+### `arden build`
+
+```bash
+arden build [--release] [--emit-llvm] [--no-check] [--timings]
+```
+
+- `--release` optimized codegen
+- `--emit-llvm` write LLVM IR instead of final artifact
+- `--no-check` skip type/borrow checks
+- `--timings` print internal phase timings
 
 ### `arden run`
 
-- optional file argument: `arden run [FILE]`
-- pass runtime args through: `arden run app.arden -- arg1 arg2`
-- flags: `--release`, `--no-check`, `--timings`
+```bash
+arden run [FILE] [--release] [--no-check] [--timings] [-- <PROGRAM_ARGS...>]
+```
+
+- optional `FILE`; if omitted, runs current project
+- trailing `-- ...` passes args to compiled program
 
 ### `arden compile`
 
-- required file: `arden compile <FILE>`
-- output path: `-o, --output`
-- optimization: `--opt-level`
-- backend target triple: `--target`
-- emit LLVM IR: `--emit-llvm`
-- skip semantic checks: `--no-check`
+```bash
+arden compile <FILE> [-o <OUT>] [--opt-level <L>] [--target <TRIPLE>] [--emit-llvm] [--no-check]
+```
+
+- `-o, --output` output path
+- `--opt-level` one of: `0`, `1`, `2`, `3`, `s`, `z`, `fast`
+- `--target` backend target triple
+- `--emit-llvm` write LLVM IR
+- `--no-check` skip type/borrow checks
 
 ### `arden check`
 
-- optional file: `arden check [FILE]`
-- project timing breakdown: `--timings`
+```bash
+arden check [FILE] [--timings]
+```
 
-### `arden fmt`
+- optional file; otherwise project entry point
+- `--timings` timing breakdown in project mode
 
-- file or directory input: `arden fmt [PATH]`
-- check-only mode (no write): `arden fmt --check [PATH]`
+## Advanced Build Knobs (Project Mode)
+
+These knobs are useful when you profile large project builds.
+
+```bash
+ARDEN_OBJECT_SHARD_THRESHOLD=1 ARDEN_OBJECT_SHARD_SIZE=2 arden build --timings
+```
+
+- `ARDEN_OBJECT_SHARD_THRESHOLD` minimum active-file count before object sharding is enabled
+- `ARDEN_OBJECT_SHARD_SIZE` max files per object-codegen shard
+
+Defaults in current compiler:
+
+- `ARDEN_OBJECT_SHARD_THRESHOLD=256`
+- `ARDEN_OBJECT_SHARD_SIZE=4`
+
+Important:
+
+- these are advanced performance tuning env vars
+- they affect build cache/codegen behavior, not language semantics
+- treat them as implementation-level controls, not stable language guarantees
 
 ### `arden test`
 
-- path selection: `--path <PATH>`
-- list tests only: `--list`
-- name filter: `--filter <PATTERN>`
+```bash
+arden test [--path <PATH>] [--list] [--filter <PATTERN>]
+```
+
+- `--path` file or directory target
+- `--list` list discovered tests without execution
+- `--filter` run only tests with matching name substring
+
+### `arden fmt`
+
+```bash
+arden fmt [PATH] [--check]
+```
+
+- format file/directory
+- `--check` validates formatting without writing
+
+### `arden lint`
+
+```bash
+arden lint [PATH]
+```
+
+### `arden fix`
+
+```bash
+arden fix [PATH]
+```
+
+### `arden lex`
+
+```bash
+arden lex <FILE>
+```
+
+### `arden parse`
+
+```bash
+arden parse <FILE>
+```
+
+### `arden bindgen`
+
+```bash
+arden bindgen <HEADER> [-o <OUT_FILE>]
+```
 
 ### `arden bench`
 
-- optional file/project default
-- iteration count: `--iterations <N>`
+```bash
+arden bench [FILE] [--iterations <N>]
+```
+
+- default iterations: `5`
 
 ### `arden profile`
 
-- single-run timing summary for file or project
+```bash
+arden profile [FILE]
+```
+
+### `arden lsp`
+
+```bash
+arden lsp
+```
 
 ## Related
 

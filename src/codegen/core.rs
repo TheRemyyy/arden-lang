@@ -988,7 +988,7 @@ impl<'ctx> Codegen<'ctx> {
         };
         let expected = match &callee_ty {
             Type::Function(params, _) => params.len(),
-            _ => unreachable!(),
+            _ => return None,
         };
         (args.len() != expected).then(|| Self::function_call_arity_error(&callee_ty, args.len()))
     }

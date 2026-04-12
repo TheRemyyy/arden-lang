@@ -2,7 +2,7 @@
 
 ## Why This Matters
 
-Arden aims to prevent common memory/aliasing bugs at compile time while still producing native binaries.
+Arden prevents common memory and aliasing bugs at compile time while still producing native binaries.
 
 ## High-Level Model
 
@@ -25,6 +25,8 @@ Primary reference:
 ## Minimal Example
 
 ```arden
+import std.io.*;
+
 function consume(owned s: String): None { return None; }
 
 function main(): None {
@@ -37,9 +39,11 @@ function main(): None {
 }
 ```
 
-## Practical Rule
+## Practical Rules
 
-Code to ownership semantics, not guessed stack/heap internals.
+- code to ownership semantics, not guessed stack/heap internals
+- keep borrow scopes small when values need to be moved later
+- make mutability explicit at API boundaries (`borrow mut` where intended)
 
 ## Cleanup Model
 
@@ -47,4 +51,10 @@ When owning bindings leave scope, required runtime cleanup is performed accordin
 
 ## Lifetimes
 
-Lifetimes are currently implicit in source syntax, but still enforced by the compiler.
+Lifetimes are implicit in source syntax, but enforced by compiler.
+You do not write explicit lifetime annotations today.
+
+## Related
+
+- [Ownership and Borrowing](ownership.md)
+- [Types](../basics/types.md)

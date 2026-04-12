@@ -165,6 +165,17 @@ fn injects_stdio_import_when_block_comment_mentions_it() {
 }
 
 #[test]
+fn does_not_duplicate_stdio_import_after_inline_block_comment() {
+    let source = "/* banner */ import std.io.*;\nfunction helper(): None { return None; }\n";
+    let rewritten = ensure_test_runner_imports(source);
+    assert_eq!(
+        rewritten.matches("import std.io.*;").count(),
+        1,
+        "{rewritten}"
+    );
+}
+
+#[test]
 fn injects_stdio_import_after_shebang() {
     let source = "#!/usr/bin/env arden\nfunction helper(): None { return None; }\n";
     let rewritten = ensure_test_runner_imports(source);
@@ -585,6 +596,51 @@ function helper(): None { return None; }
     assert!(!generated.contains("@Test"), "{generated}");
     assert!(
         !generated.contains("@Ignore(\"not a real test\")"),
+        "{generated}"
+    );
+    assert!(generated.contains("function helper(): None"), "{generated}");
+}
+
+#[test]
+fn preserves_module_scoped_main_function() {
+    let discovery = TestDiscovery {
+        suites: vec![],
+        total_tests: 0,
+        ignored_tests: 0,
+    };
+    let source = r#"
+module Util {
+function main(): Integer {
+return 7;
+}
+}
+
+function helper(): None { return None; }
+"#;
+    let generated = generate_test_runner_with_source(&discovery, source);
+    assert!(generated.contains("module Util {"), "{generated}");
+    assert!(
+        generated.contains("function main(): Integer"),
+        "{generated}"
+    );
+    assert!(generated.contains("return 7;"), "{generated}");
+    assert!(generated.contains("function helper(): None"), "{generated}");
+}
+
+#[test]
+fn strips_single_line_main_without_removing_following_line() {
+    let discovery = TestDiscovery {
+        suites: vec![],
+        total_tests: 0,
+        ignored_tests: 0,
+    };
+    let source = r#"
+function main(): Integer { return 0; }
+function helper(): None { return None; }
+"#;
+    let generated = generate_test_runner_with_source(&discovery, source);
+    assert!(
+        !generated.contains("function main(): Integer { return 0; }"),
         "{generated}"
     );
     assert!(generated.contains("function helper(): None"), "{generated}");

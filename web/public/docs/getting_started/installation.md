@@ -2,14 +2,15 @@
 
 ## Why This Matters
 
-A clean toolchain setup removes 80% of early friction. This page is about getting to a stable `arden run` quickly.
+A clean toolchain setup removes most early friction.
+Goal: get to a stable `arden --help`, `arden check`, and `arden run` loop fast.
 
 ## Prerequisites
 
 - Rust toolchain (for building from source)
 - LLVM + linker requirements for your platform
 
-## Build Arden
+## Build From Source
 
 From repo root:
 
@@ -17,7 +18,7 @@ From repo root:
 cargo build --release
 ```
 
-Compiler binary:
+Compiler binary path:
 
 ```text
 target/release/arden
@@ -36,15 +37,32 @@ Run a smoke example:
 ./target/release/arden run examples/single_file/basics/01_hello/01_hello.arden
 ```
 
+Run CLI smoke bundle:
+
+```bash
+CI_SKIP_COMPILER_BUILD=1 ARDEN_COMPILER_PATH=target/release/arden bash scripts/cli_smoke.sh
+```
+
 ## Platform Notes
 
-Arden uses explicit linker policy in this repo setup:
+This repository uses explicit linker policy:
 
 - Linux: `mold`
 - macOS: LLVM `lld`
 - Windows: LLVM `lld-link`
 
-If build/link fails, check your linker and LLVM environment first.
+If build/link fails, verify linker and LLVM setup first.
+
+## Portable Artifacts
+
+CI release workflows also produce portable bundles (`linux/macOS/windows`) containing compiler + expected runtime tooling.
+Use them when you want quick install without local Rust build.
+
+## Common Setup Problems
+
+- compiler builds, but `arden` path points to old binary
+- missing linker on platform-specific target
+- running project commands outside project root (`arden.toml` missing)
 
 ## Next Step
 

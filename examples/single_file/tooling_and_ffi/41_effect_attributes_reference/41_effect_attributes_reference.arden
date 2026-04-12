@@ -1,0 +1,64 @@
+// Test 41: Effect Attribute Reference
+// Demonstrates explicit effect attributes supported by compiler:
+// @Pure, @Io, @Thread, @Any, @Net, @Alloc, @Unsafe
+
+import std.io.*;
+import std.time.*;
+
+@Pure
+function pureAdd(a: Integer, b: Integer): Integer {
+    return a + b;
+}
+
+@Io
+function ioLog(msg: String): None {
+    println(msg);
+    return None;
+}
+
+@Thread
+function threadPause(ms: Integer): None {
+    Time.sleep(ms);
+    return None;
+}
+
+@Net
+function netPlaceholder(): Integer {
+    // Placeholder for network-capable boundary.
+    // In this demo we avoid real network calls and only model effect contracts.
+    return 200;
+}
+
+@Alloc
+function allocPlaceholder(): Integer {
+    // Placeholder for allocation-sensitive boundary.
+    return 1;
+}
+
+@Unsafe
+function unsafePlaceholder(): Integer {
+    // Placeholder for unsafe-capable boundary.
+    return 7;
+}
+
+@Any
+function runAllEffectsDemo(): None {
+    sum: Integer = pureAdd(20, 22);
+    ioLog("pureAdd result = {sum}");
+
+    threadPause(1);
+    code: Integer = netPlaceholder();
+    a: Integer = allocPlaceholder();
+    u: Integer = unsafePlaceholder();
+
+    println("thread/net/alloc/unsafe placeholders = {code}/{a}/{u}");
+    println("@Any allows mixing multiple effect requirements in one function.");
+    return None;
+}
+
+function main(): None {
+    println("=== Effect Attribute Reference ===");
+    runAllEffectsDemo();
+    println("done");
+    return None;
+}

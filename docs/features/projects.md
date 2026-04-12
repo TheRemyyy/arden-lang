@@ -2,15 +2,28 @@
 
 ## Why This Matters
 
-Project mode is the production workflow: explicit file graph, deterministic builds, and better team-scale reliability.
+Project mode is Arden's production workflow.
+It gives deterministic builds and clear boundaries that scale to teams and CI.
 
 ## `arden.toml` Essentials
 
-A project declares at least:
+A project should explicitly declare:
 
-- project metadata (`name`, `version`)
+- metadata (`name`, `version`)
 - entrypoint (`entry`)
-- source file list (`files`)
+- source graph (`files`)
+
+Minimal example:
+
+```toml
+name = "my_project"
+version = "0.1.0"
+entry = "src/main.arden"
+files = [
+  "src/main.arden",
+  "src/math.arden"
+]
+```
 
 ## Typical Project Flow
 
@@ -20,17 +33,31 @@ cd my_project
 arden info
 arden check
 arden run
+arden test
 ```
 
-## Key Behavior
+## Import + Graph Behavior
 
-- commands resolve through project config
-- import usage is checked across files
-- cache data in `.ardencache/` speeds repeated builds
+- import usage is validated across all declared files
+- unresolved imports fail in `arden check`
+- unlisted files are not part of compile graph
 
-## Optimization
+## Cache Behavior
 
-`opt_level` controls final binary optimization (`0/1/2/3/s/z/fast`, default `3`).
+Arden stores cache artifacts in `.ardencache/` to speed repeated checks/builds.
+In CI, keeping cache between runs reduces no-op latency significantly.
+
+## Optimization Settings
+
+`opt_level` controls final binary optimization: `0/1/2/3/s/z/fast` (default `3`).
+
+Use lower levels while iterating locally if compile speed matters more than peak runtime.
+
+## Common Mistakes
+
+- partial file lists drifting from real codebase
+- mixing generated and source files without clear ownership
+- not pinning entrypoint and then debugging the wrong startup file
 
 ## Related
 

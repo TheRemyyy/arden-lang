@@ -1,9 +1,28 @@
 # 37_interfaces_contracts
 
-This example focuses on interfaces contracts in Arden.
+Focused example: **Interface Contracts**.
+
+What this demonstrates:
+- contract-driven API design
+- interface implementation and usage
+- simple polymorphic flow
 
 Run:
 
 ```bash
 arden run examples/single_file/language_edges/37_interfaces_contracts/37_interfaces_contracts.arden
+```
+
+Useful command variants:
+
+```bash
+arden check examples/single_file/language_edges/37_interfaces_contracts/37_interfaces_contracts.arden
+arden compile examples/single_file/language_edges/37_interfaces_contracts/37_interfaces_contracts.arden --emit-llvm
+arden run examples/single_file/language_edges/37_interfaces_contracts/37_interfaces_contracts.arden -- --demo-arg
+```
+
+Repository smoke mode (no rebuild):
+
+```bash
+CI_SKIP_COMPILER_BUILD=1 ARDEN_COMPILER_PATH=target/release/arden bash scripts/examples_smoke_linux.sh
 ```

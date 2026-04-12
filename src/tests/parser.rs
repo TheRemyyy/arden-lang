@@ -174,6 +174,149 @@ fn test_unknown_attribute_error() {
 }
 
 #[test]
+fn test_rejects_attributes_on_class_declarations() {
+    let source = r#"
+        @Test
+        class Box {
+            constructor() {}
+        }
+    "#;
+    let err = parse_source(source).must_err("attributes on class should fail");
+    assert!(
+        err.message
+            .contains("Attributes are only supported on functions and class methods"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_rejects_attributes_on_enum_declarations() {
+    let source = r#"
+        @Ignore("skip")
+        enum Choice {
+            A,
+            B,
+        }
+    "#;
+    let err = parse_source(source).must_err("attributes on enum should fail");
+    assert!(
+        err.message
+            .contains("Attributes are only supported on functions and class methods"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_rejects_attributes_on_interface_declarations() {
+    let source = r#"
+        @Pure
+        interface Named {
+            function name(): Integer;
+        }
+    "#;
+    let err = parse_source(source).must_err("attributes on interface should fail");
+    assert!(
+        err.message
+            .contains("Attributes are only supported on functions and class methods"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_rejects_attributes_on_module_declarations() {
+    let source = r#"
+        @After
+        module util {}
+    "#;
+    let err = parse_source(source).must_err("attributes on module should fail");
+    assert!(
+        err.message
+            .contains("Attributes are only supported on functions and class methods"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_rejects_ignore_without_test_attribute() {
+    let source = r#"
+        @Ignore("skip")
+        function helper(): None { return None; }
+    "#;
+    let err = parse_source(source).must_err("ignore without test should fail");
+    assert!(
+        err.message.contains("@Ignore requires @Test"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_rejects_test_with_lifecycle_attribute() {
+    let source = r#"
+        @Test
+        @Before
+        function invalid(): None { return None; }
+    "#;
+    let err = parse_source(source).must_err("test+lifecycle should fail");
+    assert!(
+        err.message
+            .contains("@Test cannot be combined with lifecycle attributes"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_rejects_multiple_lifecycle_attributes() {
+    let source = r#"
+        @Before
+        @After
+        function invalid(): None { return None; }
+    "#;
+    let err = parse_source(source).must_err("multiple lifecycle attrs should fail");
+    assert!(
+        err.message
+            .contains("Lifecycle attributes are mutually exclusive"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_rejects_duplicate_test_attribute() {
+    let source = r#"
+        @Test
+        @Test
+        function invalid(): None { return None; }
+    "#;
+    let err = parse_source(source).must_err("duplicate test attr should fail");
+    assert!(
+        err.message.contains("Duplicate attribute: @Test"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_rejects_duplicate_effect_attribute() {
+    let source = r#"
+        @Io
+        @Io
+        function invalid(): None { return None; }
+    "#;
+    let err = parse_source(source).must_err("duplicate effect attr should fail");
+    assert!(
+        err.message.contains("Duplicate attribute: @Io"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
 fn test_parse_import_with_alias() {
     let source = r#"
         import std.math as math;

@@ -8,7 +8,7 @@
 //! - @BeforeAll: Runs once before all tests
 //! - @AfterAll: Runs once after all tests
 
-use crate::ast::{Attribute, Decl, FunctionDecl, Program};
+use crate::ast::{Attribute, Decl, FunctionDecl, Program, Type};
 use colored::*;
 
 /// Represents a discovered test
@@ -36,6 +36,140 @@ pub struct TestDiscovery {
     pub suites: Vec<TestSuite>,
     pub total_tests: usize,
     pub ignored_tests: usize,
+}
+
+fn validate_suite_function_signature(
+    func: &FunctionDecl,
+    qualified_name: &str,
+    role: &str,
+) -> Result<(), String> {
+    if func.is_extern {
+        return Err(format!(
+            "{} function '{}' cannot be extern",
+            role, qualified_name
+        ));
+    }
+    if func.is_async {
+        return Err(format!(
+            "{} function '{}' cannot be async; test runner executes hooks/tests synchronously",
+            role, qualified_name
+        ));
+    }
+    if !func.params.is_empty() {
+        return Err(format!(
+            "{} function '{}' cannot declare parameters",
+            role, qualified_name
+        ));
+    }
+    if !func.generic_params.is_empty() {
+        return Err(format!(
+            "{} function '{}' cannot declare generic parameters",
+            role, qualified_name
+        ));
+    }
+    if func.return_type != Type::None {
+        return Err(format!(
+            "{} function '{}' must return None",
+            role, qualified_name
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_test_runner_attributes(program: &Program) -> Result<(), String> {
+    fn check_duplicate_hook(
+        existing: &mut Option<String>,
+        suite_name: &str,
+        role: &str,
+        qualified_name: &str,
+    ) -> Result<(), String> {
+        if let Some(previous) = existing.replace(qualified_name.to_string()) {
+            return Err(format!(
+                "Multiple {} hooks in suite '{}': '{}' and '{}'",
+                role, suite_name, previous, qualified_name
+            ));
+        }
+        Ok(())
+    }
+
+    fn visit_suite(
+        declarations: &[crate::ast::Spanned<Decl>],
+        suite_name: &str,
+        prefix: Option<&str>,
+    ) -> Result<(), String> {
+        let mut before_all: Option<String> = None;
+        let mut before_each: Option<String> = None;
+        let mut after_each: Option<String> = None;
+        let mut after_all: Option<String> = None;
+
+        for decl in declarations {
+            match &decl.node {
+                Decl::Function(func) => {
+                    let qualified_name = if let Some(prefix) = prefix {
+                        format!("{prefix}__{}", func.name)
+                    } else {
+                        func.name.clone()
+                    };
+                    if has_attribute(&func.attributes, Attribute::Test) {
+                        validate_suite_function_signature(func, &qualified_name, "@Test")?;
+                    }
+                    if has_attribute(&func.attributes, Attribute::Before) {
+                        validate_suite_function_signature(func, &qualified_name, "@Before")?;
+                        check_duplicate_hook(
+                            &mut before_each,
+                            suite_name,
+                            "@Before",
+                            &qualified_name,
+                        )?;
+                    }
+                    if has_attribute(&func.attributes, Attribute::After) {
+                        validate_suite_function_signature(func, &qualified_name, "@After")?;
+                        check_duplicate_hook(
+                            &mut after_each,
+                            suite_name,
+                            "@After",
+                            &qualified_name,
+                        )?;
+                    }
+                    if has_attribute(&func.attributes, Attribute::BeforeAll) {
+                        validate_suite_function_signature(func, &qualified_name, "@BeforeAll")?;
+                        check_duplicate_hook(
+                            &mut before_all,
+                            suite_name,
+                            "@BeforeAll",
+                            &qualified_name,
+                        )?;
+                    }
+                    if has_attribute(&func.attributes, Attribute::AfterAll) {
+                        validate_suite_function_signature(func, &qualified_name, "@AfterAll")?;
+                        check_duplicate_hook(
+                            &mut after_all,
+                            suite_name,
+                            "@AfterAll",
+                            &qualified_name,
+                        )?;
+                    }
+                    if has_ignore_attribute(&func.attributes)
+                        && !has_attribute(&func.attributes, Attribute::Test)
+                    {
+                        return Err(format!("@Ignore on '{}' requires @Test", qualified_name));
+                    }
+                }
+                Decl::Module(module) => {
+                    let nested_prefix = if let Some(prefix) = prefix {
+                        format!("{prefix}__{}", module.name)
+                    } else {
+                        module.name.clone()
+                    };
+                    visit_suite(&module.declarations, &nested_prefix, Some(&nested_prefix))?;
+                }
+                Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    visit_suite(&program.declarations, "default", None)
 }
 
 /// Discover all tests in a program
@@ -310,26 +444,46 @@ pub fn generate_test_runner_with_source(
 }
 
 fn ensure_test_runner_imports(source: &str) -> String {
-    let mut in_block_comment = false;
-    if source.lines().any(|line| {
-        let trimmed = line.trim_start();
-        let has_import = !in_block_comment
-            && !trimmed.starts_with("//")
-            && trimmed.starts_with("import std.io.*;");
+    fn has_stdio_import(source: &str) -> bool {
+        let mut in_block_comment = false;
 
-        if !in_block_comment {
-            if let Some(start) = trimmed.find("/*") {
-                let ends_after_start = trimmed[start + 2..].contains("*/");
-                if !ends_after_start {
-                    in_block_comment = true;
+        for line in source.lines() {
+            let mut rest = line;
+            loop {
+                if in_block_comment {
+                    if let Some(end) = rest.find("*/") {
+                        rest = &rest[end + 2..];
+                        in_block_comment = false;
+                        continue;
+                    }
+                    break;
                 }
+
+                let trimmed = rest.trim_start();
+                if trimmed.is_empty() || trimmed.starts_with("//") {
+                    break;
+                }
+
+                if let Some(after_open) = trimmed.strip_prefix("/*") {
+                    if let Some(end) = after_open.find("*/") {
+                        rest = &after_open[end + 2..];
+                        continue;
+                    }
+                    in_block_comment = true;
+                    break;
+                }
+
+                if trimmed.starts_with("import std.io.*;") {
+                    return true;
+                }
+                break;
             }
-        } else if trimmed.contains("*/") {
-            in_block_comment = false;
         }
 
-        has_import
-    }) {
+        false
+    }
+
+    if has_stdio_import(source) {
         return source.to_string();
     }
 
@@ -361,6 +515,7 @@ fn filter_out_main_function(source: &str) -> String {
     let mut pending_attributes: Vec<&str> = Vec::new();
     let mut in_main = false;
     let mut brace_depth = 0;
+    let mut outer_depth = 0;
     let mut seen_main_open_brace = false;
     let mut in_block_comment = false;
 
@@ -445,22 +600,27 @@ fn filter_out_main_function(source: &str) -> String {
         let trimmed = line.trim();
 
         // Skip package declaration (will be regenerated)
-        if trimmed.starts_with("package ") {
+        if !in_main && outer_depth == 0 && trimmed.starts_with("package ") {
             continue;
         }
 
-        if !in_main && trimmed.starts_with('@') {
+        if !in_main && outer_depth == 0 && trimmed.starts_with('@') {
             pending_attributes.push(line);
             continue;
         }
 
         // Detect main function start
-        if is_main_signature(trimmed) && !in_main {
+        if !in_main && outer_depth == 0 && is_main_signature(trimmed) {
             pending_attributes.clear();
             in_main = true;
             let (delta, saw_open_brace) = scan_code_braces(line, &mut in_block_comment);
             brace_depth = delta;
             seen_main_open_brace = saw_open_brace;
+            if seen_main_open_brace && brace_depth <= 0 {
+                in_main = false;
+                brace_depth = 0;
+                seen_main_open_brace = false;
+            }
             continue;
         }
 
@@ -488,6 +648,9 @@ fn filter_out_main_function(source: &str) -> String {
 
         result.push_str(line);
         result.push('\n');
+
+        let (delta, _) = scan_code_braces(line, &mut in_block_comment);
+        outer_depth += delta;
     }
 
     if !pending_attributes.is_empty() {

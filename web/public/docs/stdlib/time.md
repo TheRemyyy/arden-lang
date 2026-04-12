@@ -46,7 +46,21 @@ Time.sleep(250);
 println("done");
 ```
 
-Negative sleep values are invalid (rejected at compile-time when constant, otherwise runtime error).
+## Validation Rule
+
+Negative sleep values are invalid.
+If statically known negative, compiler rejects during check; otherwise runtime path errors.
+
+## Effect Note
+
+`Time.*` calls participate in effect checks and require `thread` capability.
+See [Effects](../advanced/effects.md).
+
+## Common Mistakes
+
+- using sleep as synchronization substitute for real signaling
+- assuming formatted `Time.now` output is stable across all locales/environments
+- passing unvalidated timeout values from user input
 
 ## Example In Repo
 

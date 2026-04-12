@@ -4,9 +4,12 @@
 
 Arden makes recoverable failure explicit in types, so callers cannot ignore error paths accidentally.
 
-## `Option<T>`
+## Choose the Right Result Shape
 
-Use for optional presence.
+- `Option<T>`: value may be absent, absence is expected and not exceptional
+- `Result<T, E>`: operation can fail and caller needs failure context
+
+## `Option<T>`
 
 ```arden
 enum Option<T> {
@@ -16,8 +19,6 @@ enum Option<T> {
 ```
 
 ## `Result<T, E>`
-
-Use for success/error outcomes.
 
 ```arden
 enum Result<T, E> {
@@ -45,12 +46,42 @@ function compute(): Result<Integer, String> {
 }
 ```
 
-## Compile-Time Validation
+## Compiler Validation
 
-`arden check` enforces that `?` matches surrounding function/lambda return kind.
+`arden check` enforces that `?` is only used in compatible return contexts.
+If surrounding function/lambda cannot propagate that error kind, it fails type checking.
+
+## Match-Based Handling
+
+Use `match` when you want explicit branch behavior:
+
+```arden
+import std.io.*;
+
+function report(value: Result<Integer, String>): None {
+    match (value) {
+        Result.Ok(v) => { println("ok={v}"); },
+        Result.Error(e) => { println("error={e}"); }
+    }
+    return None;
+}
+```
 
 ## Practical Guidance
 
-- `Option<T>` for expected absence
-- `Result<T, E>` for actionable failure context
-- avoid `unwrap()` outside tests/proven invariants
+- use `Option<T>` for expected missing data
+- use `Result<T, E>` when caller needs diagnostics/recovery decisions
+- avoid `unwrap()` outside tests or proven invariants
+- keep error values structured and meaningful (avoid opaque text blobs)
+
+## Common Mistakes
+
+- using `Option<T>` where failure reason is needed
+- converting every failure into `String` too early
+- deep `match` pyramids where `?` would keep flow cleaner
+
+## Related
+
+- [Control Flow](../basics/control_flow.md)
+- [Async / Await](async.md)
+- Example: [`13_error_handling`](../../examples/single_file/safety_and_async/13_error_handling/13_error_handling.arden)

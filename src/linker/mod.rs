@@ -779,7 +779,15 @@ fn link_with_macos_lld(
     command.arg(format!("@{}", response_path.display()));
     apply_stable_command_dir(&mut command, output_path);
     let result = run_link_command(command, "ld64.lld");
-    let _ = fs::remove_file(&response_path);
+    if let Err(err) = fs::remove_file(&response_path) {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            eprintln!(
+                "warning: failed to remove temporary linker response file '{}': {}",
+                response_path.display(),
+                err
+            );
+        }
+    }
     result
 }
 

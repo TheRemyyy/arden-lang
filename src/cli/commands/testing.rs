@@ -9,7 +9,8 @@ use crate::lexer;
 use crate::parser::Parser;
 use crate::project::{find_project_root, ProjectConfig};
 use crate::test_runner::{
-    discover_tests, generate_test_runner_with_source, print_discovery, TestDiscovery,
+    discover_tests, generate_test_runner_with_source, print_discovery,
+    validate_test_runner_attributes, TestDiscovery,
 };
 use execution::compile_and_run_test;
 use std::fs;
@@ -50,6 +51,7 @@ pub(crate) fn run_tests(
         let program = parser
             .parse_program()
             .map_err(|e| format_parse_error(&e, &source, filename))?;
+        validate_test_runner_attributes(&program)?;
 
         let discovery = discover_tests(&program);
         if discovery.total_tests == 0 {
@@ -116,7 +118,16 @@ pub(crate) fn run_tests(
                 });
                 let result = build_result
                     .and_then(|_| execution::run_test_executable(&exe_path, filtered_out_tests));
-                let _ = fs::remove_dir_all(&temp_dir);
+                if let Err(err) = fs::remove_dir_all(&temp_dir) {
+                    if err.kind() != std::io::ErrorKind::NotFound {
+                        eprintln!(
+                            "{}: failed to remove temporary test workspace '{}': {}",
+                            cli_warning("warning"),
+                            temp_dir.display(),
+                            err
+                        );
+                    }
+                }
                 result?;
             } else {
                 let (temp_dir, runner_path, exe_path) = create_test_runner_workspace(test_file)?;
@@ -124,7 +135,16 @@ pub(crate) fn run_tests(
                     .map_err(|e| format!("Failed to write test runner: {}", e))?;
 
                 let result = compile_and_run_test(&runner_path, &exe_path, filtered_out_tests);
-                let _ = fs::remove_dir_all(&temp_dir);
+                if let Err(err) = fs::remove_dir_all(&temp_dir) {
+                    if err.kind() != std::io::ErrorKind::NotFound {
+                        eprintln!(
+                            "{}: failed to remove temporary test workspace '{}': {}",
+                            cli_warning("warning"),
+                            temp_dir.display(),
+                            err
+                        );
+                    }
+                }
                 result?;
             }
         }

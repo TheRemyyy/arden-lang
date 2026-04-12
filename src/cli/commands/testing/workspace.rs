@@ -1,6 +1,6 @@
 use crate::cli::paths::current_dir_checked;
 use crate::cli::test_discovery::find_test_files as discover_test_files;
-use crate::project::{find_project_root, ProjectConfig};
+use crate::project::{find_project_root, resolve_project_output_path, ProjectConfig};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -134,5 +134,56 @@ pub(super) fn create_project_test_runner_workspace(
         .save(&temp_dir.join("arden.toml"))
         .map_err(|e| format!("Failed to write test runner project config: {}", e))?;
 
-    Ok((temp_dir.clone(), temp_dir.join("runner")))
+    let runner_output_path = resolve_project_output_path(&temp_dir, &temp_config);
+
+    Ok((temp_dir, runner_output_path))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_temp_dir(prefix: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should move forward")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "arden-test-workspace-{prefix}-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).expect("create temp workspace");
+        dir
+    }
+
+    #[test]
+    fn project_runner_workspace_returns_platform_resolved_output_path() {
+        let project_root = make_temp_dir("output-path");
+        let source_dir = project_root.join("src");
+        fs::create_dir_all(&source_dir).expect("create source dir");
+        let test_file = source_dir.join("main.arden");
+        fs::write(
+            &test_file,
+            "@Test\nfunction smoke(): None { return None; }\nfunction main(): None { return None; }\n",
+        )
+        .expect("write source file");
+
+        let config = ProjectConfig::new("smoke");
+        let (runner_workspace, runner_output_path) = create_project_test_runner_workspace(
+            &project_root,
+            &config,
+            &test_file,
+            "function main(): None { return None; }\n",
+        )
+        .expect("create project test workspace");
+
+        let runner_config = ProjectConfig::load(&runner_workspace.join("arden.toml"))
+            .expect("load runner workspace config");
+        let expected_output_path = resolve_project_output_path(&runner_workspace, &runner_config);
+        assert_eq!(runner_output_path, expected_output_path);
+
+        let _ = fs::remove_dir_all(&runner_workspace);
+        let _ = fs::remove_dir_all(&project_root);
+    }
 }
