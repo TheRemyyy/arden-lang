@@ -1,7 +1,7 @@
 import { CURRENT_VERSION, PACKAGE_VERSION } from './generated-version';
 
 export const SITE_NAME = 'Arden';
-export const SITE_TITLE = 'Arden | Native Programming Language';
+export const SITE_TITLE = 'Arden | System Programming Language';
 export const SITE_ORGANIZATION_NAME = 'Arden';
 export const SITE_SEARCH_PATH = '/search';
 export const SITE_DESCRIPTION =
