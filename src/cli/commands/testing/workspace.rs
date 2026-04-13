@@ -6,6 +6,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+fn normalized_relative_path_string(path: &Path, context: &str) -> Result<String, String> {
+    let as_str = path.to_str().ok_or_else(|| {
+        format!(
+            "Path '{}' for {} is not valid UTF-8",
+            format_cli_path(path),
+            context
+        )
+    })?;
+    Ok(as_str.replace('\\', "/"))
+}
+
 pub(super) fn find_test_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     discover_test_files(path)
 }
@@ -131,7 +142,7 @@ pub(super) fn create_project_test_runner_workspace(
                 format_cli_path(&canonical_project_root)
             )
         })?;
-    let test_rel_string = test_rel.to_string_lossy().replace('\\', "/");
+    let test_rel_string = normalized_relative_path_string(test_rel, "test runner entry path")?;
     let mut copied_files: Vec<String> = Vec::new();
 
     for source_file in config.get_source_files(project_root) {
@@ -156,7 +167,7 @@ pub(super) fn create_project_test_runner_workspace(
                     format_cli_path(&canonical_project_root)
                 )
             })?;
-        let rel_string = rel.to_string_lossy().replace('\\', "/");
+        let rel_string = normalized_relative_path_string(rel, "project source path")?;
         copied_files.push(rel_string.clone());
         let rel_path = Path::new(&rel_string);
         let dest = temp_dir.join(rel_path);

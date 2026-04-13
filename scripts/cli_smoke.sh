@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMPILER_INPUT="${ARDEN_COMPILER_PATH:-${REPO_ROOT}/target/release/arden}"
-if [[ "${COMPILER_INPUT}" = /* ]]; then
+if [[ "${COMPILER_INPUT}" = /* ]] || [[ "${COMPILER_INPUT}" =~ ^[A-Za-z]:[\\/].* ]] || [[ "${COMPILER_INPUT}" =~ ^\\\\.* ]] || [[ "${COMPILER_INPUT}" =~ ^//.* ]]; then
   COMPILER="${COMPILER_INPUT}"
 else
   COMPILER="${REPO_ROOT}/${COMPILER_INPUT}"

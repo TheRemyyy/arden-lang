@@ -3,39 +3,30 @@ use crate::cli::output::{cli_accent, cli_path, cli_warning, format_cli_path};
 use crate::cli::paths::{current_dir_checked, unique_temp_binary_path};
 use crate::compile_file;
 use crate::linker::validate_opt_level;
+use crate::process_exit::format_exit_failure;
 use crate::project::{
     ensure_project_is_runnable, find_project_root, resolve_project_output_path, ProjectConfig,
 };
 use colored::Colorize;
 use std::fs;
 use std::path::Path;
-use std::process::{Command, ExitStatus};
-
-fn format_exit_failure(status: ExitStatus) -> String {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::ExitStatusExt;
-        if let Some(signal) = status.signal() {
-            let reason = if signal == 11 {
-                "segmentation fault"
-            } else {
-                "runtime signal"
-            };
-            return format!(
-                "terminated by signal {signal} ({reason}). \
-this indicates a runtime crash; rerun with `arden compile --emit-llvm ...` and report it."
-            );
-        }
-    }
-
-    if let Some(code) = status.code() {
-        return format!("exited with code {code}");
-    }
-
-    "terminated without an exit code".to_string()
-}
+use std::process::Command;
 
 fn run_binary(exe_path: &Path, args: &[String]) -> Result<(), String> {
+    if !exe_path.exists() {
+        return Err(format!(
+            "{}: Executable '{}' does not exist",
+            "error".red().bold(),
+            format_cli_path(exe_path)
+        ));
+    }
+    if !exe_path.is_file() {
+        return Err(format!(
+            "{}: Executable path '{}' is not a file",
+            "error".red().bold(),
+            format_cli_path(exe_path)
+        ));
+    }
     let status = Command::new(exe_path).args(args).status().map_err(|e| {
         format!(
             "{}: Failed to run '{}': {}",

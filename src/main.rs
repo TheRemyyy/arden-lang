@@ -15,6 +15,7 @@ mod linker;
 mod lint;
 mod lsp;
 mod parser;
+mod process_exit;
 mod project;
 #[path = "project/rewrite/mod.rs"]
 mod project_rewrite;
@@ -361,6 +362,13 @@ fn parse_source_text(
 fn format_project_file_label(project_root: &Path, file: &Path) -> String {
     if let Ok(relative) = file.strip_prefix(project_root) {
         return format_cli_path(relative);
+    }
+    if let (Ok(canonical_root), Ok(canonical_file)) =
+        (project_root.canonicalize(), file.canonicalize())
+    {
+        if let Ok(relative) = canonical_file.strip_prefix(&canonical_root) {
+            return format_cli_path(relative);
+        }
     }
     format_cli_path(file)
 }

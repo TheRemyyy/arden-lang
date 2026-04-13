@@ -1,4 +1,5 @@
 use crate::cli::output::format_cli_path;
+use crate::process_exit::command_failure_details;
 use crate::project::OutputKind;
 use colored::*;
 use std::env;
@@ -182,15 +183,7 @@ fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), String
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let details = if !stderr.trim().is_empty() {
-        stderr.trim().to_string()
-    } else if !stdout.trim().is_empty() {
-        stdout.trim().to_string()
-    } else if let Some(code) = output.status.code() {
-        format!("exit code {code}")
-    } else {
-        "terminated without an exit code".to_string()
-    };
+    let details = command_failure_details(output.status, &stderr, &stdout);
     Err(format!(
         "{}: {} failed: {}",
         "error".red().bold(),
@@ -514,15 +507,7 @@ fn macos_sdk_root() -> Result<PathBuf, String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let details = if !stderr.trim().is_empty() {
-            stderr.trim().to_string()
-        } else if !stdout.trim().is_empty() {
-            stdout.trim().to_string()
-        } else if let Some(code) = output.status.code() {
-            format!("exit code {code}")
-        } else {
-            "terminated without an exit code".to_string()
-        };
+        let details = command_failure_details(output.status, &stderr, &stdout);
         return Err(format!(
             "{}: Failed to resolve macOS SDK path with xcrun: {}",
             "error".red().bold(),
@@ -563,15 +548,7 @@ fn macos_sdk_version() -> Result<String, String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let details = if !stderr.trim().is_empty() {
-            stderr.trim().to_string()
-        } else if !stdout.trim().is_empty() {
-            stdout.trim().to_string()
-        } else if let Some(code) = output.status.code() {
-            format!("exit code {code}")
-        } else {
-            "terminated without an exit code".to_string()
-        };
+        let details = command_failure_details(output.status, &stderr, &stdout);
         return Err(format!(
             "{}: Failed to resolve the macOS SDK version with xcrun: {}",
             "error".red().bold(),
@@ -885,15 +862,7 @@ pub(crate) fn link_objects(
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                let details = if !stderr.trim().is_empty() {
-                    stderr.trim().to_string()
-                } else if !stdout.trim().is_empty() {
-                    stdout.trim().to_string()
-                } else if let Some(code) = output.status.code() {
-                    format!("exit code {code}")
-                } else {
-                    "terminated without an exit code".to_string()
-                };
+                let details = command_failure_details(output.status, &stderr, &stdout);
                 return Err(format!(
                     "{}: ar failed while creating static library '{}': {}",
                     "error".red().bold(),

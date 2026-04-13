@@ -157,11 +157,10 @@ output_kind = "bin"
     })?;
 
     println!("{} {}", cli_success("Created project"), cli_accent(name));
-    println!(
-        "  {} {}",
-        cli_tertiary("Root"),
-        cli_path(&project_path.canonicalize().unwrap_or(project_path))
-    );
+    let root_display = project_path
+        .canonicalize()
+        .unwrap_or_else(|_| project_path.clone());
+    println!("  {} {}", cli_tertiary("Root"), cli_path(&root_display));
     println!("\n{}", cli_tertiary("Next"));
     println!(
         "  {} {}",

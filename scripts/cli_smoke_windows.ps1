@@ -27,38 +27,47 @@ if (-not (Test-Path $compilerInput)) {
     throw "Compiler binary not found: $compilerInput"
 }
 
+function ConvertTo-BashSingleQuoted([string]$value) {
+    return "'" + ($value -replace "'", "'\"'\"'") + "'"
+}
+
+function ConvertTo-UnixPath([string]$windowsPath, [string]$label) {
+    $escapedPath = ConvertTo-BashSingleQuoted $windowsPath
+    $unixPath = (& $bashCommand.Source -lc "cygpath -u $escapedPath" 2>$null).Trim()
+    if (-not $unixPath) {
+        throw "Failed to convert $label path for bash: $windowsPath"
+    }
+    return $unixPath
+}
+
 $bashScript = (Resolve-Path $bashScript).Path
 $compilerInput = (Resolve-Path $compilerInput).Path
 $repoRoot = (Resolve-Path $repoRoot).Path
 
-$bashScriptUnix = (& $bashCommand.Source -lc "cygpath -u '$bashScript'").Trim()
-$compilerUnix = (& $bashCommand.Source -lc "cygpath -u '$compilerInput'").Trim()
-$repoRootUnix = (& $bashCommand.Source -lc "cygpath -u '$repoRoot'").Trim()
+$bashScriptUnix = ConvertTo-UnixPath $bashScript "smoke script"
+$compilerUnix = ConvertTo-UnixPath $compilerInput "compiler"
+$repoRootUnix = ConvertTo-UnixPath $repoRoot "repo root"
 
 Write-Host "bashScriptUnix: $bashScriptUnix"
 Write-Host "compilerUnix: $compilerUnix"
 Write-Host "repoRootUnix: $repoRootUnix"
 
-if (-not $bashScriptUnix) {
-    throw "Failed to convert smoke script path for bash: $bashScript"
-}
-if (-not $compilerUnix) {
-    throw "Failed to convert compiler path for bash: $compilerInput"
-}
-if (-not $repoRootUnix) {
-    throw "Failed to convert repo root path for bash: $repoRoot"
-}
+$bashScriptEscaped = ConvertTo-BashSingleQuoted $bashScriptUnix
+$compilerEscaped = ConvertTo-BashSingleQuoted $compilerUnix
+$repoRootEscaped = ConvertTo-BashSingleQuoted $repoRootUnix
 
 $ciSkip = if ($env:CI_SKIP_COMPILER_BUILD) { $env:CI_SKIP_COMPILER_BUILD } else { "0" }
-$logPath = Join-Path $env:RUNNER_TEMP "arden-cli-smoke-windows.log"
+$ciSkipEscaped = ConvertTo-BashSingleQuoted $ciSkip
+$tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+$logPath = Join-Path $tempRoot "arden-cli-smoke-windows.log"
 $bashRun = @"
 set -euo pipefail
-cd '$repoRootUnix'
-chmod +x '$bashScriptUnix' '$compilerUnix'
-export ARDEN_COMPILER_PATH='$compilerUnix'
-export CI_SKIP_COMPILER_BUILD='$ciSkip'
+cd $repoRootEscaped
+chmod +x $bashScriptEscaped $compilerEscaped
+export ARDEN_COMPILER_PATH=$compilerEscaped
+export CI_SKIP_COMPILER_BUILD=$ciSkipEscaped
 echo "=== Running smoke script ==="
-bash -x '$bashScriptUnix' 2>&1
+bash -x $bashScriptEscaped 2>&1
 echo "=== Smoke script done ==="
 "@
 

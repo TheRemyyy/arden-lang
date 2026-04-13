@@ -2,34 +2,11 @@ use crate::cli::output::{
     cli_accent, cli_elapsed, cli_soft, format_cli_path, print_test_runner_output,
 };
 use crate::compile_source;
+use crate::process_exit::format_exit_failure;
 use std::fs;
 use std::path::Path;
-use std::process::{Command, ExitStatus};
+use std::process::Command;
 use std::time::Instant;
-
-fn format_exit_failure(status: ExitStatus) -> String {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::ExitStatusExt;
-        if let Some(signal) = status.signal() {
-            let reason = if signal == 11 {
-                "segmentation fault"
-            } else {
-                "runtime signal"
-            };
-            return format!(
-                "terminated by signal {signal} ({reason}). \
-this indicates a runtime crash; rerun with `arden compile --emit-llvm ...` and report it."
-            );
-        }
-    }
-
-    if let Some(code) = status.code() {
-        return format!("exited with code {code}");
-    }
-
-    "terminated without an exit code".to_string()
-}
 
 pub(super) fn compile_and_run_test(
     source_path: &Path,
@@ -48,6 +25,18 @@ pub(super) fn compile_and_run_test(
 }
 
 pub(super) fn run_test_executable(exe_path: &Path, filtered_out: usize) -> Result<(), String> {
+    if !exe_path.exists() {
+        return Err(format!(
+            "Failed to run test runner '{}': executable does not exist",
+            format_cli_path(exe_path)
+        ));
+    }
+    if !exe_path.is_file() {
+        return Err(format!(
+            "Failed to run test runner '{}': executable path is not a file",
+            format_cli_path(exe_path)
+        ));
+    }
     let started_at = Instant::now();
     println!();
 

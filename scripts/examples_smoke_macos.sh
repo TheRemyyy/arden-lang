@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -u
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -11,7 +11,7 @@ echo "   Arden Example Smoke Runner (macOS)"
 echo "========================================"
 echo
 COMPILER_INPUT="${ARDEN_COMPILER_PATH:-${REPO_ROOT}/target/release/arden}"
-if [[ "${COMPILER_INPUT}" = /* ]]; then
+if [[ "${COMPILER_INPUT}" = /* ]] || [[ "${COMPILER_INPUT}" =~ ^[A-Za-z]:[\\/].* ]] || [[ "${COMPILER_INPUT}" =~ ^\\\\.* ]] || [[ "${COMPILER_INPUT}" =~ ^//.* ]]; then
   COMPILER="${COMPILER_INPUT}"
 else
   COMPILER="${REPO_ROOT}/${COMPILER_INPUT}"
@@ -45,6 +45,11 @@ done < <(
   find "${REPO_ROOT}/examples/single_file" "${REPO_ROOT}/examples/demos" \
     -type f -name '*.arden' | LC_ALL=C sort
 )
+
+if [[ ${#SINGLE_FILE_EXAMPLES[@]} -eq 0 ]]; then
+  echo "No example .arden files found under examples/single_file or examples/demos"
+  exit 1
+fi
 
 for file in "${SINGLE_FILE_EXAMPLES[@]}"; do
   echo "----------------------------------------"
