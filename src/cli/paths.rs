@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
 
+use crate::cli::output::format_cli_path;
 use crate::project::find_project_root;
 
 pub(crate) struct CwdRestore {
@@ -36,7 +37,7 @@ impl Drop for CwdRestore {
             if let Err(err) = std::env::set_current_dir(fallback_working_dir()) {
                 eprintln!(
                     "warning: failed to restore process current directory to '{}' and failed fallback: {}",
-                    self.previous.display(),
+                    format_cli_path(&self.previous),
                     err
                 );
             }
@@ -79,7 +80,7 @@ fn with_process_current_dir_locked<T>(
         format!(
             "{}: Failed to change current directory to '{}': {}",
             "error".red().bold(),
-            dir.display(),
+            format_cli_path(dir),
             e
         )
     })?;
@@ -108,12 +109,12 @@ pub(crate) fn current_dir_checked() -> Result<PathBuf, String> {
 
 pub(crate) fn format_target_label(path: Option<&Path>, current_dir: &Path) -> String {
     if let Some(path) = path {
-        return path.display().to_string();
+        return format_cli_path(path);
     }
     if let Some(project_root) = find_project_root(current_dir) {
-        return project_root.display().to_string();
+        return format_cli_path(&project_root);
     }
-    current_dir.display().to_string()
+    format_cli_path(current_dir)
 }
 
 pub(crate) fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, String> {
@@ -130,7 +131,7 @@ pub(crate) fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, 
             format!(
                 "{}: Failed to inspect path ancestor '{}': {}",
                 "error".red().bold(),
-                dir.display(),
+                format_cli_path(dir),
                 e
             )
         })?;
@@ -173,13 +174,16 @@ pub(crate) fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, 
 
 pub(crate) fn validate_source_file_path(path: &Path) -> Result<(), String> {
     if !path.exists() {
-        return Err(format!("Path '{}' does not exist", path.display()));
+        return Err(format!("Path '{}' does not exist", format_cli_path(path)));
     }
     if !path.is_file() {
-        return Err(format!("Path '{}' is not a file", path.display()));
+        return Err(format!("Path '{}' is not a file", format_cli_path(path)));
     }
     if path.extension().and_then(|ext| ext.to_str()) != Some("arden") {
-        return Err(format!("Path '{}' is not an .arden file", path.display()));
+        return Err(format!(
+            "Path '{}' is not an .arden file",
+            format_cli_path(path)
+        ));
     }
 
     let parent_dir = path.parent().unwrap_or(Path::new("."));
@@ -192,7 +196,7 @@ pub(crate) fn validate_source_file_path(path: &Path) -> Result<(), String> {
         format!(
             "{}: Failed to resolve parent directory for '{}': {}",
             "error".red().bold(),
-            path.display(),
+            format_cli_path(path),
             e
         )
     })?;
@@ -200,20 +204,20 @@ pub(crate) fn validate_source_file_path(path: &Path) -> Result<(), String> {
         format!(
             "{}: Failed to resolve path '{}': {}",
             "error".red().bold(),
-            path.display(),
+            format_cli_path(path),
             e
         )
     })?;
     if !canonical_path.starts_with(&canonical_parent) {
         return Err(format!(
             "Path '{}' resolves outside the requested directory tree",
-            path.display()
+            format_cli_path(path)
         ));
     }
     if path_traverses_symlinked_directories(path)? {
         return Err(format!(
             "Path '{}' must not traverse symlinked directories",
-            path.display()
+            format_cli_path(path)
         ));
     }
     Ok(())
@@ -226,12 +230,12 @@ pub(crate) fn collect_arden_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     }
 
     if !path.is_dir() {
-        return Err(format!("Path '{}' does not exist", path.display()));
+        return Err(format!("Path '{}' does not exist", format_cli_path(path)));
     }
     if path_traverses_symlinked_directories(path)? {
         return Err(format!(
             "Path '{}' must not traverse symlinked directories",
-            path.display()
+            format_cli_path(path)
         ));
     }
 
@@ -248,7 +252,7 @@ pub(crate) fn unique_temp_binary_path(tag: &str, source: &Path) -> Result<PathBu
             format!(
                 "{}: Failed to create unique temporary binary name for '{}': {}",
                 "error".red().bold(),
-                source.display(),
+                format_cli_path(source),
                 e
             )
         })?
@@ -272,21 +276,21 @@ fn collect_arden_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result
     for entry in fs::read_dir(dir).map_err(|e| {
         format!(
             "Failed to read directory '{}' while collecting .arden files: {}",
-            dir.display(),
+            format_cli_path(dir),
             e
         )
     })? {
         let entry = entry.map_err(|e| {
             format!(
                 "Failed to read directory entry in '{}' while collecting .arden files: {}",
-                dir.display(),
+                format_cli_path(dir),
                 e
             )
         })?;
         let file_type = entry.file_type().map_err(|e| {
             format!(
                 "Failed to inspect directory entry '{}' while collecting .arden files: {}",
-                entry.path().display(),
+                format_cli_path(&entry.path()),
                 e
             )
         })?;
@@ -294,7 +298,7 @@ fn collect_arden_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result
         if file_type.is_symlink() {
             return Err(format!(
                 "Path '{}' must not contain symlink entries",
-                path.display()
+                format_cli_path(&path)
             ));
         } else if file_type.is_dir() {
             collect_arden_files_recursive(&path, files)?;

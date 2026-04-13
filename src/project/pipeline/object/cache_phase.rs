@@ -2,7 +2,7 @@ use crate::cache::{
     load_object_cache_hit, load_object_shard_cache_hit, BuildTimings, ObjectCachePaths,
     RewrittenProjectUnit, OBJECT_CACHE_META_TIMING_TOTALS,
 };
-use crate::cli::output::cli_error;
+use crate::cli::output::{cli_error, format_cli_path};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -53,7 +53,7 @@ pub(crate) fn run_object_cache_probe(
                                     format!(
                                         "{}: missing object cache paths for rewritten unit '{}'",
                                         cli_error("error"),
-                                        unit.file.display()
+                                        format_cli_path(&unit.file)
                                     )
                                 })?;
                             load_object_cache_hit(

@@ -1,4 +1,6 @@
-use crate::cli::output::{cli_accent, cli_elapsed, cli_soft, print_test_runner_output};
+use crate::cli::output::{
+    cli_accent, cli_elapsed, cli_soft, format_cli_path, print_test_runner_output,
+};
 use crate::compile_source;
 use std::fs;
 use std::path::Path;
@@ -37,7 +39,7 @@ pub(super) fn compile_and_run_test(
     let source = fs::read_to_string(source_path).map_err(|e| {
         format!(
             "Failed to read test runner '{}': {}",
-            source_path.display(),
+            format_cli_path(source_path),
             e
         )
     })?;
@@ -57,7 +59,13 @@ pub(super) fn run_test_executable(exe_path: &Path, filtered_out: usize) -> Resul
     let output = Command::new(exe_path)
         .current_dir(working_dir)
         .output()
-        .map_err(|e| format!("Failed to run test runner '{}': {}", exe_path.display(), e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to run test runner '{}': {}",
+                format_cli_path(exe_path),
+                e
+            )
+        })?;
 
     let report = print_test_runner_output(
         &String::from_utf8_lossy(&output.stdout),
@@ -81,7 +89,7 @@ pub(super) fn run_test_executable(exe_path: &Path, filtered_out: usize) -> Resul
     if !output.status.success() {
         return Err(format!(
             "test run failed for '{}': {}",
-            exe_path.display(),
+            format_cli_path(exe_path),
             format_exit_failure(output.status)
         ));
     }

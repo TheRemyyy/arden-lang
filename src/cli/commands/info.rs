@@ -1,4 +1,4 @@
-use crate::cli::output::{cli_accent, cli_path, cli_soft, cli_tertiary};
+use crate::cli::output::{cli_accent, cli_path, cli_soft, cli_tertiary, format_cli_path};
 use crate::cli::paths::{current_dir_checked, validate_source_file_path};
 use crate::linker::validate_opt_level;
 use crate::project::{find_project_root, ProjectConfig};
@@ -10,7 +10,7 @@ pub(crate) fn show_project_info() -> Result<(), String> {
         format!(
             "{}: No arden.toml found in current directory '{}' or its parents.",
             "error".red().bold(),
-            cwd.display()
+            format_cli_path(&cwd)
         )
     })?;
 

@@ -1,4 +1,6 @@
-use crate::cli::output::{cli_error, cli_path, cli_soft, cli_success, cli_warning};
+use crate::cli::output::{
+    cli_error, cli_path, cli_soft, cli_success, cli_warning, format_cli_path,
+};
 use crate::cli::paths::{
     collect_arden_files, current_dir_checked, format_target_label, validate_source_file_path,
 };
@@ -32,12 +34,18 @@ pub(crate) fn format_targets(path: Option<&Path>, check_only: bool) -> Result<()
             format!(
                 "{}: Failed to read file '{}': {}",
                 "error".red().bold(),
-                file.display(),
+                format_cli_path(&file),
                 e
             )
         })?;
-        let formatted = formatter::format_source(&source)
-            .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
+        let formatted = formatter::format_source(&source).map_err(|e| {
+            format!(
+                "{} in '{}': {}",
+                "error".red().bold(),
+                format_cli_path(&file),
+                e
+            )
+        })?;
 
         if source != formatted {
             if check_only {
@@ -47,7 +55,7 @@ pub(crate) fn format_targets(path: Option<&Path>, check_only: bool) -> Result<()
                     format!(
                         "{}: Failed to write '{}': {}",
                         "error".red().bold(),
-                        file.display(),
+                        format_cli_path(&file),
                         e
                     )
                 })?;
@@ -91,12 +99,18 @@ pub(crate) fn lint_target(path: Option<&Path>) -> Result<(), String> {
         format!(
             "{}: Failed to read file '{}': {}",
             "error".red().bold(),
-            file.display(),
+            format_cli_path(&file),
             e
         )
     })?;
-    let result = lint::lint_source(&source, false)
-        .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
+    let result = lint::lint_source(&source, false).map_err(|e| {
+        format!(
+            "{} in '{}': {}",
+            "error".red().bold(),
+            format_cli_path(&file),
+            e
+        )
+    })?;
 
     if result.findings.is_empty() {
         println!("{} {}", cli_success("Lint clean"), cli_path(&file));
@@ -120,16 +134,28 @@ pub(crate) fn fix_target(path: Option<&Path>) -> Result<(), String> {
         format!(
             "{}: Failed to read file '{}': {}",
             "error".red().bold(),
-            file.display(),
+            format_cli_path(&file),
             e
         )
     })?;
-    let result = lint::lint_source(&source, true)
-        .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
+    let result = lint::lint_source(&source, true).map_err(|e| {
+        format!(
+            "{} in '{}': {}",
+            "error".red().bold(),
+            format_cli_path(&file),
+            e
+        )
+    })?;
     let fixed_source = result.fixed_source.unwrap_or(source.clone());
 
-    let formatted_source = formatter::format_source(&fixed_source)
-        .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
+    let formatted_source = formatter::format_source(&fixed_source).map_err(|e| {
+        format!(
+            "{} in '{}': {}",
+            "error".red().bold(),
+            format_cli_path(&file),
+            e
+        )
+    })?;
 
     if source == formatted_source {
         println!("{} {}", cli_success("Fix clean"), cli_path(&file));
@@ -140,7 +166,7 @@ pub(crate) fn fix_target(path: Option<&Path>) -> Result<(), String> {
         format!(
             "{}: Failed to write '{}': {}",
             "error".red().bold(),
-            file.display(),
+            format_cli_path(&file),
             e
         )
     })?;

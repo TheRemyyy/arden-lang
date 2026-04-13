@@ -1,3 +1,4 @@
+use crate::cli::output::format_cli_path;
 use crate::project::ProjectConfig;
 use std::collections::HashSet;
 use std::fs;
@@ -16,8 +17,8 @@ fn validate_project_path(
             "{} '{}' not found at '{}' (project root '{}')",
             label,
             relative_path,
-            resolved_path.display(),
-            project_root.display()
+            format_cli_path(&resolved_path),
+            format_cli_path(project_root)
         ));
     }
 
@@ -26,8 +27,8 @@ fn validate_project_path(
             "Failed to resolve {} '{}' at '{}' while validating project root '{}': {}",
             label,
             relative_path,
-            resolved_path.display(),
-            project_root.display(),
+            format_cli_path(&resolved_path),
+            format_cli_path(project_root),
             e
         )
     })?;
@@ -36,7 +37,7 @@ fn validate_project_path(
             "{} '{}' resolves outside the project root '{}'",
             label,
             relative_path,
-            canonical_root.display()
+            format_cli_path(canonical_root)
         ));
     }
 
@@ -45,8 +46,8 @@ fn validate_project_path(
             "Failed to inspect {} '{}' at canonical path '{}' while validating project root '{}': {}",
             label,
             relative_path,
-            canonical_path.display(),
-            project_root.display(),
+            format_cli_path(&canonical_path),
+            format_cli_path(project_root),
             e
         )
     })?;
@@ -55,8 +56,8 @@ fn validate_project_path(
             "{} '{}' must resolve to a file, found canonical path '{}' (project root '{}')",
             label,
             relative_path,
-            canonical_path.display(),
-            project_root.display()
+            format_cli_path(&canonical_path),
+            format_cli_path(project_root)
         ));
     }
     if canonical_path.extension().and_then(|ext| ext.to_str()) != Some("arden") {
@@ -64,7 +65,7 @@ fn validate_project_path(
             "{} '{}' must resolve to an .arden source file (canonical path '{}')",
             label,
             relative_path,
-            canonical_path.display()
+            format_cli_path(&canonical_path)
         ));
     }
 
@@ -97,7 +98,7 @@ fn validate_output_path(
             format!(
                 "Failed to resolve output path '{}' relative to project root '{}': no existing ancestor path found",
                 relative_path,
-                canonical_root.display()
+                format_cli_path(canonical_root)
             )
         })?;
 
@@ -105,7 +106,7 @@ fn validate_output_path(
         format!(
             "Failed to resolve output path '{}' at existing ancestor '{}': {}",
             relative_path,
-            existing_parent.display(),
+            format_cli_path(existing_parent),
             e
         )
     })?;
@@ -114,7 +115,7 @@ fn validate_output_path(
         return Err(format!(
             "Output path '{}' resolves outside the project root '{}'",
             relative_path,
-            canonical_root.display()
+            format_cli_path(canonical_root)
         ));
     }
 
@@ -122,7 +123,7 @@ fn validate_output_path(
         return Err(format!(
             "Output path '{}' must not point to a directory (resolved '{}')",
             relative_path,
-            resolved_path.display()
+            format_cli_path(&resolved_path)
         ));
     }
 
@@ -131,7 +132,7 @@ fn validate_output_path(
             format!(
                 "Failed to inspect output path '{}' at '{}': {}",
                 relative_path,
-                resolved_path.display(),
+                format_cli_path(&resolved_path),
                 e
             )
         })?;
@@ -140,7 +141,7 @@ fn validate_output_path(
                 format!(
                     "Failed to resolve output path '{}' at '{}': {}",
                     relative_path,
-                    resolved_path.display(),
+                    format_cli_path(&resolved_path),
                     e
                 )
             })?;
@@ -148,7 +149,7 @@ fn validate_output_path(
                 return Err(format!(
                     "Output path '{}' resolves outside the project root '{}'",
                     relative_path,
-                    canonical_root.display()
+                    format_cli_path(canonical_root)
                 ));
             }
         }
@@ -171,15 +172,15 @@ fn normalize_project_relative_path(
                 if !normalized.pop() || !normalized.starts_with(canonical_root) {
                     return Err(format!(
                         "Path '{}' resolves outside the project root '{}'",
-                        relative_path.display(),
-                        canonical_root.display()
+                        format_cli_path(relative_path),
+                        format_cli_path(canonical_root)
                     ));
                 }
             }
             Component::RootDir | Component::Prefix(_) => {
                 return Err(format!(
                     "Path '{}' must be relative to the project root",
-                    relative_path.display()
+                    format_cli_path(relative_path)
                 ));
             }
         }
@@ -194,7 +195,7 @@ impl ProjectConfig {
         let canonical_root = project_root.canonicalize().map_err(|e| {
             format!(
                 "Failed to resolve project root '{}': {}",
-                project_root.display(),
+                format_cli_path(project_root),
                 e
             )
         })?;
@@ -210,7 +211,7 @@ impl ProjectConfig {
                 format!(
                     "Failed to resolve output path '{}' at '{}': {}",
                     self.output,
-                    output_path.display(),
+                    format_cli_path(&output_path),
                     e
                 )
             })?)

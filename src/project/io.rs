@@ -1,3 +1,4 @@
+use crate::format_cli_path;
 use crate::project::types::ProjectTomlRoot;
 use crate::project::ProjectConfig;
 use std::fs;
@@ -6,8 +7,13 @@ use std::path::Path;
 impl ProjectConfig {
     /// Load project config from arden.toml
     pub fn load(path: &Path) -> Result<Self, String> {
-        let content = fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read project file '{}': {}", path.display(), e))?;
+        let content = fs::read_to_string(path).map_err(|e| {
+            format!(
+                "Failed to read project file '{}': {}",
+                format_cli_path(path),
+                e
+            )
+        })?;
 
         match toml::from_str::<ProjectConfig>(&content) {
             Ok(config) => Ok(config),
@@ -15,7 +21,7 @@ impl ProjectConfig {
                 Ok(wrapper) => Ok(wrapper.project),
                 Err(project_table_error) => Err(format!(
                     "Failed to parse project file '{}': root shape error: {}; [project] table shape error: {}",
-                    path.display(),
+                    format_cli_path(path),
                     root_error,
                     project_table_error
                 )),
@@ -28,13 +34,18 @@ impl ProjectConfig {
         let content = toml::to_string_pretty(self).map_err(|e| {
             format!(
                 "Failed to serialize project for '{}': {}",
-                path.display(),
+                format_cli_path(path),
                 e
             )
         })?;
 
-        fs::write(path, content)
-            .map_err(|e| format!("Failed to write project file '{}': {}", path.display(), e))?;
+        fs::write(path, content).map_err(|e| {
+            format!(
+                "Failed to write project file '{}': {}",
+                format_cli_path(path),
+                e
+            )
+        })?;
 
         Ok(())
     }

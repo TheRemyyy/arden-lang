@@ -1,9 +1,10 @@
 use crate::borrowck;
+use crate::cli::output::format_cli_path;
 use crate::parser;
 use crate::typeck;
 use colored::Colorize;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SourceDiagnostic<'a> {
@@ -80,6 +81,10 @@ pub(crate) fn render_source_diagnostic(source: &str, diagnostic: &SourceDiagnost
     output
 }
 
+fn display_path(path: &Path) -> String {
+    format_cli_path(path)
+}
+
 pub(crate) fn format_parse_error(
     error: &parser::ParseError,
     source: &str,
@@ -108,7 +113,7 @@ fn render_component_summary(
         rendered.push('\n');
         rendered.push_str("files:\n");
         for (path, _) in sources {
-            rendered.push_str(&format!("  - {}\n", path.display()));
+            rendered.push_str(&format!("  - {}\n", display_path(path)));
         }
     }
     for error in errors {
@@ -123,7 +128,7 @@ pub(crate) fn render_type_errors(
 ) -> String {
     if sources.len() == 1 {
         let (path, source) = &sources[0];
-        let filename = path.to_string_lossy();
+        let filename = display_path(path);
         return typeck::format_errors(&errors, source, &filename);
     }
 
@@ -140,7 +145,7 @@ pub(crate) fn render_borrow_errors(
 ) -> String {
     if sources.len() == 1 {
         let (path, source) = &sources[0];
-        let filename = path.to_string_lossy();
+        let filename = display_path(path);
         return borrowck::format_borrow_errors(&errors, source, &filename);
     }
 

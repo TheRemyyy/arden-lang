@@ -23,7 +23,7 @@ pub(crate) fn create_new_project(name: &str, path: Option<&Path>) -> Result<(), 
             "{}: {} '{}' already exists",
             "error".red().bold(),
             kind,
-            project_path.display()
+            format_cli_path(&project_path)
         ));
     }
 
@@ -31,7 +31,7 @@ pub(crate) fn create_new_project(name: &str, path: Option<&Path>) -> Result<(), 
         format!(
             "{}: Failed to create project directory '{}': {}",
             "error".red().bold(),
-            project_path.display(),
+            format_cli_path(&project_path),
             e
         )
     })?;
@@ -40,7 +40,7 @@ pub(crate) fn create_new_project(name: &str, path: Option<&Path>) -> Result<(), 
         format!(
             "{}: Failed to create src directory '{}': {}",
             "error".red().bold(),
-            src_dir.display(),
+            format_cli_path(&src_dir),
             e
         )
     })?;
@@ -65,7 +65,7 @@ function main(): None {{
         format!(
             "{}: Failed to create main.arden '{}': {}",
             "error".red().bold(),
-            main_path.display(),
+            format_cli_path(&main_path),
             e
         )
     })?;
@@ -151,7 +151,7 @@ output_kind = "bin"
         format!(
             "{}: Failed to create README.md '{}': {}",
             "error".red().bold(),
-            readme_path.display(),
+            format_cli_path(&readme_path),
             e
         )
     })?;

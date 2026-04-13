@@ -57,7 +57,7 @@ pub(crate) fn read_cache_blob_raw(path: &Path, label: &str) -> Result<Option<Vec
                 "{}: Failed to read {} '{}': {}",
                 "error".red().bold(),
                 label,
-                path.display(),
+                crate::format_cli_path(path),
                 error
             ));
         }
@@ -79,7 +79,7 @@ pub(crate) fn read_cache_blob<T: DeserializeOwned>(
                 "{}: Ignoring invalid {} '{}': {}",
                 "warning".yellow().bold(),
                 label,
-                path.display(),
+                crate::format_cli_path(path),
                 error
             );
             return Ok(None);
@@ -108,7 +108,7 @@ pub(crate) fn read_cache_blob_with_timing<T: DeserializeOwned>(
                 "{}: Ignoring invalid {} '{}': {}",
                 "warning".yellow().bold(),
                 label,
-                path.display(),
+                crate::format_cli_path(path),
                 error
             );
             totals
@@ -137,7 +137,7 @@ pub(crate) fn write_cache_blob<T: Serialize>(
             "{}: Failed to serialize {} '{}': {}",
             "error".red().bold(),
             label,
-            path.display(),
+            crate::format_cli_path(path),
             e
         )
     })?;
@@ -146,7 +146,7 @@ pub(crate) fn write_cache_blob<T: Serialize>(
             "{}: Failed to write {} '{}': {}",
             "error".red().bold(),
             label,
-            path.display(),
+            crate::format_cli_path(path),
             e
         )
     })
@@ -163,7 +163,7 @@ pub(crate) fn write_cache_blob_with_timing<T: Serialize>(
             "{}: Failed to serialize {} '{}': {}",
             "error".red().bold(),
             label,
-            path.display(),
+            crate::format_cli_path(path),
             e
         )
     })?;
@@ -174,7 +174,7 @@ pub(crate) fn write_cache_blob_with_timing<T: Serialize>(
             "{}: Failed to write {} '{}': {}",
             "error".red().bold(),
             label,
-            path.display(),
+            crate::format_cli_path(path),
             e
         )
     })?;
@@ -207,7 +207,7 @@ pub(crate) fn ensure_output_parent_dir(output_path: &Path) -> Result<(), String>
         format!(
             "{}: Failed to create output directory '{}': {}",
             "error".red().bold(),
-            parent.display(),
+            crate::format_cli_path(parent),
             e
         )
     })
@@ -241,7 +241,7 @@ pub(crate) fn compute_project_fingerprint(
             format!(
                 "{}: Failed to read source for '{}': {}",
                 "error".red().bold(),
-                file.display(),
+                crate::format_cli_path(file),
                 e
             )
         })?;
@@ -261,7 +261,7 @@ pub(crate) fn load_cached_fingerprint(project_root: &Path) -> Result<Option<Stri
         format!(
             "{}: Failed to read build cache '{}': {}",
             "error".red().bold(),
-            cache_file.display(),
+            crate::format_cli_path(&cache_file),
             e
         )
     })?;
@@ -284,7 +284,7 @@ pub(crate) fn load_semantic_cached_fingerprint(
         format!(
             "{}: Failed to read semantic build cache '{}': {}",
             "error".red().bold(),
-            cache_file.display(),
+            crate::format_cli_path(&cache_file),
             e
         )
     })?;
@@ -305,7 +305,7 @@ pub(crate) fn save_cached_fingerprint(
             format!(
                 "{}: Failed to create cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;
@@ -314,7 +314,7 @@ pub(crate) fn save_cached_fingerprint(
         format!(
             "{}: Failed to write build cache '{}': {}",
             "error".red().bold(),
-            cache_file.display(),
+            crate::format_cli_path(&cache_file),
             e
         )
     })
@@ -330,7 +330,7 @@ pub(crate) fn save_semantic_cached_fingerprint(
             format!(
                 "{}: Failed to create cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;
@@ -339,7 +339,7 @@ pub(crate) fn save_semantic_cached_fingerprint(
         format!(
             "{}: Failed to write semantic build cache '{}': {}",
             "error".red().bold(),
-            cache_file.display(),
+            crate::format_cli_path(&cache_file),
             e
         )
     })
@@ -807,7 +807,7 @@ pub(crate) fn current_file_metadata_stamp(file: &Path) -> Result<FileMetadataSta
         format!(
             "{}: Failed to stat '{}': {}",
             "error".red().bold(),
-            file.display(),
+            crate::format_cli_path(file),
             e
         )
     })?;
@@ -815,7 +815,7 @@ pub(crate) fn current_file_metadata_stamp(file: &Path) -> Result<FileMetadataSta
         format!(
             "{}: Failed to read modified time for '{}': {}",
             "error".red().bold(),
-            file.display(),
+            crate::format_cli_path(file),
             e
         )
     })?;
@@ -823,7 +823,7 @@ pub(crate) fn current_file_metadata_stamp(file: &Path) -> Result<FileMetadataSta
         format!(
             "{}: Invalid modified time for '{}': {}",
             "error".red().bold(),
-            file.display(),
+            crate::format_cli_path(file),
             e
         )
     })?;
@@ -864,7 +864,7 @@ pub(crate) fn save_parsed_file_cache(
             format!(
                 "{}: Failed to create parse cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;
@@ -939,7 +939,7 @@ pub(crate) fn save_import_check_cache_hit(
             format!(
                 "{}: Failed to create import-check cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;
@@ -987,7 +987,7 @@ pub(crate) fn save_dependency_graph_cache(
             format!(
                 "{}: Failed to create dependency graph cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;
@@ -1029,7 +1029,7 @@ pub(crate) fn save_semantic_summary_cache(
             format!(
                 "{}: Failed to create semantic summary cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;
@@ -1071,7 +1071,7 @@ pub(crate) fn save_typecheck_summary_cache(
             format!(
                 "{}: Failed to create typecheck summary cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;
@@ -1672,7 +1672,7 @@ pub(crate) fn save_rewritten_file_cache(
             format!(
                 "{}: Failed to create rewrite cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;
@@ -1853,7 +1853,7 @@ pub(crate) fn save_link_manifest_cache(
             format!(
                 "{}: Failed to create link manifest cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;
@@ -1926,7 +1926,7 @@ pub(crate) fn save_object_cache_meta(
             format!(
                 "{}: Failed to create object cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;
@@ -1987,7 +1987,7 @@ pub(crate) fn save_object_shard_cache_meta(
             format!(
                 "{}: Failed to create object shard cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                crate::format_cli_path(parent),
                 e
             )
         })?;

@@ -4,7 +4,7 @@ use crate::cache::{
     BuildTimings, ParsedProjectUnit, RewrittenProjectUnit, SemanticSummaryCache,
     TypecheckSummaryCache,
 };
-use crate::cli::output::{print_cli_cache, print_cli_step};
+use crate::cli::output::{format_cli_path, print_cli_cache, print_cli_step};
 use crate::dependency::{
     component_fingerprint, merge_reusable_component_semantic_data, reusable_component_fingerprints,
     semantic_check_components, semantic_program_for_component, semantic_summary_cache_from_state,
@@ -176,7 +176,7 @@ pub(crate) fn run_semantic_phase(
                                     .map_err(|error| {
                                         format!(
                                             "error: Failed to read '{}' during semantic checks: {}",
-                                            file.display(),
+                                            format_cli_path(file),
                                             error
                                         )
                                     })

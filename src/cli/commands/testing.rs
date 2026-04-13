@@ -2,7 +2,7 @@ mod execution;
 mod workspace;
 
 use crate::build_project;
-use crate::cli::output::{cli_accent, cli_soft, cli_tertiary, cli_warning};
+use crate::cli::output::{cli_accent, cli_soft, cli_tertiary, cli_warning, format_cli_path};
 use crate::cli::paths::{current_dir_checked, validate_source_file_path, with_process_current_dir};
 use crate::diagnostics::format_parse_error;
 use crate::lexer;
@@ -39,12 +39,17 @@ pub(crate) fn run_tests(
     let mut all_tests_found = false;
 
     for test_file in &test_files {
-        let source = fs::read_to_string(test_file)
-            .map_err(|e| format!("Failed to read test file '{}': {}", test_file.display(), e))?;
+        let source = fs::read_to_string(test_file).map_err(|e| {
+            format!(
+                "Failed to read test file '{}': {}",
+                format_cli_path(test_file),
+                e
+            )
+        })?;
 
         let tokens = lexer::tokenize(&source)
-            .map_err(|e| format!("Lexer error in '{}': {}", test_file.display(), e))?;
-        let filename = test_file.to_string_lossy().into_owned();
+            .map_err(|e| format!("Lexer error in '{}': {}", format_cli_path(test_file), e))?;
+        let filename = format_cli_path(test_file);
         let mut parser = Parser::new(tokens);
         let program = parser
             .parse_program()
@@ -74,7 +79,7 @@ pub(crate) fn run_tests(
         if filtered_suites.is_empty() {
             println!(
                 "{}: no tests matched '{}'",
-                test_file.display(),
+                format_cli_path(test_file),
                 filter.unwrap_or("")
             );
             continue;
@@ -97,7 +102,7 @@ pub(crate) fn run_tests(
             .saturating_sub(filtered_discovery.total_tests);
 
         if list_only {
-            println!("\n{}", cli_accent(test_file.display().to_string()));
+            println!("\n{}", cli_accent(format_cli_path(test_file)));
             print_discovery(&filtered_discovery);
         } else {
             let runner_code = generate_test_runner_with_source(&filtered_discovery, &source);
@@ -121,7 +126,7 @@ pub(crate) fn run_tests(
                         eprintln!(
                             "{}: failed to remove temporary test workspace '{}': {}",
                             cli_warning("warning"),
-                            temp_dir.display(),
+                            format_cli_path(&temp_dir),
                             err
                         );
                     }
@@ -132,7 +137,7 @@ pub(crate) fn run_tests(
                 fs::write(&runner_path, &runner_code).map_err(|e| {
                     format!(
                         "Failed to write test runner '{}': {}",
-                        runner_path.display(),
+                        format_cli_path(&runner_path),
                         e
                     )
                 })?;
@@ -143,7 +148,7 @@ pub(crate) fn run_tests(
                         eprintln!(
                             "{}: failed to remove temporary test workspace '{}': {}",
                             cli_warning("warning"),
-                            temp_dir.display(),
+                            format_cli_path(&temp_dir),
                             err
                         );
                     }

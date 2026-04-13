@@ -256,14 +256,25 @@ pub(crate) fn generate_from_prototype(proto: &str) -> Option<String> {
 
 pub fn generate_bindings(header: &Path, output: Option<&Path>) -> Result<usize, String> {
     if !header.exists() {
-        return Err(format!("Header '{}' does not exist", header.display()));
+        return Err(format!(
+            "Header '{}' does not exist",
+            crate::format_cli_path(header)
+        ));
     }
     if !header.is_file() {
-        return Err(format!("Header '{}' is not a file", header.display()));
+        return Err(format!(
+            "Header '{}' is not a file",
+            crate::format_cli_path(header)
+        ));
     }
 
-    let raw = fs::read_to_string(header)
-        .map_err(|e| format!("Failed to read header '{}': {}", header.display(), e))?;
+    let raw = fs::read_to_string(header).map_err(|e| {
+        format!(
+            "Failed to read header '{}': {}",
+            crate::format_cli_path(header),
+            e
+        )
+    })?;
     let stripped = strip_comments(&raw);
 
     let mut lines = Vec::new();
@@ -284,7 +295,7 @@ pub fn generate_bindings(header: &Path, output: Option<&Path>) -> Result<usize, 
         if path.exists() && path.is_dir() {
             return Err(format!(
                 "Bindgen output path '{}' is a directory; expected a file path",
-                path.display()
+                crate::format_cli_path(path)
             ));
         }
         if let Some(parent) = path.parent() {
@@ -292,14 +303,19 @@ pub fn generate_bindings(header: &Path, output: Option<&Path>) -> Result<usize, 
                 fs::create_dir_all(parent).map_err(|e| {
                     format!(
                         "Failed to create bindgen output directory '{}': {}",
-                        parent.display(),
+                        crate::format_cli_path(parent),
                         e
                     )
                 })?;
             }
         }
-        fs::write(path, out_text)
-            .map_err(|e| format!("Failed to write output '{}': {}", path.display(), e))?;
+        fs::write(path, out_text).map_err(|e| {
+            format!(
+                "Failed to write output '{}': {}",
+                crate::format_cli_path(path),
+                e
+            )
+        })?;
     } else {
         print!("{}", out_text);
     }

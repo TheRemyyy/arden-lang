@@ -3,6 +3,7 @@ use crate::cache::{
     elapsed_nanos_u64, load_import_check_cache_hit, save_import_check_cache_hit, BuildTimings,
     ImportCheckTimingTotals, ParsedProjectUnit,
 };
+use crate::cli::output::format_cli_path;
 use crate::dependency::RewriteFingerprintContext;
 use crate::import_check::ImportChecker;
 use crate::stdlib::stdlib_registry;
@@ -89,7 +90,7 @@ pub(crate) fn run_import_check_phase(
                             elapsed_nanos_u64(checker_run_started_at),
                             Ordering::Relaxed,
                         );
-                        let filename = unit.file.to_string_lossy();
+                        let filename = format_cli_path(&unit.file);
                         let source = fs::read_to_string(&unit.file);
                         let mut rendered = String::new();
                         for error in errors {
@@ -106,7 +107,7 @@ pub(crate) fn run_import_check_phase(
                                     "error".red().bold(),
                                     error.format(),
                                     "error".red().bold(),
-                                    unit.file.display(),
+                                    format_cli_path(&unit.file),
                                     source_read_error,
                                 ));
                             }

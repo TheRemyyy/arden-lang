@@ -1,4 +1,6 @@
-use crate::cli::output::{cli_accent, cli_elapsed, cli_soft, cli_tertiary, cli_warning};
+use crate::cli::output::{
+    cli_accent, cli_elapsed, cli_soft, cli_tertiary, cli_warning, format_cli_path,
+};
 use crate::cli::paths::{current_dir_checked, unique_temp_binary_path};
 use crate::project::{
     ensure_project_is_runnable, find_project_root, resolve_project_output_path, ProjectConfig,
@@ -39,7 +41,7 @@ fn run_binary(exe_path: &Path, args: &[String]) -> Result<(), String> {
         format!(
             "{}: Failed to run '{}': {}",
             "error".red().bold(),
-            exe_path.display(),
+            format_cli_path(exe_path),
             e
         )
     })?;
@@ -47,7 +49,7 @@ fn run_binary(exe_path: &Path, args: &[String]) -> Result<(), String> {
         return Err(format!(
             "{}: process '{}' {}",
             "error".red().bold(),
-            exe_path.display(),
+            format_cli_path(exe_path),
             format_exit_failure(status)
         ));
     }
@@ -77,7 +79,7 @@ fn prepare_perf_binary(
         format!(
             "{}: No arden.toml found from current directory '{}'",
             "error".red().bold(),
-            cwd.display()
+            format_cli_path(&cwd)
         )
     })?;
     let config_path = project_root.join("arden.toml");
@@ -113,7 +115,7 @@ pub(crate) fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(),
                 eprintln!(
                     "{}: failed to remove temporary benchmark binary '{}': {}",
                     cli_warning("warning"),
-                    cleanup_path.display(),
+                    format_cli_path(&cleanup_path),
                     err
                 );
             }
@@ -170,7 +172,7 @@ pub(crate) fn profile_target(file: Option<&Path>) -> Result<(), String> {
                 eprintln!(
                     "{}: failed to remove temporary profile binary '{}': {}",
                     cli_warning("warning"),
-                    cleanup_path.display(),
+                    format_cli_path(&cleanup_path),
                     err
                 );
             }

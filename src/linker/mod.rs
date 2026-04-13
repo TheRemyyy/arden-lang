@@ -1,7 +1,8 @@
+use crate::cli::output::format_cli_path;
 use crate::project::OutputKind;
 use colored::*;
 use std::env;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -506,7 +507,7 @@ fn macos_sdk_root() -> Result<PathBuf, String> {
         format!(
             "{}: Failed to launch xcrun '{}' to resolve the macOS SDK path: {}",
             "error".red().bold(),
-            xcrun_path.display(),
+            format_cli_path(&xcrun_path),
             error
         )
     })?;
@@ -555,7 +556,7 @@ fn macos_sdk_version() -> Result<String, String> {
         format!(
             "{}: Failed to launch xcrun '{}' to resolve the macOS SDK version: {}",
             "error".red().bold(),
-            xcrun_path.display(),
+            format_cli_path(&xcrun_path),
             error
         )
     })?;
@@ -607,8 +608,20 @@ fn write_link_response_file(path: &Path, args: &[String]) -> Result<(), String> 
         format!(
             "{}: Failed to write link response file '{}': {}",
             "error".red().bold(),
-            path.display(),
+            format_cli_path(path),
             error
+        )
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn path_to_response_arg(path: &Path, context: &str) -> Result<String, String> {
+    path.to_str().map(str::to_owned).ok_or_else(|| {
+        format!(
+            "{}: {} contains non-UTF-8 path '{}', which cannot be encoded into a linker response file",
+            "error".red().bold(),
+            context,
+            format_cli_path(path)
         )
     })
 }
@@ -691,6 +704,13 @@ fn normalize_windows_lib_name(lib: &str) -> OsString {
 }
 
 #[cfg(windows)]
+fn windows_flag_with_path(prefix: &str, path: &Path) -> OsString {
+    let mut value = OsString::from(prefix);
+    value.push(path.as_os_str());
+    value
+}
+
+#[cfg(windows)]
 fn link_with_lld_link(
     objects: &[PathBuf],
     output_path: &Path,
@@ -708,7 +728,7 @@ fn link_with_lld_link(
         .map(|value| value.get())
         .unwrap_or(1);
     command
-        .arg(format!("/out:{}", output_path.display()))
+        .arg(windows_flag_with_path("/out:", output_path))
         .arg(format!("/machine:{}", windows_machine_flag(link.target)))
         .arg(format!("/threads:{thread_count}"))
         .arg("/incremental:no")
@@ -727,9 +747,9 @@ fn link_with_lld_link(
         }
         OutputKind::Shared => {
             command.arg("/dll");
-            command.arg(format!(
-                "/implib:{}",
-                output_path.with_extension("lib").display()
+            command.arg(windows_flag_with_path(
+                "/implib:",
+                &output_path.with_extension("lib"),
             ));
         }
         OutputKind::Static => {}
@@ -739,7 +759,7 @@ fn link_with_lld_link(
         command.arg(object);
     }
     for path in windows_search_paths(link) {
-        command.arg(format!("/libpath:{}", path.display()));
+        command.arg(windows_flag_with_path("/libpath:", &path));
     }
     if let Some(builtins) = maybe_find_windows_builtins() {
         command.arg(builtins);
@@ -788,9 +808,9 @@ fn link_with_macos_lld(
         sdk_version.clone(),
         sdk_version,
         "-syslibroot".to_string(),
-        sdk_root.display().to_string(),
+        path_to_response_arg(&sdk_root, "macOS SDK root")?,
         "-o".to_string(),
-        output_path.display().to_string(),
+        path_to_response_arg(output_path, "macOS linker output path")?,
         "-dead_strip".to_string(),
         "-demangle".to_string(),
         "-adhoc_codesign".to_string(),
@@ -801,7 +821,7 @@ fn link_with_macos_lld(
     }
 
     for object in objects {
-        response_args.push(object.display().to_string());
+        response_args.push(path_to_response_arg(object, "macOS object file")?);
     }
 
     for path in link.link_search {
@@ -820,14 +840,16 @@ fn link_with_macos_lld(
     write_link_response_file(&response_path, &response_args)?;
     let mut command = Command::new(linker_path);
     apply_fallback_current_dir(&mut command);
-    command.arg(format!("@{}", response_path.display()));
+    let mut response_arg = OsString::from("@");
+    response_arg.push(response_path.as_os_str());
+    command.arg(response_arg);
     apply_stable_command_dir(&mut command, output_path);
     let result = run_link_command(command, "ld64.lld");
     if let Err(err) = fs::remove_file(&response_path) {
         if err.kind() != std::io::ErrorKind::NotFound {
             eprintln!(
                 "warning: failed to remove temporary linker response file '{}': {}",
-                response_path.display(),
+                format_cli_path(&response_path),
                 err
             );
         }
@@ -856,7 +878,7 @@ pub(crate) fn link_objects(
                 format!(
                     "{}: Failed to run ar for static library creation '{}': {}",
                     "error".red().bold(),
-                    output_path.display(),
+                    format_cli_path(output_path),
                     e
                 )
             })?;
@@ -875,7 +897,7 @@ pub(crate) fn link_objects(
                 return Err(format!(
                     "{}: ar failed while creating static library '{}': {}",
                     "error".red().bold(),
-                    output_path.display(),
+                    format_cli_path(output_path),
                     details
                 ));
             }

@@ -1,4 +1,5 @@
 use crate::cache::ParsedProjectUnit;
+use crate::cli::output::format_cli_path;
 use std::fs;
 use std::path::Path;
 
@@ -15,7 +16,7 @@ pub(crate) fn run_entry_validation_phase(
         format!(
             "{}: Failed to read entry file '{}': {}",
             crate::cli_error("error"),
-            entry_path.display(),
+            format_cli_path(entry_path),
             error
         )
     })?;
@@ -27,11 +28,11 @@ pub(crate) fn run_entry_validation_phase(
             format!(
                 "{}: Entry file '{}' was not parsed (parsed units: {})",
                 crate::cli_error("error"),
-                entry_path.display(),
+                format_cli_path(entry_path),
                 parsed_files.len()
             )
         })?;
-    let entry_filename = entry_path.to_string_lossy();
+    let entry_filename = format_cli_path(entry_path);
 
     crate::validate_entry_main_signature(entry_program, &entry_source, &entry_filename)
 }

@@ -1,25 +1,34 @@
+use crate::cli::output::format_cli_path;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 pub(crate) fn find_test_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     if !dir.exists() {
-        return Err(format!("Path '{}' does not exist", dir.display()));
+        return Err(format!("Path '{}' does not exist", format_cli_path(dir)));
     }
     if !dir.is_dir() {
-        return Err(format!("Path '{}' is not a directory", dir.display()));
+        return Err(format!(
+            "Path '{}' is not a directory",
+            format_cli_path(dir)
+        ));
     }
     if crate::cli::paths::path_traverses_symlinked_directories(dir)? {
         return Err(format!(
             "Path '{}' must not traverse symlinked directories",
-            dir.display()
+            format_cli_path(dir)
         ));
     }
-    let metadata = fs::symlink_metadata(dir)
-        .map_err(|e| format!("Failed to inspect directory '{}': {}", dir.display(), e))?;
+    let metadata = fs::symlink_metadata(dir).map_err(|e| {
+        format!(
+            "Failed to inspect directory '{}': {}",
+            format_cli_path(dir),
+            e
+        )
+    })?;
     if metadata.file_type().is_symlink() {
         return Err(format!(
             "Path '{}' must not be a symlinked directory",
-            dir.display()
+            format_cli_path(dir)
         ));
     }
 
@@ -82,21 +91,21 @@ fn find_test_files_recursive(dir: &Path, test_files: &mut Vec<PathBuf>) -> Resul
     for entry in fs::read_dir(dir).map_err(|e| {
         format!(
             "Failed to read directory '{}' while discovering tests: {}",
-            dir.display(),
+            format_cli_path(dir),
             e
         )
     })? {
         let entry = entry.map_err(|e| {
             format!(
                 "Failed to read directory entry in '{}' while discovering tests: {}",
-                dir.display(),
+                format_cli_path(dir),
                 e
             )
         })?;
         let file_type = entry.file_type().map_err(|e| {
             format!(
                 "Failed to inspect directory entry '{}' while discovering tests: {}",
-                entry.path().display(),
+                format_cli_path(&entry.path()),
                 e
             )
         })?;

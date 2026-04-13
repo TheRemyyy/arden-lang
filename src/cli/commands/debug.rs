@@ -1,4 +1,4 @@
-use crate::cli::output::cli_accent;
+use crate::cli::output::{cli_accent, format_cli_path};
 use crate::cli::paths::validate_source_file_path;
 use crate::diagnostics::format_parse_error;
 use crate::lexer;
@@ -14,7 +14,7 @@ pub(crate) fn lex_file(file: &Path) -> Result<(), String> {
         format!(
             "{}: Failed to read file '{}': {}",
             "error".red().bold(),
-            file.display(),
+            format_cli_path(file),
             e
         )
     })?;
@@ -23,7 +23,7 @@ pub(crate) fn lex_file(file: &Path) -> Result<(), String> {
         format!(
             "{}: Lexer error in '{}': {}",
             "error".red().bold(),
-            file.display(),
+            format_cli_path(file),
             e
         )
     })?;
@@ -43,7 +43,7 @@ pub(crate) fn parse_file(file: &Path) -> Result<(), String> {
         format!(
             "{}: Failed to read file '{}': {}",
             "error".red().bold(),
-            file.display(),
+            format_cli_path(file),
             e
         )
     })?;
@@ -52,12 +52,12 @@ pub(crate) fn parse_file(file: &Path) -> Result<(), String> {
         format!(
             "{}: Lexer error in '{}': {}",
             "error".red().bold(),
-            file.display(),
+            format_cli_path(file),
             e
         )
     })?;
 
-    let filename = file.to_string_lossy();
+    let filename = format_cli_path(file);
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()

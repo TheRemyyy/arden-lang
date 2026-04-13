@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Corrected multiple platform ABI mismatches in codegen/runtime C interop declarations and call sites (`size_t`/`long`/`time_t`/`pthread_t`), and added LLVM IR regression coverage for libc signature emission.
 - Normalized remaining `malloc`/`realloc`/`snprintf` call sites to explicit `size_t` casting helpers, removing cross-platform integer-width ABI drift in async, stdlib, and container codegen paths.
 - Fixed async-block return-type inference to honor explicit `return` statements, which resolves false `Type mismatch: expected None, got Integer` failures in `Task.await_timeout(...)` call chains.
+- Normalized parser/type/borrow/import diagnostics path rendering across CLI/project flows (project-relative where possible, Windows `\\?\` prefix stripped), fixing cross-platform error-path regressions.
+- Continued CLI/project diagnostics hardening by normalizing remaining test/lint/fmt/discovery/path-validation/config-IO path messages to consistent cross-platform rendering.
+- Normalized remaining CLI `run`/`bench`/`profile`/`new`/`info`/workspace/project-validation path diagnostics to eliminate platform-specific absolute/prefix path noise.
+- Hardened bindgen/cache/object/linker path handling and diagnostics (including non-lossy Windows linker path flags and explicit macOS response-file path validation for non-UTF-8 paths).
 - Release portable smoke: hardened `scripts/release/smoke_portable_unix.sh` with explicit archive/install-script existence checks, per-step timeout guard (`SMOKE_STEP_TIMEOUT_SECONDS`, default `600`), and stage logs to prevent silent multi-hour hangs.
 - Web homepage hero: restored vertical centering on large `100vh` layouts by aligning the top hero grid to center instead of end.
 - Web readability on large displays: added homepage-only ultra-wide scaling (larger typographic base + wider content max-widths at `>=1700px` and `>=2200px`) so 100% browser zoom does not look visually shrunken.

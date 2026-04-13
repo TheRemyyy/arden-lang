@@ -1,3 +1,4 @@
+use crate::cli::output::format_cli_path;
 use crate::cli::paths::current_dir_checked;
 use crate::cli::test_discovery::find_test_files as discover_test_files;
 use crate::project::{find_project_root, resolve_project_output_path, ProjectConfig};
@@ -31,7 +32,7 @@ pub(super) fn create_test_runner_workspace(
         .map_err(|e| {
             format!(
                 "Failed to create unique test runner path for '{}': {}",
-                test_file.display(),
+                format_cli_path(test_file),
                 e,
             )
         })?
@@ -49,7 +50,7 @@ pub(super) fn create_test_runner_workspace(
     fs::create_dir_all(&temp_dir).map_err(|e| {
         format!(
             "Failed to create test runner workspace '{}': {}",
-            temp_dir.display(),
+            format_cli_path(&temp_dir),
             e
         )
     })?;
@@ -73,7 +74,7 @@ pub(super) fn create_project_test_runner_workspace(
         .map_err(|e| {
             format!(
                 "Failed to create unique test runner project path for '{}': {}",
-                test_file.display(),
+                format_cli_path(test_file),
                 e
             )
         })?
@@ -86,7 +87,7 @@ pub(super) fn create_project_test_runner_workspace(
     fs::create_dir_all(&temp_dir).map_err(|e| {
         format!(
             "Failed to create test runner project workspace '{}': {}",
-            temp_dir.display(),
+            format_cli_path(&temp_dir),
             e
         )
     })?;
@@ -99,14 +100,14 @@ pub(super) fn create_project_test_runner_workspace(
     let canonical_project_root = project_root.canonicalize().map_err(|e| {
         format!(
             "Failed to resolve project root '{}' for test workspace creation: {}",
-            project_root.display(),
+            format_cli_path(project_root),
             e
         )
     })?;
     let canonical_test_file = normalized_test_file.canonicalize().map_err(|e| {
         format!(
             "Failed to resolve test file '{}' for test workspace creation: {}",
-            normalized_test_file.display(),
+            format_cli_path(&normalized_test_file),
             e
         )
     })?;
@@ -126,8 +127,8 @@ pub(super) fn create_project_test_runner_workspace(
         .map_err(|_| {
             format!(
                 "Test file '{}' is outside project root '{}'",
-                canonical_test_file.display(),
-                canonical_project_root.display()
+                format_cli_path(&canonical_test_file),
+                format_cli_path(&canonical_project_root)
             )
         })?;
     let test_rel_string = test_rel.to_string_lossy().replace('\\', "/");
@@ -137,7 +138,7 @@ pub(super) fn create_project_test_runner_workspace(
         let canonical_source_file = source_file.canonicalize().map_err(|e| {
             format!(
                 "Failed to resolve project source '{}': {}",
-                source_file.display(),
+                format_cli_path(&source_file),
                 e
             )
         })?;
@@ -151,8 +152,8 @@ pub(super) fn create_project_test_runner_workspace(
             .map_err(|_| {
                 format!(
                     "Project source '{}' is outside project root '{}'",
-                    canonical_source_file.display(),
-                    canonical_project_root.display()
+                    format_cli_path(&canonical_source_file),
+                    format_cli_path(&canonical_project_root)
                 )
             })?;
         let rel_string = rel.to_string_lossy().replace('\\', "/");
@@ -162,15 +163,15 @@ pub(super) fn create_project_test_runner_workspace(
         if !dest.starts_with(&temp_dir) {
             return Err(format!(
                 "Refusing to write source '{}' outside test workspace '{}'",
-                canonical_source_file.display(),
-                temp_dir.display()
+                format_cli_path(&canonical_source_file),
+                format_cli_path(&temp_dir)
             ));
         }
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|e| {
                 format!(
                     "Failed to create runner source directory '{}': {}",
-                    parent.display(),
+                    format_cli_path(parent),
                     e
                 )
             })?;
@@ -179,7 +180,7 @@ pub(super) fn create_project_test_runner_workspace(
             fs::write(&dest, runner_code).map_err(|e| {
                 format!(
                     "Failed to write generated project test runner '{}': {}",
-                    dest.display(),
+                    format_cli_path(&dest),
                     e
                 )
             })?;
@@ -187,8 +188,8 @@ pub(super) fn create_project_test_runner_workspace(
             fs::copy(&canonical_source_file, &dest).map_err(|e| {
                 format!(
                     "Failed to copy project source '{}' into test workspace '{}': {}",
-                    canonical_source_file.display(),
-                    dest.display(),
+                    format_cli_path(&canonical_source_file),
+                    format_cli_path(&dest),
                     e
                 )
             })?;
@@ -199,7 +200,7 @@ pub(super) fn create_project_test_runner_workspace(
     if !runner_dest.starts_with(&temp_dir) {
         return Err(format!(
             "Refusing to place generated runner outside test workspace '{}'",
-            temp_dir.display()
+            format_cli_path(&temp_dir)
         ));
     }
     if !runner_dest.exists() {
@@ -207,7 +208,7 @@ pub(super) fn create_project_test_runner_workspace(
             fs::create_dir_all(parent).map_err(|e| {
                 format!(
                     "Failed to create runner destination directory '{}': {}",
-                    parent.display(),
+                    format_cli_path(parent),
                     e
                 )
             })?;
@@ -215,7 +216,7 @@ pub(super) fn create_project_test_runner_workspace(
         fs::write(&runner_dest, runner_code).map_err(|e| {
             format!(
                 "Failed to write generated runner source '{}': {}",
-                runner_dest.display(),
+                format_cli_path(&runner_dest),
                 e
             )
         })?;
@@ -239,7 +240,7 @@ pub(super) fn create_project_test_runner_workspace(
         .map_err(|e| {
             format!(
                 "Failed to write test runner project config '{}': {}",
-                temp_dir.join("arden.toml").display(),
+                format_cli_path(&temp_dir.join("arden.toml")),
                 e
             )
         })?;

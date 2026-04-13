@@ -4,7 +4,7 @@ use crate::cache::{
     ObjectEmitTimingTotals, ProjectSymbolLookup, RewrittenProjectUnit,
     OBJECT_CACHE_META_TIMING_TOTALS,
 };
-use crate::cli::output::cli_error;
+use crate::cli::output::{cli_error, format_cli_path};
 use crate::linker::LinkConfig;
 use crate::specialization::{codegen_program_for_units, combined_program_for_files};
 use crate::symbol_lookup::{
@@ -65,7 +65,7 @@ pub(crate) fn run_object_codegen_phase(
                                 format!(
                                     "{}: missing object cache paths for rewritten unit '{}'",
                                     cli_error("error"),
-                                    unit.file.display()
+                                    format_cli_path(&unit.file)
                                 )
                             })?
                             .object_path
@@ -171,7 +171,7 @@ pub(crate) fn run_object_codegen_phase(
                                 format!(
                                     "{}: missing object cache paths for rewritten unit '{}'",
                                     cli_error("error"),
-                                    unit.file.display()
+                                    format_cli_path(&unit.file)
                                 )
                             })?;
                         save_object_cache_meta(

@@ -358,11 +358,18 @@ fn parse_source_text(
     })
 }
 
+fn format_project_file_label(project_root: &Path, file: &Path) -> String {
+    if let Ok(relative) = file.strip_prefix(project_root) {
+        return format_cli_path(relative);
+    }
+    format_cli_path(file)
+}
+
 pub(crate) fn parse_project_unit(
     project_root: &Path,
     file: &Path,
 ) -> Result<ParsedProjectUnit, String> {
-    let filename = file.to_string_lossy();
+    let filename = format_project_file_label(project_root, file);
     let file_metadata = current_file_metadata_stamp(file)?;
     let cached_entry = load_parsed_file_cache_entry(project_root, file)?;
     let read_source = |f: &Path| {
@@ -370,7 +377,7 @@ pub(crate) fn parse_project_unit(
             format!(
                 "{}: Failed to read '{}': {}",
                 "error".red().bold(),
-                f.display(),
+                format_project_file_label(project_root, f),
                 e
             )
         })
@@ -878,7 +885,7 @@ pub(crate) fn parse_project_unit(
             format!(
                 "{}: parse cache reported a hit for '{}' but no cache entry was available",
                 cli_error("error"),
-                file.display()
+                format_cli_path(file)
             )
         })?;
         (
@@ -967,7 +974,7 @@ pub(crate) fn parse_project_unit(
                 format!(
                     "{}: parsed file '{}' is missing a source fingerprint",
                     cli_error("error"),
-                    file.display()
+                    format_cli_path(file)
                 )
             })?,
             api_fingerprint: api_fingerprint.clone(),
@@ -1037,7 +1044,7 @@ pub(crate) fn build_project(
         format!(
             "{}: No arden.toml found from current directory '{}'. Are you in a project directory?\nRun `arden new <name>` to create a new project.",
             "error".red().bold(),
-            cwd.display()
+            format_cli_path(&cwd)
         )
     })?;
 
@@ -1346,7 +1353,7 @@ pub(crate) fn compile_program_ast(
         format!(
             "{}: Codegen error in '{}': {}",
             "error".red().bold(),
-            source_path.display(),
+            format_cli_path(source_path),
             e.message
         )
     })?;
@@ -1363,7 +1370,7 @@ pub(crate) fn compile_program_ast(
                 format!(
                     "{}: Failed to emit object for '{}': {}",
                     "error".red().bold(),
-                    source_path.display(),
+                    format_cli_path(source_path),
                     e
                 )
             })?;
@@ -1373,7 +1380,7 @@ pub(crate) fn compile_program_ast(
                 eprintln!(
                     "{}: failed to remove temporary object '{}': {}",
                     cli_warning("warning"),
-                    object_path.display(),
+                    format_cli_path(&object_path),
                     err
                 );
             }
@@ -1427,7 +1434,7 @@ pub(crate) fn compile_program_ast_to_object_filtered(
             format!(
                 "{}: Codegen error in '{}': {}",
                 "error".red().bold(),
-                source_path.display(),
+                format_cli_path(source_path),
                 e.message
             )
         })?;
@@ -1443,7 +1450,7 @@ pub(crate) fn compile_program_ast_to_object_filtered(
             format!(
                 "{}: Failed to create object cache directory '{}': {}",
                 "error".red().bold(),
-                parent.display(),
+                format_cli_path(parent),
                 e
             )
         })?;
@@ -1461,7 +1468,7 @@ pub(crate) fn compile_program_ast_to_object_filtered(
             format!(
                 "{}: Failed to emit object for '{}': {}",
                 "error".red().bold(),
-                source_path.display(),
+                format_cli_path(source_path),
                 e
             )
         })?;
@@ -1499,7 +1506,7 @@ pub(crate) fn compile_file(
         format!(
             "{}: Failed to read file '{}': {}",
             "error".red().bold(),
-            file.display(),
+            format_cli_path(file),
             e
         )
     })?;
@@ -1518,7 +1525,7 @@ pub(crate) fn compile_file(
     ensure_output_parent_dir(&output_path)?;
 
     if !do_check {
-        let filename = file.to_string_lossy();
+        let filename = format_cli_path(file);
         let program = parse_program_from_source(&source, &filename)?;
         validate_entry_main_signature(&program, &source, &filename)?;
     }
@@ -1554,7 +1561,7 @@ pub(crate) fn compile_source(
 ) -> Result<(), String> {
     validate_opt_level(opt_level)?;
 
-    let filename = source_path.to_string_lossy();
+    let filename = format_cli_path(source_path);
 
     // Tokenize
     let program = parse_program_from_source(source, &filename)?;
@@ -1576,7 +1583,7 @@ pub(crate) fn compile_source(
         format!(
             "{}: Codegen error in '{}': {}",
             "error".red().bold(),
-            source_path.display(),
+            format_cli_path(source_path),
             e.message
         )
     })?;
@@ -1601,7 +1608,7 @@ pub(crate) fn compile_source(
                 format!(
                     "{}: Failed to emit object for '{}': {}",
                     "error".red().bold(),
-                    source_path.display(),
+                    format_cli_path(source_path),
                     e
                 )
             })?;
@@ -1611,7 +1618,7 @@ pub(crate) fn compile_source(
                 eprintln!(
                     "{}: failed to remove temporary object '{}': {}",
                     cli_warning("warning"),
-                    object_path.display(),
+                    format_cli_path(&object_path),
                     err
                 );
             }

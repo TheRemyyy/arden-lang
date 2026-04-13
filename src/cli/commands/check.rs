@@ -1,5 +1,5 @@
 use crate::build_project;
-use crate::cli::output::{cli_accent, cli_path, cli_success};
+use crate::cli::output::{cli_accent, cli_path, cli_success, format_cli_path};
 use crate::cli::paths::{current_dir_checked, validate_source_file_path};
 use crate::project::{find_project_root, ProjectConfig};
 use crate::shared::frontend::{parse_program_from_source, run_single_file_semantic_checks};
@@ -24,7 +24,7 @@ pub(crate) fn check_file(file: Option<&Path>) -> Result<(), String> {
             format!(
                 "{}: No arden.toml found from current directory '{}'. Specify a file or run from a project directory.",
                 "error".red().bold(),
-                cwd.display()
+                format_cli_path(&cwd)
             )
         })?;
 
@@ -43,12 +43,12 @@ pub(crate) fn check_file(file: Option<&Path>) -> Result<(), String> {
         format!(
             "{}: Failed to read file '{}': {}",
             "error".red().bold(),
-            file_path.display(),
+            format_cli_path(&file_path),
             e
         )
     })?;
 
-    let filename = file_path.to_string_lossy();
+    let filename = format_cli_path(&file_path);
 
     let program = parse_program_from_source(&source, &filename)?;
     run_single_file_semantic_checks(&source, &filename, &program)?;
