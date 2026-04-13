@@ -933,6 +933,7 @@ impl<'a> ImportChecker<'a> {
 
     /// Check an expression for function calls
     fn check_expr(&mut self, expr: &Spanned<Expr>) {
+        let expr = Self::peel_transparent_expr(expr);
         let fallback_span = expr.span.clone();
         match &expr.node {
             Expr::Call { callee, args, .. } => {
@@ -1035,9 +1036,6 @@ impl<'a> ImportChecker<'a> {
             Expr::Binary { left, right, .. } => {
                 self.check_expr(left);
                 self.check_expr(right);
-            }
-            Expr::Unary { expr, .. } => {
-                self.check_expr(expr);
             }
             Expr::Field { object, .. } => {
                 if let Some(path_parts) = flatten_field_chain(&expr.node) {
@@ -1243,6 +1241,20 @@ impl<'a> ImportChecker<'a> {
                 }
             }
             _ => {} // Literals, identifiers (non-call), etc.
+        }
+    }
+
+    fn peel_transparent_expr(mut expr: &Spanned<Expr>) -> &Spanned<Expr> {
+        loop {
+            match &expr.node {
+                Expr::Unary { expr: inner, .. }
+                | Expr::Try(inner)
+                | Expr::Borrow(inner)
+                | Expr::MutBorrow(inner)
+                | Expr::Deref(inner)
+                | Expr::Await(inner) => expr = inner,
+                _ => return expr,
+            }
         }
     }
 

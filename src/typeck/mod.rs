@@ -1324,19 +1324,22 @@ impl TypeChecker {
         ident: &str,
         local_names: &std::collections::HashSet<String>,
     ) -> bool {
-        match expr {
+        let mut peeled_expr = expr;
+        while let Expr::Unary { expr: inner, .. }
+        | Expr::Try(inner)
+        | Expr::Borrow(inner)
+        | Expr::MutBorrow(inner)
+        | Expr::Deref(inner)
+        | Expr::Await(inner) = peeled_expr
+        {
+            peeled_expr = &inner.node;
+        }
+
+        match peeled_expr {
             Expr::Ident(name) => name == ident && !local_names.contains(name),
             Expr::Binary { left, right, .. } => {
                 Self::expr_mentions_ident_with_shadowing(&left.node, ident, local_names)
                     || Self::expr_mentions_ident_with_shadowing(&right.node, ident, local_names)
-            }
-            Expr::Unary { expr, .. }
-            | Expr::Try(expr)
-            | Expr::Borrow(expr)
-            | Expr::MutBorrow(expr)
-            | Expr::Deref(expr)
-            | Expr::Await(expr) => {
-                Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
             }
             Expr::Call { callee, args, .. } => {
                 Self::expr_mentions_ident_with_shadowing(&callee.node, ident, local_names)
@@ -1413,6 +1416,14 @@ impl TypeChecker {
                         let mut else_locals = local_names.clone();
                         Self::block_mentions_ident_with_shadowing(stmts, ident, &mut else_locals)
                     })
+            }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => {
+                Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
             }
             Expr::Literal(_) | Expr::This => false,
         }

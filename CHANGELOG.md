@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Stack-safety hardening for deep expressions: removed hard parser depth caps and replaced recursive hot paths with iterative handling across parser, import-check, type-check, and borrow-check flows so deeply nested unary/parenthesized inputs no longer abort with stack overflow in `check`.
+- Added regression coverage for deep unary and deep parenthesized parsing to prevent stack-overflow regressions in future parser refactors.
+
 - CI hardening for LLVM 22 builds: default Cargo target CPU is now baseline (`x86-64`/`generic`) instead of `native`, codegen target-machine defaults now use stable baseline CPU/features unless explicitly opted into native tuning (`ARDEN_CODEGEN_NATIVE_CPU=1`), and Cargo cache keys now include `.cargo/config.toml` to prevent stale CPU-incompatible artifact reuse between runners.
 - CI/smoke hardening: cache keys now include runner architecture plus a cache-schema suffix to avoid cross-runner/toolchain cache poisoning, smoke scripts now fail fast when no example files are discovered, and Windows bash-wrapper quoting now safely handles apostrophes in paths.
 - Runtime crash diagnostics hardening: `run/bench/profile/test` and linker/xcrun/ar subprocess failures now share richer exit decoding (Unix signal names + Windows NTSTATUS like `0xC0000409`) so backend/runtime crashes no longer show opaque negative codes.

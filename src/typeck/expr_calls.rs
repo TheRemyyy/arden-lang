@@ -319,38 +319,47 @@ impl TypeChecker {
                 self.check_binary_op(*op, &left_type, &right_type, span)
             }
 
-            Expr::Unary { op, expr: inner } => {
-                let inner_type = self.check_builtin_argument_expr(&inner.node, inner.span.clone());
+            Expr::Unary { .. } => {
+                let mut unary_ops = Vec::new();
+                let mut current = expr;
+                while let Expr::Unary { op, expr: inner } = current {
+                    unary_ops.push(*op);
+                    current = &inner.node;
+                }
 
-                match op {
-                    UnaryOp::Neg => {
-                        if !matches!(inner_type, ResolvedType::Unknown) && !inner_type.is_numeric()
-                        {
-                            self.error(
-                                format!(
-                                    "Cannot negate non-numeric type {}",
-                                    Self::format_resolved_type_for_diagnostic(&inner_type)
-                                ),
-                                span,
-                            );
+                let mut current_type = self.check_builtin_argument_expr(current, span.clone());
+                for op in unary_ops.iter().rev() {
+                    match op {
+                        UnaryOp::Neg => {
+                            if !matches!(current_type, ResolvedType::Unknown)
+                                && !current_type.is_numeric()
+                            {
+                                self.error(
+                                    format!(
+                                        "Cannot negate non-numeric type {}",
+                                        Self::format_resolved_type_for_diagnostic(&current_type)
+                                    ),
+                                    span.clone(),
+                                );
+                            }
                         }
-                        inner_type
-                    }
-                    UnaryOp::Not => {
-                        if !matches!(inner_type, ResolvedType::Unknown)
-                            && !matches!(inner_type, ResolvedType::Boolean)
-                        {
-                            self.error(
-                                format!(
-                                    "Cannot apply '!' to non-boolean type {}",
-                                    Self::format_resolved_type_for_diagnostic(&inner_type)
-                                ),
-                                span,
-                            );
+                        UnaryOp::Not => {
+                            if !matches!(current_type, ResolvedType::Unknown)
+                                && !matches!(current_type, ResolvedType::Boolean)
+                            {
+                                self.error(
+                                    format!(
+                                        "Cannot apply '!' to non-boolean type {}",
+                                        Self::format_resolved_type_for_diagnostic(&current_type)
+                                    ),
+                                    span.clone(),
+                                );
+                            }
+                            current_type = ResolvedType::Boolean;
                         }
-                        ResolvedType::Boolean
                     }
                 }
+                current_type
             }
 
             Expr::Call {

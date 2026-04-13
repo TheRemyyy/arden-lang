@@ -2115,51 +2115,70 @@ impl<'src> Parser<'src> {
     fn parse_unary(&mut self) -> ParseResult<Spanned<Expr>> {
         let start = self.current_span().start;
 
-        match self.current() {
-            Some(Token::Minus) => {
-                self.advance();
-                let expr = self.parse_unary()?;
-                let span = start..expr.span.end;
-                Ok(Spanned::new(
-                    Expr::Unary {
-                        op: UnaryOp::Neg,
-                        expr: Box::new(expr),
-                    },
-                    span,
-                ))
-            }
-            Some(Token::Not) => {
-                self.advance();
-                let expr = self.parse_unary()?;
-                let span = start..expr.span.end;
-                Ok(Spanned::new(
-                    Expr::Unary {
-                        op: UnaryOp::Not,
-                        expr: Box::new(expr),
-                    },
-                    span,
-                ))
-            }
-            Some(Token::Ampersand) => {
-                self.advance();
-                // Check for &mut
-                if self.check(&Token::Mut) {
+        enum PrefixOp {
+            Neg,
+            Not,
+            Borrow,
+            MutBorrow,
+            Deref,
+        }
+
+        let mut prefix_ops = Vec::new();
+        loop {
+            match self.current() {
+                Some(Token::Minus) => {
                     self.advance();
-                    let expr = self.parse_unary()?;
-                    let span = start..expr.span.end;
-                    Ok(Spanned::new(Expr::MutBorrow(Box::new(expr)), span))
-                } else {
-                    let expr = self.parse_unary()?;
-                    let span = start..expr.span.end;
-                    Ok(Spanned::new(Expr::Borrow(Box::new(expr)), span))
+                    prefix_ops.push(PrefixOp::Neg);
                 }
+                Some(Token::Not) => {
+                    self.advance();
+                    prefix_ops.push(PrefixOp::Not);
+                }
+                Some(Token::Ampersand) => {
+                    self.advance();
+                    if self.check(&Token::Mut) {
+                        self.advance();
+                        prefix_ops.push(PrefixOp::MutBorrow);
+                    } else {
+                        prefix_ops.push(PrefixOp::Borrow);
+                    }
+                }
+                Some(Token::Star) => {
+                    self.advance();
+                    prefix_ops.push(PrefixOp::Deref);
+                }
+                _ => break,
             }
-            Some(Token::Star) => {
-                self.advance();
-                let expr = self.parse_unary()?;
+        }
+
+        if !prefix_ops.is_empty() {
+            let mut expr = self.parse_unary()?;
+            for op in prefix_ops.into_iter().rev() {
                 let span = start..expr.span.end;
-                Ok(Spanned::new(Expr::Deref(Box::new(expr)), span))
+                expr = match op {
+                    PrefixOp::Neg => Spanned::new(
+                        Expr::Unary {
+                            op: UnaryOp::Neg,
+                            expr: Box::new(expr),
+                        },
+                        span,
+                    ),
+                    PrefixOp::Not => Spanned::new(
+                        Expr::Unary {
+                            op: UnaryOp::Not,
+                            expr: Box::new(expr),
+                        },
+                        span,
+                    ),
+                    PrefixOp::Borrow => Spanned::new(Expr::Borrow(Box::new(expr)), span),
+                    PrefixOp::MutBorrow => Spanned::new(Expr::MutBorrow(Box::new(expr)), span),
+                    PrefixOp::Deref => Spanned::new(Expr::Deref(Box::new(expr)), span),
+                };
             }
+            return Ok(expr);
+        }
+
+        match self.current() {
             Some(Token::Await) => {
                 self.advance();
                 let expr = if self.check(&Token::LParen) {
@@ -2685,9 +2704,25 @@ impl<'src> Parser<'src> {
 
                 // Not a lambda - restore position and parse as parenthesized expression
                 self.pos = saved_pos;
-                self.advance(); // skip (
+                let mut group_depth = 0usize;
+                let mut previous_close: Option<usize> = None;
+                while self.check(&Token::LParen)
+                    && !self.lparen_starts_lambda_at(self.pos)
+                    && self
+                        .matching_rparen_index(self.pos)
+                        .is_some_and(|close_idx| match previous_close {
+                            Some(prev) => close_idx + 1 == prev,
+                            None => true,
+                        })
+                {
+                    previous_close = self.matching_rparen_index(self.pos);
+                    self.advance();
+                    group_depth += 1;
+                }
                 let expr = self.parse_expr()?;
-                self.eat(&Token::RParen)?;
+                for _ in 0..group_depth {
+                    self.eat(&Token::RParen)?;
+                }
                 return Ok(expr);
             }
             Some(Token::LBrace) => {
@@ -2786,6 +2821,54 @@ impl<'src> Parser<'src> {
 
         let end = self.current_span().start;
         Ok(Spanned::new(expr, start..end))
+    }
+
+    fn lparen_starts_lambda_at(&self, lparen_pos: usize) -> bool {
+        let Some((Token::LParen, _)) = self.tokens.get(lparen_pos) else {
+            return false;
+        };
+
+        let mut depth = 1usize;
+        let mut idx = lparen_pos + 1;
+        while idx < self.tokens.len() {
+            match self.tokens.get(idx).map(|(token, _)| token) {
+                Some(Token::LParen) => depth += 1,
+                Some(Token::RParen) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return matches!(
+                            self.tokens.get(idx + 1).map(|(token, _)| token),
+                            Some(Token::FatArrow)
+                        );
+                    }
+                }
+                _ => {}
+            }
+            idx += 1;
+        }
+        false
+    }
+
+    fn matching_rparen_index(&self, lparen_pos: usize) -> Option<usize> {
+        let Some((Token::LParen, _)) = self.tokens.get(lparen_pos) else {
+            return None;
+        };
+        let mut depth = 1usize;
+        let mut idx = lparen_pos + 1;
+        while idx < self.tokens.len() {
+            match self.tokens.get(idx).map(|(token, _)| token) {
+                Some(Token::LParen) => depth += 1,
+                Some(Token::RParen) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(idx);
+                    }
+                }
+                _ => {}
+            }
+            idx += 1;
+        }
+        None
     }
 
     fn parse_string_interp(&self, s: String, span: Span) -> ParseResult<Expr> {

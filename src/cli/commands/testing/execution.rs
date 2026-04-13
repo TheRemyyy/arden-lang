@@ -2,7 +2,7 @@ use crate::cli::output::{
     cli_accent, cli_elapsed, cli_soft, format_cli_path, print_test_runner_output,
 };
 use crate::compile_source;
-use crate::process_exit::format_exit_failure;
+use crate::shared::process_exit::format_exit_failure;
 use std::fs;
 use std::path::Path;
 use std::process::Command;

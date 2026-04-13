@@ -2760,3 +2760,24 @@ fn missing_semicolon_reports_human_readable_token_names() {
     assert_eq!(error.span.start, insertion_offset, "{:?}", error.span);
     assert_eq!(error.span.end, insertion_offset, "{:?}", error.span);
 }
+
+#[test]
+fn parses_deep_unary_chain_without_stack_overflow() {
+    let unary_count = 4000usize;
+    let source = format!(
+        "function main(): Integer {{ return {}1; }}",
+        "-".repeat(unary_count)
+    );
+    parse_source(&source).must("deep unary chain should parse without crashing");
+}
+
+#[test]
+fn parses_deep_parenthesized_expression_without_stack_overflow() {
+    let depth = 3000usize;
+    let source = format!(
+        "function main(): Integer {{ return {}1{}; }}",
+        "(".repeat(depth),
+        ")".repeat(depth)
+    );
+    parse_source(&source).must("deep parenthesized expression should parse without crashing");
+}

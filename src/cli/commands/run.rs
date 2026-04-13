@@ -3,10 +3,10 @@ use crate::cli::output::{cli_accent, cli_path, cli_warning, format_cli_path};
 use crate::cli::paths::{current_dir_checked, unique_temp_binary_path};
 use crate::compile_file;
 use crate::linker::validate_opt_level;
-use crate::process_exit::format_exit_failure;
 use crate::project::{
     ensure_project_is_runnable, find_project_root, resolve_project_output_path, ProjectConfig,
 };
+use crate::shared::process_exit::format_exit_failure;
 use colored::Colorize;
 use std::fs;
 use std::path::Path;

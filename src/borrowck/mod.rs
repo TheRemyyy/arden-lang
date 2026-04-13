@@ -694,7 +694,11 @@ impl BorrowChecker {
             }
 
             Expr::Unary { expr: inner, .. } => {
-                self.check_expr(&inner.node, inner.span.clone());
+                let mut current = &inner.node;
+                while let Expr::Unary { expr: next, .. } = current {
+                    current = &next.node;
+                }
+                self.check_expr(current, inner.span.clone());
             }
 
             Expr::Call { callee, args, .. } => {
@@ -1560,6 +1564,7 @@ impl BorrowChecker {
     }
 
     fn expr_mutates_this_via_builtin(&self, class_name: &str, expr: &Expr) -> bool {
+        let expr = Self::peel_transparent_expr(expr);
         match expr {
             Expr::Call { callee, args, .. } => {
                 self.callee_is_mutating_builtin_on_this_field_chain(class_name, &callee.node)
@@ -1581,12 +1586,6 @@ impl BorrowChecker {
                 );
                 should_check_right && self.expr_mutates_this_via_builtin(class_name, &right.node)
             }
-            Expr::Unary { expr, .. }
-            | Expr::Borrow(expr)
-            | Expr::MutBorrow(expr)
-            | Expr::Deref(expr)
-            | Expr::Await(expr)
-            | Expr::Try(expr) => self.expr_mutates_this_via_builtin(class_name, &expr.node),
             Expr::Field { object, .. } => {
                 self.expr_mutates_this_via_builtin(class_name, &object.node)
             }
@@ -1639,6 +1638,12 @@ impl BorrowChecker {
                     })
             }
             Expr::Block(block) => self.block_mutates_this(class_name, block),
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => self.expr_mutates_this_via_builtin(class_name, &expr.node),
             Expr::Ident(_) | Expr::Literal(_) | Expr::This => false,
         }
     }
@@ -1757,6 +1762,7 @@ impl BorrowChecker {
         expr: &Expr,
         methods: &std::collections::HashSet<String>,
     ) -> bool {
+        let expr = Self::peel_transparent_expr(expr);
         match expr {
             Expr::Call { callee, args, .. } => {
                 let calls_mutating = matches!(
@@ -1783,12 +1789,6 @@ impl BorrowChecker {
                 );
                 should_check_right && Self::expr_calls_this_method_in_set(&right.node, methods)
             }
-            Expr::Unary { expr, .. }
-            | Expr::Try(expr)
-            | Expr::Borrow(expr)
-            | Expr::MutBorrow(expr)
-            | Expr::Deref(expr)
-            | Expr::Await(expr) => Self::expr_calls_this_method_in_set(&expr.node, methods),
             Expr::Field { object, .. } => {
                 Self::expr_calls_this_method_in_set(&object.node, methods)
             }
@@ -1843,6 +1843,12 @@ impl BorrowChecker {
                             .any(|s| Self::stmt_calls_this_method_in_set(&s.node, methods))
                     })
             }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => Self::expr_calls_this_method_in_set(&expr.node, methods),
             Expr::Ident(_) | Expr::Literal(_) | Expr::This => false,
         }
     }
@@ -1942,6 +1948,7 @@ impl BorrowChecker {
     }
 
     fn collect_free_idents_inner(expr: &Expr, params: &[String], out: &mut Vec<String>) {
+        let expr = Self::peel_transparent_expr(expr);
         match expr {
             Expr::Ident(name) => {
                 if !params.iter().any(|p| p == name) {
@@ -1961,12 +1968,6 @@ impl BorrowChecker {
                 Self::collect_free_idents_inner(&left.node, params, out);
                 Self::collect_free_idents_inner(&right.node, params, out);
             }
-            Expr::Unary { expr, .. }
-            | Expr::Try(expr)
-            | Expr::Borrow(expr)
-            | Expr::MutBorrow(expr)
-            | Expr::Deref(expr)
-            | Expr::Await(expr) => Self::collect_free_idents_inner(&expr.node, params, out),
             Expr::Field { object, .. } => {
                 Self::collect_free_idents_inner(&object.node, params, out)
             }
@@ -2036,6 +2037,12 @@ impl BorrowChecker {
                     }
                 }
             }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => Self::collect_free_idents_inner(&expr.node, params, out),
             Expr::Literal(_) | Expr::This => {}
         }
     }
@@ -2093,6 +2100,7 @@ impl BorrowChecker {
     }
 
     fn expr_moves_ident(&self, expr: &Expr, ident: &str) -> bool {
+        let expr = Self::peel_transparent_expr(expr);
         match expr {
             Expr::Call { callee, args, .. } => {
                 let param_modes = self.resolve_call_param_modes(&callee.node, args.len());
@@ -2120,12 +2128,6 @@ impl BorrowChecker {
                 );
                 should_check_right && self.expr_moves_ident(&right.node, ident)
             }
-            Expr::Unary { expr, .. }
-            | Expr::Try(expr)
-            | Expr::Borrow(expr)
-            | Expr::MutBorrow(expr)
-            | Expr::Deref(expr)
-            | Expr::Await(expr) => self.expr_moves_ident(&expr.node, ident),
             Expr::Field { object, .. } => self.expr_moves_ident(&object.node, ident),
             Expr::Index { object, index } => {
                 self.expr_moves_ident(&object.node, ident)
@@ -2185,6 +2187,12 @@ impl BorrowChecker {
                         })
                         .unwrap_or(false)
             }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => self.expr_moves_ident(&expr.node, ident),
             Expr::Ident(_) | Expr::Literal(_) | Expr::This => false,
         }
     }
@@ -2262,6 +2270,7 @@ impl BorrowChecker {
     }
 
     fn expr_mutably_borrows_ident(&self, expr: &Expr, ident: &str) -> bool {
+        let expr = Self::peel_transparent_expr_without_mut_borrow(expr);
         match expr {
             Expr::MutBorrow(inner) => {
                 matches!(&inner.node, Expr::Ident(name) if name == ident)
@@ -2300,11 +2309,6 @@ impl BorrowChecker {
                 );
                 should_check_right && self.expr_mutably_borrows_ident(&right.node, ident)
             }
-            Expr::Unary { expr, .. }
-            | Expr::Try(expr)
-            | Expr::Borrow(expr)
-            | Expr::Deref(expr)
-            | Expr::Await(expr) => self.expr_mutably_borrows_ident(&expr.node, ident),
             Expr::Field { object, .. } => self.expr_mutably_borrows_ident(&object.node, ident),
             Expr::Index { object, index } => {
                 self.expr_mutably_borrows_ident(&object.node, ident)
@@ -2364,6 +2368,11 @@ impl BorrowChecker {
                         })
                         .unwrap_or(false)
             }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => self.expr_mutably_borrows_ident(&expr.node, ident),
             Expr::Ident(_) | Expr::Literal(_) | Expr::This => false,
         }
     }
@@ -2460,6 +2469,33 @@ impl BorrowChecker {
             Some(*v)
         } else {
             None
+        }
+    }
+
+    fn peel_transparent_expr(mut expr: &Expr) -> &Expr {
+        loop {
+            match expr {
+                Expr::Unary { expr: inner, .. }
+                | Expr::Try(inner)
+                | Expr::Borrow(inner)
+                | Expr::MutBorrow(inner)
+                | Expr::Deref(inner)
+                | Expr::Await(inner) => expr = &inner.node,
+                _ => return expr,
+            }
+        }
+    }
+
+    fn peel_transparent_expr_without_mut_borrow(mut expr: &Expr) -> &Expr {
+        loop {
+            match expr {
+                Expr::Unary { expr: inner, .. }
+                | Expr::Try(inner)
+                | Expr::Borrow(inner)
+                | Expr::Deref(inner)
+                | Expr::Await(inner) => expr = &inner.node,
+                _ => return expr,
+            }
         }
     }
 

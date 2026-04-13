@@ -15,7 +15,6 @@ mod linker;
 mod lint;
 mod lsp;
 mod parser;
-mod process_exit;
 mod project;
 #[path = "project/rewrite/mod.rs"]
 mod project_rewrite;

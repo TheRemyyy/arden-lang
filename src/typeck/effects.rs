@@ -352,7 +352,18 @@ impl TypeChecker {
         current_class: Option<&str>,
         out: &mut std::collections::BTreeSet<String>,
     ) {
-        match expr {
+        let mut peeled_expr = expr;
+        while let Expr::Unary { expr: inner, .. }
+        | Expr::Try(inner)
+        | Expr::Borrow(inner)
+        | Expr::MutBorrow(inner)
+        | Expr::Deref(inner)
+        | Expr::Await(inner) = peeled_expr
+        {
+            peeled_expr = &inner.node;
+        }
+
+        match peeled_expr {
             Expr::Call { callee, args, .. } => {
                 if let Expr::Ident(name) = &callee.node {
                     let canonical = self
@@ -417,14 +428,6 @@ impl TypeChecker {
                 self.collect_effects_expr(&left.node, current_class, out);
                 self.collect_effects_expr(&right.node, current_class, out);
             }
-            Expr::Unary { expr, .. }
-            | Expr::Try(expr)
-            | Expr::Borrow(expr)
-            | Expr::MutBorrow(expr)
-            | Expr::Deref(expr)
-            | Expr::Await(expr) => {
-                self.collect_effects_expr(&expr.node, current_class, out);
-            }
             Expr::Field { object, .. } => {
                 self.collect_effects_expr(&object.node, current_class, out)
             }
@@ -487,6 +490,12 @@ impl TypeChecker {
                     }
                 }
             }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => self.collect_effects_expr(&expr.node, current_class, out),
             Expr::Literal(_) | Expr::Ident(_) | Expr::This => {}
         }
     }

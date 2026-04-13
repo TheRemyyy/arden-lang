@@ -1,6 +1,6 @@
 use crate::cli::output::format_cli_path;
-use crate::process_exit::command_failure_details;
 use crate::project::OutputKind;
+use crate::shared::process_exit::command_failure_details;
 use colored::*;
 use std::env;
 #[cfg(any(windows, target_os = "macos"))]
