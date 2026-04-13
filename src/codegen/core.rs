@@ -13463,6 +13463,12 @@ impl<'ctx> Codegen<'ctx> {
                     ("Integer modulo by zero", "int_mod_zero")
                 };
                 self.guard_nonzero_integer_divisor(r, message, global_name)?;
+                let (overflow_message, overflow_prefix) = if matches!(op, BinOp::Div) {
+                    ("Integer division overflow", "int_div_overflow")
+                } else {
+                    ("Integer modulo overflow", "int_mod_overflow")
+                };
+                self.guard_signed_division_overflow(l, r, overflow_message, overflow_prefix)?;
             }
 
             let result = match op {
@@ -13483,8 +13489,7 @@ impl<'ctx> Codegen<'ctx> {
                     .build_int_signed_div(l, r, "div")
                     .map_err(|_| CodegenError::new("failed to emit integer division"))?,
                 BinOp::Mod => self
-                    .builder
-                    .build_int_signed_rem(l, r, "mod")
+                    .build_int_signed_remainder_via_division(l, r)
                     .map_err(|_| CodegenError::new("failed to emit integer remainder"))?,
                 BinOp::Eq => self
                     .builder
@@ -13785,6 +13790,92 @@ impl<'ctx> Codegen<'ctx> {
 
         self.builder.position_at_end(ok_block);
         Ok(())
+    }
+
+    fn guard_signed_division_overflow(
+        &mut self,
+        dividend: IntValue<'ctx>,
+        divisor: IntValue<'ctx>,
+        message: &str,
+        block_prefix: &str,
+    ) -> Result<()> {
+        let current_fn = self.current_function.ok_or_else(|| {
+            CodegenError::new("integer division overflow guard emitted outside function")
+        })?;
+        let int_ty = dividend.get_type();
+        if int_ty != divisor.get_type() {
+            return Err(CodegenError::new(
+                "integer division overflow guard requires same-width operands",
+            ));
+        }
+        let bit_width = int_ty.get_bit_width();
+        if bit_width == 0 {
+            return Err(CodegenError::new(
+                "integer division overflow guard requires non-zero-width integer type",
+            ));
+        }
+        if bit_width > 64 {
+            return Err(CodegenError::new(
+                "integer division overflow guard supports up to 64-bit integers",
+            ));
+        }
+
+        let min_value_bits = 1u128 << (bit_width - 1);
+        let min_value = int_ty.const_int(min_value_bits as u64, false);
+        let minus_one = int_ty.const_all_ones();
+        let dividend_is_min = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                dividend,
+                min_value,
+                &format!("{block_prefix}_dividend_is_min"),
+            )
+            .map_err(|_| CodegenError::new("failed to compare signed dividend minimum guard"))?;
+        let divisor_is_minus_one = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                divisor,
+                minus_one,
+                &format!("{block_prefix}_divisor_is_minus_one"),
+            )
+            .map_err(|_| CodegenError::new("failed to compare signed divisor minus-one guard"))?;
+        let is_overflow = self
+            .builder
+            .build_and(
+                dividend_is_min,
+                divisor_is_minus_one,
+                &format!("{block_prefix}_is_overflow"),
+            )
+            .map_err(|_| CodegenError::new("failed to combine signed division overflow guards"))?;
+        let ok_block = self
+            .context
+            .append_basic_block(current_fn, &format!("{block_prefix}_ok"));
+        let error_block = self
+            .context
+            .append_basic_block(current_fn, &format!("{block_prefix}_error"));
+        self.builder
+            .build_conditional_branch(is_overflow, error_block, ok_block)
+            .map_err(|_| {
+                CodegenError::new("failed to branch for signed division overflow guard")
+            })?;
+
+        self.builder.position_at_end(error_block);
+        self.emit_runtime_error(message, &format!("{block_prefix}_runtime_error"))?;
+
+        self.builder.position_at_end(ok_block);
+        Ok(())
+    }
+
+    fn build_int_signed_remainder_via_division(
+        &mut self,
+        lhs: IntValue<'ctx>,
+        rhs: IntValue<'ctx>,
+    ) -> std::result::Result<IntValue<'ctx>, inkwell::builder::BuilderError> {
+        let quotient = self.builder.build_int_signed_div(lhs, rhs, "mod_q")?;
+        let product = self.builder.build_int_mul(quotient, rhs, "mod_q_mul_rhs")?;
+        self.builder.build_int_sub(lhs, product, "mod")
     }
 
     pub fn compile_unary(&mut self, op: UnaryOp, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {

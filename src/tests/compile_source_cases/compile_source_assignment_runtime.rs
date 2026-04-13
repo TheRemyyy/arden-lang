@@ -471,3 +471,55 @@ fn compile_source_runs_mod_compound_assignment_without_double_key_evaluation() {
 
     let _ = fs::remove_dir_all(temp_root);
 }
+
+#[test]
+fn compile_source_prints_clean_integer_division_overflow_runtime_error() {
+    let temp_root = make_temp_project_root("integer-division-overflow-runtime");
+    let source_path = temp_root.join("integer_division_overflow_runtime.arden");
+    let output_path = temp_root.join("integer_division_overflow_runtime");
+    let source = r#"
+            function main(): Integer {
+                mut x: Integer = -9223372036854775807 - 1;
+                return x / -1;
+            }
+        "#;
+
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .must("dynamic integer division overflow path should codegen");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .must("run compiled integer division overflow binary");
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+    assert!(stdout.contains("Integer division overflow\n"), "{stdout}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_prints_clean_integer_modulo_overflow_runtime_error() {
+    let temp_root = make_temp_project_root("integer-modulo-overflow-runtime");
+    let source_path = temp_root.join("integer_modulo_overflow_runtime.arden");
+    let output_path = temp_root.join("integer_modulo_overflow_runtime");
+    let source = r#"
+            function main(): Integer {
+                mut x: Integer = -9223372036854775807 - 1;
+                return x % -1;
+            }
+        "#;
+
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .must("dynamic integer modulo overflow path should codegen");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .must("run compiled integer modulo overflow binary");
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+    assert!(stdout.contains("Integer modulo overflow\n"), "{stdout}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
