@@ -548,6 +548,7 @@ pub struct Codegen<'ctx> {
     pub builder: Builder<'ctx>,
     pub variables: HashMap<String, Variable<'ctx>>,
     pub functions: HashMap<String, (FunctionValue<'ctx>, Type)>,
+    pub function_param_modes: HashMap<String, Vec<ParamMode>>,
     pub classes: HashMap<String, ClassInfo<'ctx>>,
     pub enums: HashMap<String, EnumInfo<'ctx>>,
     pub interfaces: HashMap<String, HashSet<String>>,
@@ -932,6 +933,30 @@ impl<'ctx> Codegen<'ctx> {
 
     pub(crate) fn undefined_function_error(name: &str) -> CodegenError {
         CodegenError::new(format!("Undefined function: {}", name))
+    }
+
+    pub(crate) fn member_root_undefined_variable(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Ident(name) => {
+                if self.variables.contains_key(name) {
+                    return None;
+                }
+                if self.classes.contains_key(name) {
+                    return Some(name.clone());
+                }
+                if self.resolve_contextual_function_value_name(expr).is_none() {
+                    return Some(name.clone());
+                }
+                None
+            }
+            Expr::Field { object, .. } | Expr::Index { object, .. } => {
+                self.member_root_undefined_variable(&object.node)
+            }
+            Expr::GenericFunctionValue { callee, .. } => {
+                self.member_root_undefined_variable(&callee.node)
+            }
+            _ => None,
+        }
     }
 
     fn non_function_call_error(ty: &Type) -> CodegenError {
@@ -6825,6 +6850,7 @@ impl<'ctx> Codegen<'ctx> {
             builder,
             variables: HashMap::new(),
             functions: HashMap::new(),
+            function_param_modes: HashMap::new(),
             classes: HashMap::new(),
             enums: HashMap::new(),
             interfaces: HashMap::new(),
@@ -6875,6 +6901,29 @@ impl<'ctx> Codegen<'ctx> {
             // Range function
             "range"
         )
+    }
+
+    pub(crate) fn param_mode_for_function(&self, function_name: &str, index: usize) -> ParamMode {
+        self.function_param_modes
+            .get(function_name)
+            .and_then(|modes| modes.get(index).copied())
+            .unwrap_or(ParamMode::Owned)
+    }
+
+    pub(crate) fn compile_argument_for_param(
+        &mut self,
+        function_name: &str,
+        index: usize,
+        arg: &Spanned<Expr>,
+        expected_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        match self.param_mode_for_function(function_name, index) {
+            ParamMode::Owned => {
+                self.compile_expr_for_concrete_class_payload(&arg.node, expected_ty)
+            }
+            ParamMode::Borrow => self.compile_borrow(&arg.node),
+            ParamMode::BorrowMut => self.compile_mut_borrow(&arg.node),
+        }
     }
 
     fn validate_stdlib_arg_count(&self, name: &str, args: &[Spanned<Expr>]) -> Result<()> {
@@ -9291,9 +9340,25 @@ impl<'ctx> Codegen<'ctx> {
             .iter()
             .map(|p| self.normalize_codegen_type(&p.ty))
             .collect::<Vec<_>>();
+        let ctor_param_modes = ctor_params.iter().map(|p| p.mode).collect::<Vec<_>>();
+        let ctor_signature_params = normalized_ctor_params
+            .iter()
+            .zip(ctor_param_modes.iter())
+            .map(|(ty, mode)| match mode {
+                ParamMode::Owned => ty.clone(),
+                ParamMode::Borrow => Type::Ref(Box::new(ty.clone())),
+                ParamMode::BorrowMut => Type::MutRef(Box::new(ty.clone())),
+            })
+            .collect::<Vec<_>>();
         let param_types: Vec<BasicMetadataTypeEnum> = normalized_ctor_params
             .iter()
-            .map(|ty| self.llvm_type(ty).into())
+            .zip(ctor_param_modes.iter())
+            .map(|(ty, mode)| match mode {
+                ParamMode::Owned => self.llvm_type(ty).into(),
+                ParamMode::Borrow | ParamMode::BorrowMut => {
+                    self.context.ptr_type(AddressSpace::default()).into()
+                }
+            })
             .collect();
 
         let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![
@@ -9314,11 +9379,13 @@ impl<'ctx> Codegen<'ctx> {
             (
                 func,
                 Type::Function(
-                    normalized_ctor_params,
+                    ctor_signature_params,
                     Box::new(self.normalize_codegen_type(&Type::Named(class.name.clone()))),
                 ),
             ),
         );
+        self.function_param_modes
+            .insert(format!("{}__new", class.name), ctor_param_modes);
 
         Ok(())
     }
@@ -9335,8 +9402,23 @@ impl<'ctx> Codegen<'ctx> {
             .iter()
             .map(|p| self.normalize_codegen_type(&p.ty))
             .collect::<Vec<_>>();
-        for param_ty in &normalized_params {
-            llvm_params.push(self.llvm_type(param_ty).into());
+        let method_param_modes = method.params.iter().map(|p| p.mode).collect::<Vec<_>>();
+        let method_signature_params = normalized_params
+            .iter()
+            .zip(method_param_modes.iter())
+            .map(|(ty, mode)| match mode {
+                ParamMode::Owned => ty.clone(),
+                ParamMode::Borrow => Type::Ref(Box::new(ty.clone())),
+                ParamMode::BorrowMut => Type::MutRef(Box::new(ty.clone())),
+            })
+            .collect::<Vec<_>>();
+        for (param_ty, mode) in normalized_params.iter().zip(method_param_modes.iter()) {
+            llvm_params.push(match mode {
+                ParamMode::Owned => self.llvm_type(param_ty).into(),
+                ParamMode::Borrow | ParamMode::BorrowMut => {
+                    self.context.ptr_type(AddressSpace::default()).into()
+                }
+            });
         }
 
         let normalized_return = self.normalize_codegen_type(&method.return_type);
@@ -9354,8 +9436,12 @@ impl<'ctx> Codegen<'ctx> {
             name,
             (
                 func,
-                Type::Function(normalized_params, Box::new(normalized_return)),
+                Type::Function(method_signature_params, Box::new(normalized_return)),
             ),
+        );
+        self.function_param_modes.insert(
+            format!("{}__{}", class.name, method.name),
+            method_param_modes,
         );
 
         Ok(())
@@ -9445,19 +9531,25 @@ impl<'ctx> Codegen<'ctx> {
                     class.name
                 ))
             })?;
-            let alloca = self
-                .builder
-                .build_alloca(self.llvm_type(&normalized_param_ty), &param.name)
-                .map_err(|e| {
-                    CodegenError::new(format!("alloca failed for '{}': {}", param.name, e))
-                })?;
-            self.builder.build_store(alloca, llvm_param).map_err(|e| {
-                CodegenError::new(format!("store failed for '{}': {}", param.name, e))
-            })?;
+            let ptr = match param.mode {
+                ParamMode::Owned => {
+                    let alloca = self
+                        .builder
+                        .build_alloca(self.llvm_type(&normalized_param_ty), &param.name)
+                        .map_err(|e| {
+                            CodegenError::new(format!("alloca failed for '{}': {}", param.name, e))
+                        })?;
+                    self.builder.build_store(alloca, llvm_param).map_err(|e| {
+                        CodegenError::new(format!("store failed for '{}': {}", param.name, e))
+                    })?;
+                    alloca
+                }
+                ParamMode::Borrow | ParamMode::BorrowMut => llvm_param.into_pointer_value(),
+            };
             self.variables.insert(
                 param.name.clone(),
                 Variable {
-                    ptr: alloca,
+                    ptr,
                     ty: normalized_param_ty,
                     mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                 },
@@ -9572,19 +9664,25 @@ impl<'ctx> Codegen<'ctx> {
             let llvm_param = func.get_nth_param((i + 2) as u32).ok_or_else(|| {
                 CodegenError::new(format!("Missing method parameter {} for {}", i + 2, name))
             })?;
-            let alloca = self
-                .builder
-                .build_alloca(self.llvm_type(&normalized_param_ty), &param.name)
-                .map_err(|e| {
-                    CodegenError::new(format!("alloca failed for '{}': {}", param.name, e))
-                })?;
-            self.builder.build_store(alloca, llvm_param).map_err(|e| {
-                CodegenError::new(format!("store failed for '{}': {}", param.name, e))
-            })?;
+            let ptr = match param.mode {
+                ParamMode::Owned => {
+                    let alloca = self
+                        .builder
+                        .build_alloca(self.llvm_type(&normalized_param_ty), &param.name)
+                        .map_err(|e| {
+                            CodegenError::new(format!("alloca failed for '{}': {}", param.name, e))
+                        })?;
+                    self.builder.build_store(alloca, llvm_param).map_err(|e| {
+                        CodegenError::new(format!("store failed for '{}': {}", param.name, e))
+                    })?;
+                    alloca
+                }
+                ParamMode::Borrow | ParamMode::BorrowMut => llvm_param.into_pointer_value(),
+            };
             self.variables.insert(
                 param.name.clone(),
                 Variable {
-                    ptr: alloca,
+                    ptr,
                     ty: normalized_param_ty,
                     mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                 },
@@ -9642,11 +9740,27 @@ impl<'ctx> Codegen<'ctx> {
             .iter()
             .map(|p| self.normalize_codegen_type(&p.ty))
             .collect();
+        let param_modes: Vec<ParamMode> = func.params.iter().map(|p| p.mode).collect();
+        let signature_params: Vec<Type> = normalized_params
+            .iter()
+            .zip(param_modes.iter())
+            .map(|(ty, mode)| match mode {
+                ParamMode::Owned => ty.clone(),
+                ParamMode::Borrow => Type::Ref(Box::new(ty.clone())),
+                ParamMode::BorrowMut => Type::MutRef(Box::new(ty.clone())),
+            })
+            .collect();
         let normalized_return = self.normalize_codegen_type(&func.return_type);
 
         let param_types: Vec<BasicMetadataTypeEnum> = normalized_params
             .iter()
-            .map(|ty| self.llvm_type(ty).into())
+            .zip(param_modes.iter())
+            .map(|(ty, mode)| match mode {
+                ParamMode::Owned => self.llvm_type(ty).into(),
+                ParamMode::Borrow | ParamMode::BorrowMut => {
+                    self.context.ptr_type(AddressSpace::default()).into()
+                }
+            })
             .collect();
 
         let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![
@@ -9699,9 +9813,11 @@ impl<'ctx> Codegen<'ctx> {
             func.name.clone(),
             (
                 function,
-                Type::Function(normalized_params, Box::new(normalized_return)),
+                Type::Function(signature_params, Box::new(normalized_return)),
             ),
         );
+        self.function_param_modes
+            .insert(func.name.clone(), param_modes);
         Ok(function)
     }
 
@@ -9709,7 +9825,12 @@ impl<'ctx> Codegen<'ctx> {
         let param_types: Vec<BasicMetadataTypeEnum> = func
             .params
             .iter()
-            .map(|p| self.llvm_type(&p.ty).into())
+            .map(|p| match p.mode {
+                ParamMode::Owned => self.llvm_type(&p.ty).into(),
+                ParamMode::Borrow | ParamMode::BorrowMut => {
+                    self.context.ptr_type(AddressSpace::default()).into()
+                }
+            })
             .collect();
 
         let fn_type = match &func.return_type {
@@ -9735,10 +9856,21 @@ impl<'ctx> Codegen<'ctx> {
             (
                 function,
                 Type::Function(
-                    func.params.iter().map(|p| p.ty.clone()).collect(),
+                    func.params
+                        .iter()
+                        .map(|p| match p.mode {
+                            ParamMode::Owned => p.ty.clone(),
+                            ParamMode::Borrow => Type::Ref(Box::new(p.ty.clone())),
+                            ParamMode::BorrowMut => Type::MutRef(Box::new(p.ty.clone())),
+                        })
+                        .collect(),
                     Box::new(func.return_type.clone()),
                 ),
             ),
+        );
+        self.function_param_modes.insert(
+            func.name.clone(),
+            func.params.iter().map(|p| p.mode).collect(),
         );
         Ok(function)
     }
@@ -9819,13 +9951,22 @@ impl<'ctx> Codegen<'ctx> {
         let inner_return = self.async_inner_return_type(&func.return_type);
         let task_return = Type::Task(Box::new(inner_return.clone()));
         let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let param_modes = func.params.iter().map(|p| p.mode).collect::<Vec<_>>();
 
         let mut wrapper_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
         let mut env_fields: Vec<BasicTypeEnum<'ctx>> = Vec::new();
         for param in &func.params {
             let llvm = self.llvm_type(&param.ty);
-            wrapper_params.push(llvm.into());
-            env_fields.push(llvm);
+            match param.mode {
+                ParamMode::Owned => {
+                    wrapper_params.push(llvm.into());
+                    env_fields.push(llvm);
+                }
+                ParamMode::Borrow | ParamMode::BorrowMut => {
+                    wrapper_params.push(ptr_type.into());
+                    env_fields.push(ptr_type.into());
+                }
+            }
         }
         env_fields.push(ptr_type.into());
         let env_type = self.context.struct_type(&env_fields, false);
@@ -9852,11 +9993,20 @@ impl<'ctx> Codegen<'ctx> {
             (
                 wrapper,
                 Type::Function(
-                    func.params.iter().map(|p| p.ty.clone()).collect(),
+                    func.params
+                        .iter()
+                        .map(|p| match p.mode {
+                            ParamMode::Owned => p.ty.clone(),
+                            ParamMode::Borrow => Type::Ref(Box::new(p.ty.clone())),
+                            ParamMode::BorrowMut => Type::MutRef(Box::new(p.ty.clone())),
+                        })
+                        .collect(),
                     Box::new(task_return),
                 ),
             ),
         );
+        self.function_param_modes
+            .insert(func.name.clone(), param_modes);
 
         self.async_functions.insert(
             func.name.clone(),
@@ -10297,19 +10447,28 @@ impl<'ctx> Codegen<'ctx> {
                         func.name, param.name
                     ))
                 })?;
-            let alloca = self
-                .builder
-                .build_alloca(self.llvm_type(&normalized_param_ty), &param.name)
-                .map_err(|_| {
-                    CodegenError::new(format!("failed to allocate parameter '{}'", param.name))
-                })?;
-            self.builder.build_store(alloca, llvm_param).map_err(|_| {
-                CodegenError::new(format!("failed to store parameter '{}'", param.name))
-            })?;
+            let ptr = match param.mode {
+                ParamMode::Owned => {
+                    let alloca = self
+                        .builder
+                        .build_alloca(self.llvm_type(&normalized_param_ty), &param.name)
+                        .map_err(|_| {
+                            CodegenError::new(format!(
+                                "failed to allocate parameter '{}'",
+                                param.name
+                            ))
+                        })?;
+                    self.builder.build_store(alloca, llvm_param).map_err(|_| {
+                        CodegenError::new(format!("failed to store parameter '{}'", param.name))
+                    })?;
+                    alloca
+                }
+                ParamMode::Borrow | ParamMode::BorrowMut => llvm_param.into_pointer_value(),
+            };
             self.variables.insert(
                 param.name.clone(),
                 Variable {
-                    ptr: alloca,
+                    ptr,
                     ty: normalized_param_ty,
                     mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                 },
@@ -11124,6 +11283,21 @@ impl<'ctx> Codegen<'ctx> {
         expr: &Expr,
         expected_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
+        match expected_ty {
+            Type::Ref(_) => {
+                let actual_ty = self.infer_builtin_argument_type(expr);
+                if !matches!(actual_ty, Type::Ref(_) | Type::MutRef(_)) {
+                    return self.compile_borrow(expr);
+                }
+            }
+            Type::MutRef(_) => {
+                let actual_ty = self.infer_builtin_argument_type(expr);
+                if !matches!(actual_ty, Type::MutRef(_)) {
+                    return self.compile_mut_borrow(expr);
+                }
+            }
+            _ => {}
+        }
         if let Some(actual_ty) = self.explicit_constructor_expr_type(expr) {
             self.reject_builtin_constructor_specialization_mismatch(expected_ty, &actual_ty)?;
         }
@@ -13664,14 +13838,8 @@ impl<'ctx> Codegen<'ctx> {
         if let Some(err) = self.call_expr_arity_error(object) {
             return Err(err);
         }
-        if let Expr::Ident(name) = object {
-            if !self.variables.contains_key(name)
-                && self
-                    .resolve_contextual_function_value_name(object)
-                    .is_none()
-            {
-                return Err(Self::undefined_variable_error(name));
-            }
+        if let Some(name) = self.member_root_undefined_variable(object) {
+            return Err(Self::undefined_variable_error(&name));
         }
         // Infer object type first
         let inferred_obj_ty = self
@@ -13720,16 +13888,16 @@ impl<'ctx> Codegen<'ctx> {
                 Type::List(_) => {
                     let list_ptr = match object {
                         Expr::Ident(name) if !is_reference_receiver => {
-                            self.variables.get(name).map(|v| v.ptr)
+                            Ok(self.variables.get(name).map(|v| v.ptr))
                         }
                         Expr::Field { object: obj, field } => {
-                            self.compile_field_ptr(&obj.node, field).ok()
+                            self.compile_field_ptr(&obj.node, field).map(Some)
                         }
                         Expr::This if !is_reference_receiver => {
-                            self.variables.get("this").map(|v| v.ptr)
+                            Ok(self.variables.get("this").map(|v| v.ptr))
                         }
-                        _ => None,
-                    };
+                        _ => Ok(None),
+                    }?;
                     if let Some(ptr) = list_ptr {
                         return self.compile_list_method_ptr(ptr, ty, method, args);
                     }
@@ -13837,12 +14005,6 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        let obj_val = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
-            self.compile_deref(object)?
-        } else {
-            self.compile_expr(object)?
-        };
-
         if let Some(obj_ty) = deref_obj_ty.as_ref() {
             if self.type_to_class_name(obj_ty).is_none() {
                 if inferred_obj_ty.is_none() {
@@ -13877,7 +14039,13 @@ impl<'ctx> Codegen<'ctx> {
             Vec::new()
         };
 
-        let (func, func_ty) = if self.classes.contains_key(&class_name) {
+        let obj_val = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+            self.compile_deref(object)?
+        } else {
+            self.compile_expr(object)?
+        };
+
+        let (resolved_func_name, func, func_ty) = if self.classes.contains_key(&class_name) {
             let func_name = self
                 .resolve_method_function_name(&class_name, method)
                 .ok_or_else(|| {
@@ -13892,10 +14060,12 @@ impl<'ctx> Codegen<'ctx> {
                         |ty| Self::unknown_method_error(method, ty),
                     )
                 })?;
-            self.functions
+            let (func, func_ty) = self
+                .functions
                 .get(&func_name)
                 .ok_or_else(|| CodegenError::new(format!("Unknown method: {}", func_name)))?
-                .clone()
+                .clone();
+            (func_name, func, func_ty)
         } else if self.enums.contains_key(&class_name) {
             return Err(obj_ty.as_ref().map_or_else(
                 || {
@@ -13926,10 +14096,10 @@ impl<'ctx> Codegen<'ctx> {
                     })
                     .collect::<Vec<_>>();
             if candidates.len() == 1 {
-                let (_, func, func_ty) = candidates.pop().ok_or_else(|| {
+                let (name, func, func_ty) = candidates.pop().ok_or_else(|| {
                     CodegenError::new("interface method candidate disappeared during dispatch")
                 })?;
-                (func, func_ty)
+                (name, func, func_ty)
             } else if candidates.is_empty() {
                 return Err(CodegenError::new(format!(
                     "Unknown interface method implementation: {}",
@@ -13971,9 +14141,13 @@ impl<'ctx> Codegen<'ctx> {
                     args.len(),
                 ));
             }
-            for (arg, param_ty) in args.iter().zip(param_types.iter()) {
-                compiled_args
-                    .push(self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?);
+            for (index, (arg, param_ty)) in args.iter().zip(param_types.iter()).enumerate() {
+                compiled_args.push(self.compile_argument_for_param(
+                    &resolved_func_name,
+                    index,
+                    arg,
+                    param_ty,
+                )?);
             }
         } else {
             let llvm_param_types = func.get_type().get_param_types();
@@ -14063,7 +14237,6 @@ impl<'ctx> Codegen<'ctx> {
             .as_ref()
             .and_then(|ty| self.unwrap_class_like_type(ty).map(|(name, _)| name))
             .ok_or_else(|| {
-                let _ = self.compile_expr(object);
                 CodegenError::new(format!(
                     "Cannot determine object type for field access: {:?}.{}",
                     object, field
@@ -14250,8 +14423,11 @@ impl<'ctx> Codegen<'ctx> {
         let adapter_name = format!("__bound_method_adapter_{}", self.lambda_counter);
         self.lambda_counter += 1;
         let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
-        for param_ty in param_types {
-            llvm_params.push(self.llvm_type(param_ty).into());
+        for (index, param_ty) in param_types.iter().enumerate() {
+            llvm_params.push(match self.param_mode_for_function(method_name, index) {
+                ParamMode::Owned => self.llvm_type(param_ty).into(),
+                ParamMode::Borrow | ParamMode::BorrowMut => ptr_type.into(),
+            });
         }
         let adapter_fn_type = match self.llvm_type(ret_type) {
             BasicTypeEnum::IntType(i) => i.fn_type(&llvm_params, false),
@@ -14429,14 +14605,8 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>> {
-        if let Expr::Ident(name) = object {
-            if !self.variables.contains_key(name)
-                && self
-                    .resolve_contextual_function_value_name(object)
-                    .is_none()
-            {
-                return Err(Self::undefined_variable_error(name));
-            }
+        if let Some(name) = self.member_root_undefined_variable(object) {
+            return Err(Self::undefined_variable_error(&name));
         }
         let inferred_object_ty = self.infer_object_type(object);
         let object_ty = inferred_object_ty
@@ -15084,9 +15254,13 @@ impl<'ctx> Codegen<'ctx> {
                 args.len(),
             ));
         }
-        for (arg, expected_ty) in args.iter().zip(ctor_params.iter()) {
-            compiled_args
-                .push(self.compile_expr_for_concrete_class_payload(&arg.node, expected_ty)?);
+        for (index, (arg, expected_ty)) in args.iter().zip(ctor_params.iter()).enumerate() {
+            compiled_args.push(self.compile_argument_for_param(
+                &func_name,
+                index,
+                arg,
+                expected_ty,
+            )?);
         }
 
         let args_meta: Vec<BasicMetadataValueEnum> =

@@ -89,16 +89,12 @@ pub(crate) fn run_import_check_phase(
                             elapsed_nanos_u64(checker_run_started_at),
                             Ordering::Relaxed,
                         );
-                        let filename = unit
-                            .file
-                            .file_name()
-                            .and_then(|name| name.to_str())
-                            .unwrap_or("unknown");
+                        let filename = unit.file.to_string_lossy();
                         let source = fs::read_to_string(&unit.file);
                         let mut rendered = String::new();
                         for error in errors {
                             if let Ok(source) = source.as_deref() {
-                                rendered.push_str(&error.format_with_source(source, filename));
+                                rendered.push_str(&error.format_with_source(source, &filename));
                             } else {
                                 let source_read_error = source
                                     .as_ref()

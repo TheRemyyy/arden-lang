@@ -31,10 +31,7 @@ pub(crate) fn run_entry_validation_phase(
                 parsed_files.len()
             )
         })?;
-    let entry_filename = entry_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("main.arden");
+    let entry_filename = entry_path.to_string_lossy();
 
-    crate::validate_entry_main_signature(entry_program, &entry_source, entry_filename)
+    crate::validate_entry_main_signature(entry_program, &entry_source, &entry_filename)
 }

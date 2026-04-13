@@ -139,17 +139,29 @@ pub(crate) fn should_force_no_pie(link: &LinkConfig<'_>) -> bool {
 }
 
 fn apply_fallback_current_dir(command: &mut Command) {
-    let working_dir = env::current_dir().unwrap_or_else(|_| env::temp_dir());
-    command.current_dir(working_dir);
+    if let Ok(working_dir) = env::current_dir() {
+        command.current_dir(working_dir);
+        return;
+    }
+    let temp_dir = env::temp_dir();
+    if temp_dir.is_dir() {
+        command.current_dir(temp_dir);
+    }
 }
 
 fn apply_stable_command_dir(command: &mut Command, anchor_path: &Path) {
-    let working_dir = anchor_path
+    if let Some(working_dir) = anchor_path
         .parent()
         .filter(|dir| dir.is_dir())
         .map(Path::to_path_buf)
-        .unwrap_or_else(env::temp_dir);
-    command.current_dir(working_dir);
+    {
+        command.current_dir(working_dir);
+        return;
+    }
+    let temp_dir = env::temp_dir();
+    if temp_dir.is_dir() {
+        command.current_dir(temp_dir);
+    }
 }
 
 fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), String> {

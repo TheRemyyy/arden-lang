@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Follow-up hardening: semantic pipeline now surfaces source-read failures instead of silently dropping files, single-source diagnostics now use full file paths (parse/type/borrow/import/entry checks), list field-method codegen no longer swallows pointer-resolution errors, and macOS temp/symlink + linker fallback working-directory handling is more robust in perf/link flows.
+- Borrow-mode runtime fixes: `borrow mut` parameters now lower as true by-reference ABI arguments (not by-value copies), so scalar/list/field mutations propagate back to the caller; call sites now pass borrow-mode args with pointer semantics consistently for direct/module/method/constructor paths, and async functions/methods now reject borrow-mode parameters up front.
 - Runtime/codegen: fixed nested `List` crash (`SIGSEGV`) in `run/profile`, improved signal-based crash diagnostics, and hardened temporary object cleanup warnings.
 - Caching/rebuild correctness: invalidated stale project/object caches when compiler binary identity changes; improved project-mode rebuild reliability.
 - CLI/test tooling: fixed `run/bench/profile/test` temporary artifact handling (unique temp outputs, consistent cleanup, explicit cleanup warnings), improved `arden test` failure diagnostics, fixed project-mode test/bench/profile output path resolution (including Windows `.exe` cases), corrected `arden bindgen` status stream routing so generated stdout output is not polluted, and prevented duplicate `std.io` import injection in generated test-runner sources when inline block comments precede imports.
@@ -52,6 +54,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Project validation diagnostics: improved entry/source/output validation errors with clearer resolved-path/project-root context and more explicit output-path ancestor resolution failures.
 - Import-check diagnostics: when source rendering fails during import-error formatting, diagnostics now include the underlying file read error reason.
 - Bindgen boundary safety: reject missing header paths and directory output targets explicitly, auto-create output parent directories for file outputs, and add regression coverage for the new guards.
+- Release portable smoke: hardened `scripts/release/smoke_portable_unix.sh` with explicit archive/install-script existence checks, per-step timeout guard (`SMOKE_STEP_TIMEOUT_SECONDS`, default `600`), and stage logs to prevent silent multi-hour hangs.
+- Web homepage hero: restored vertical centering on large `100vh` layouts by aligning the top hero grid to center instead of end.
+- Codegen/no-check reliability and portability: restored root-cause undefined-root diagnostics for nested member chains/generic receiver calls, and switched libc `size_t` + pointer-fallback sizing away from hardcoded 64-bit assumptions.
+- CI stability: fixed effect-attributes smoke examples (`@Any` caller boundaries), tightened test-file name detection to avoid false positives like `latest.arden`, and refined macOS symlink-ancestor handling so system temp aliases don't trip path guards.
 
 ## [1.3.7] - 2026-04-10
 

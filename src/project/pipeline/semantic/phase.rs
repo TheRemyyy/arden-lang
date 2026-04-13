@@ -170,12 +170,18 @@ pub(crate) fn run_semantic_phase(
                         let component_files: HashSet<PathBuf> = component.iter().cloned().collect();
                         let component_sources = component
                             .iter()
-                            .filter_map(|file| {
+                            .map(|file| {
                                 fs::read_to_string(file)
-                                    .ok()
                                     .map(|source| (file.clone(), source))
+                                    .map_err(|error| {
+                                        format!(
+                                            "error: Failed to read '{}' during semantic checks: {}",
+                                            file.display(),
+                                            error
+                                        )
+                                    })
                             })
-                            .collect::<Vec<_>>();
+                            .collect::<Result<Vec<_>, String>>()?;
                         let semantic_program = semantic_program_for_component(
                             inputs.rewritten_files,
                             &component_files,

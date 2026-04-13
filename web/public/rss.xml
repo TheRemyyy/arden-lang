@@ -9,7 +9,7 @@
     <title>v1.3.8</title>
     <link>https://www.arden-lang.dev/changelog#1-3-8</link>
     <guid>https://www.arden-lang.dev/changelog#1-3-8</guid>
-    <description>2026-04-13. Reworked native artifact production around explicit linker-only backends and expanded diagnostics/effect-check/path-safety hardening across CLI, typecheck, project validation, and test tooling.</description>
+    <description>2026-04-13. Reworked native artifact production around explicit linker-only backends, so Arden now emits objects directly from LLVM, links Linux outputs through `mold`, and links macOS/Windows outputs through LLVM `lld`.</description>
     <pubDate>Mon, 13 Apr 2026 00:00:00 GMT</pubDate>
   </item>
   <item>

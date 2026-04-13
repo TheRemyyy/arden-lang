@@ -240,9 +240,9 @@ impl<'ctx> Codegen<'ctx> {
                             .into(),
                     );
                     if let Type::Function(params, _) = &func_ty {
-                        for (arg, param_ty) in args.iter().zip(params.iter()) {
+                        for (index, (arg, param_ty)) in args.iter().zip(params.iter()).enumerate() {
                             compiled_args.push(
-                                self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?,
+                                self.compile_argument_for_param(&mangled, index, arg, param_ty)?,
                             );
                         }
                     } else {
@@ -284,9 +284,11 @@ impl<'ctx> Codegen<'ctx> {
                                 .into(),
                         );
                         if let Type::Function(params, _) = &func_ty {
-                            for (arg, param_ty) in args.iter().zip(params.iter()) {
-                                compiled_args.push(self.compile_expr_for_concrete_class_payload(
-                                    &arg.node, param_ty,
+                            for (index, (arg, param_ty)) in
+                                args.iter().zip(params.iter()).enumerate()
+                            {
+                                compiled_args.push(self.compile_argument_for_param(
+                                    &candidate, index, arg, param_ty,
                                 )?);
                             }
                         } else {
@@ -370,9 +372,9 @@ impl<'ctx> Codegen<'ctx> {
                             .into(),
                     );
                     if let Type::Function(params, _) = &func_ty {
-                        for (arg, param_ty) in args.iter().zip(params.iter()) {
+                        for (index, (arg, param_ty)) in args.iter().zip(params.iter()).enumerate() {
                             compiled_args.push(
-                                self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?,
+                                self.compile_argument_for_param(&candidate, index, arg, param_ty)?,
                             );
                         }
                     } else {
@@ -414,9 +416,11 @@ impl<'ctx> Codegen<'ctx> {
                                 .into(),
                         );
                         if let Type::Function(params, _) = &func_ty {
-                            for (arg, param_ty) in args.iter().zip(params.iter()) {
-                                compiled_args.push(self.compile_expr_for_concrete_class_payload(
-                                    &arg.node, param_ty,
+                            for (index, (arg, param_ty)) in
+                                args.iter().zip(params.iter()).enumerate()
+                            {
+                                compiled_args.push(self.compile_argument_for_param(
+                                    &candidate, index, arg, param_ty,
                                 )?);
                             }
                         } else {
@@ -600,7 +604,6 @@ impl<'ctx> Codegen<'ctx> {
                     });
                 }
 
-                let _ = self.compile_expr(callee)?;
                 return Err(Self::non_function_call_error(&field_ty));
             }
 
@@ -827,9 +830,14 @@ impl<'ctx> Codegen<'ctx> {
             if bad_arity {
                 return Err(Self::function_call_arity_error(&callee_ty, args.len()));
             }
-            for (arg, param_ty) in args.iter().zip(param_types.iter()) {
-                compiled_args
-                    .push(self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?);
+            let resolved_name = func_name.to_string_lossy().to_string();
+            for (index, (arg, param_ty)) in args.iter().zip(param_types.iter()).enumerate() {
+                compiled_args.push(self.compile_argument_for_param(
+                    &resolved_name,
+                    index,
+                    arg,
+                    param_ty,
+                )?);
             }
             if is_variadic_extern_call {
                 for arg in args.iter().skip(param_types.len()) {

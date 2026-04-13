@@ -1699,10 +1699,13 @@ impl TypeChecker {
             let ty = self.resolve_type(&param.ty);
             self.validate_resolved_type_exists(&ty, span.clone());
             self.check_type_visibility(&ty, span.clone());
-            if func.is_async && Self::type_contains_borrowed_reference(&ty) {
+            if func.is_async
+                && (Self::type_contains_borrowed_reference(&ty)
+                    || !matches!(param.mode, ParamMode::Owned))
+            {
                 self.error(
                     format!(
-                        "Async function '{}' cannot accept a parameter containing borrowed references: {}",
+                        "Async function '{}' cannot accept a parameter containing borrowed references or borrow-mode parameters: {}",
                         func.name,
                         Self::format_resolved_type_for_diagnostic(&ty)
                     ),
@@ -2007,6 +2010,20 @@ impl TypeChecker {
                 let ty = self.resolve_type(&param.ty);
                 self.validate_resolved_type_exists(&ty, span.clone());
                 self.check_type_visibility(&ty, span.clone());
+                if method.is_async
+                    && (Self::type_contains_borrowed_reference(&ty)
+                        || !matches!(param.mode, ParamMode::Owned))
+                {
+                    self.error(
+                        format!(
+                            "Async method '{}.{}' cannot accept a parameter containing borrowed references or borrow-mode parameters: {}",
+                            format_diagnostic_class_name(class_key),
+                            method.name,
+                            Self::format_resolved_type_for_diagnostic(&ty)
+                        ),
+                        span.clone(),
+                    );
+                }
                 self.declare_variable(
                     &param.name,
                     ty,

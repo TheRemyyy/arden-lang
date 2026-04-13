@@ -140,14 +140,25 @@ pub(crate) fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, 
                 let temp_dir = std::env::temp_dir();
                 let canonical_temp_dir = temp_dir.canonicalize().ok();
                 let canonical_dir = dir.canonicalize().ok();
+                let canonical_temp_starts_with_dir = canonical_temp_dir
+                    .as_ref()
+                    .zip(canonical_dir.as_ref())
+                    .map(|(temp, ancestor)| temp.starts_with(ancestor))
+                    .unwrap_or(false);
+                let is_macos_temp_symlink_prefix = dir == Path::new("/var")
+                    || dir == Path::new("/tmp")
+                    || dir == Path::new("/private")
+                    || dir == Path::new("/private/var")
+                    || dir == Path::new("/private/tmp");
                 if dir == Path::new("/var")
                     || dir == Path::new("/tmp")
                     || temp_dir.starts_with(dir)
-                    || canonical_temp_dir
-                        .as_ref()
-                        .zip(canonical_dir.as_ref())
-                        .map(|(temp, ancestor)| temp.starts_with(ancestor))
-                        .unwrap_or(false)
+                    || canonical_temp_starts_with_dir
+                    || (is_macos_temp_symlink_prefix
+                        && canonical_temp_dir
+                            .as_ref()
+                            .map(|temp| temp.starts_with("/private/var"))
+                            .unwrap_or(false))
                 {
                     current = dir.parent();
                     continue;

@@ -271,3 +271,100 @@ fn compile_source_runs_inline_mutable_reference_assignment_runtime() {
 
     let _ = fs::remove_dir_all(temp_root);
 }
+
+#[test]
+fn compile_source_runs_borrow_mut_scalar_parameter_runtime() {
+    let temp_root = make_temp_project_root("borrow-mut-scalar-parameter-runtime");
+    let source_path = temp_root.join("borrow_mut_scalar_parameter_runtime.arden");
+    let output_path = temp_root.join("borrow_mut_scalar_parameter_runtime");
+    let source = r#"
+            function bump(borrow mut x: Integer): None {
+                x += 1;
+                return None;
+            }
+
+            function main(): Integer {
+                mut n: Integer = 5;
+                bump(n);
+                return if (n == 6) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .must("borrow mut scalar parameter should mutate caller value");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .must("run compiled borrow mut scalar parameter binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_borrow_mut_list_parameter_runtime() {
+    let temp_root = make_temp_project_root("borrow-mut-list-parameter-runtime");
+    let source_path = temp_root.join("borrow_mut_list_parameter_runtime.arden");
+    let output_path = temp_root.join("borrow_mut_list_parameter_runtime");
+    let source = r#"
+            function trim_last(borrow mut xs: List<Integer>): None {
+                xs.pop();
+                return None;
+            }
+
+            function main(): Integer {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                xs.push(2);
+                trim_last(xs);
+                return if (xs.length() == 1) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .must("borrow mut list parameter should mutate caller collection");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .must("run compiled borrow mut list parameter binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_borrow_mut_field_parameter_runtime() {
+    let temp_root = make_temp_project_root("borrow-mut-field-parameter-runtime");
+    let source_path = temp_root.join("borrow_mut_field_parameter_runtime.arden");
+    let output_path = temp_root.join("borrow_mut_field_parameter_runtime");
+    let source = r#"
+            class Counter {
+                mut value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function bump(borrow mut value: Integer): None {
+                value += 1;
+                return None;
+            }
+
+            function main(): Integer {
+                mut c: Counter = Counter(5);
+                bump(c.value);
+                return if (c.value == 6) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .must("borrow mut field parameter should mutate original field");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .must("run compiled borrow mut field parameter binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}

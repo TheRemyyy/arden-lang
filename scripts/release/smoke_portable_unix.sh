@@ -7,6 +7,49 @@ if [[ $# -ne 1 ]]; then
 fi
 
 ARCHIVE_PATH="$1"
+if [[ ! -f "${ARCHIVE_PATH}" ]]; then
+  echo "portable archive not found: ${ARCHIVE_PATH}" >&2
+  exit 1
+fi
+
+SMOKE_STEP_TIMEOUT_SECONDS="${SMOKE_STEP_TIMEOUT_SECONDS:-600}"
+
+run_with_timeout() {
+  local timeout_seconds="$1"
+  shift
+  python3 - "$timeout_seconds" "$@" <<'PY'
+import subprocess
+import sys
+
+timeout = float(sys.argv[1])
+cmd = sys.argv[2:]
+
+try:
+    completed = subprocess.run(
+        cmd,
+        check=False,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+    )
+except subprocess.TimeoutExpired as exc:
+    if exc.stdout:
+        sys.stdout.write(exc.stdout)
+    if exc.stderr:
+        sys.stderr.write(exc.stderr)
+    sys.stderr.write(
+        f"error: smoke step timed out after {int(timeout)}s: {' '.join(cmd)}\n"
+    )
+    sys.exit(124)
+
+if completed.stdout:
+    sys.stdout.write(completed.stdout)
+if completed.stderr:
+    sys.stderr.write(completed.stderr)
+sys.exit(completed.returncode)
+PY
+}
+
 TEMP_ROOT_RAW="$(mktemp -d)"
 TEMP_ROOT="$(cd "${TEMP_ROOT_RAW}" && pwd -P)"
 HOME_DIR="${TEMP_ROOT}/home"
@@ -27,9 +70,13 @@ BUNDLE_DIR="$(cd "${BUNDLE_DIR}" && pwd -P)"
 chmod +x "${BUNDLE_DIR}/arden"
 if [[ -f "${BUNDLE_DIR}/install.sh" ]]; then
   chmod +x "${BUNDLE_DIR}/install.sh"
+else
+  echo "install script not found in bundle: ${BUNDLE_DIR}/install.sh" >&2
+  exit 1
 fi
 
-env -i \
+echo "[smoke] verifying bundled launcher"
+run_with_timeout "${SMOKE_STEP_TIMEOUT_SECONDS}" env -i \
   HOME="${HOME_DIR}" \
   PATH="${BASE_PATH}" \
   LLVM_SYS_221_PREFIX= \
@@ -49,7 +96,8 @@ function main(): None {
 }
 EOF
 
-RUN_OUTPUT="$(env -i \
+echo "[smoke] running portable hello-world"
+RUN_OUTPUT="$(run_with_timeout "${SMOKE_STEP_TIMEOUT_SECONDS}" env -i \
   HOME="${HOME_DIR}" \
   PATH="${BASE_PATH}" \
   LLVM_SYS_221_PREFIX= \
@@ -62,7 +110,8 @@ RUN_OUTPUT="$(env -i \
 printf '%s\n' "${RUN_OUTPUT}"
 grep -F "Hello from portable Arden!" <<< "${RUN_OUTPUT}" >/dev/null
 
-env -i \
+echo "[smoke] installing launcher into isolated HOME"
+run_with_timeout "${SMOKE_STEP_TIMEOUT_SECONDS}" env -i \
   HOME="${HOME_DIR}" \
   PATH="${BASE_PATH}" \
   LLVM_SYS_221_PREFIX= \
@@ -73,7 +122,8 @@ env -i \
   DYLD_LIBRARY_PATH= \
   "${BUNDLE_DIR}/install.sh"
 
-env -i \
+echo "[smoke] validating installed launcher"
+run_with_timeout "${SMOKE_STEP_TIMEOUT_SECONDS}" env -i \
   HOME="${HOME_DIR}" \
   PATH="${HOME_DIR}/.local/bin:${BASE_PATH}" \
   LLVM_SYS_221_PREFIX= \

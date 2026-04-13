@@ -208,8 +208,11 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("time should move forward")
             .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("arden-{prefix}-{}-{suffix}", std::process::id()));
+        let base = std::env::current_dir()
+            .unwrap_or_else(|_| std::env::temp_dir())
+            .join("target")
+            .join("test-temp");
+        let path = base.join(format!("arden-{prefix}-{}-{suffix}", std::process::id()));
         fs::create_dir_all(&path).expect("failed to create temp dir");
         path
     }

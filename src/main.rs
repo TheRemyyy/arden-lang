@@ -362,10 +362,7 @@ pub(crate) fn parse_project_unit(
     project_root: &Path,
     file: &Path,
 ) -> Result<ParsedProjectUnit, String> {
-    let filename = file
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown.arden");
+    let filename = file.to_string_lossy();
     let file_metadata = current_file_metadata_stamp(file)?;
     let cached_entry = load_parsed_file_cache_entry(project_root, file)?;
     let read_source = |f: &Path| {
@@ -400,12 +397,12 @@ pub(crate) fn parse_project_unit(
                 from_parse_cache: true,
             }
         } else {
-            parse_source_text(&source, source_fp, filename)?
+            parse_source_text(&source, source_fp, &filename)?
         }
     } else {
         let source = read_source(file)?;
         let source_fp = source_fingerprint(&source);
-        parse_source_text(&source, source_fp, filename)?
+        parse_source_text(&source, source_fp, &filename)?
     };
 
     let mut function_names = Vec::new();

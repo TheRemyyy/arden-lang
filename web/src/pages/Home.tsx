@@ -115,7 +115,7 @@ export function Home() {
     return (
         <div className="overflow-x-hidden pt-16 text-[var(--text)]">
             <section className="site-grid relative min-h-[calc(100vh-4rem)] overflow-hidden">
-                <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-10 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.12fr_0.88fr] lg:items-end lg:pb-20 lg:pt-14">
+                <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-10 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.12fr_0.88fr] lg:items-center lg:pb-16 lg:pt-10">
                     <div className="relative z-10">
                         <h1 className="max-w-4xl font-display text-4xl font-bold leading-[0.95] tracking-[-0.04em] text-[var(--text)] md:text-6xl">
                             Arden is a native programming language with clearer compiler feedback.

@@ -123,11 +123,8 @@ pub(crate) fn render_type_errors(
 ) -> String {
     if sources.len() == 1 {
         let (path, source) = &sources[0];
-        let filename = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
-        return typeck::format_errors(&errors, source, filename);
+        let filename = path.to_string_lossy();
+        return typeck::format_errors(&errors, source, &filename);
     }
 
     render_component_summary(
@@ -143,11 +140,8 @@ pub(crate) fn render_borrow_errors(
 ) -> String {
     if sources.len() == 1 {
         let (path, source) = &sources[0];
-        let filename = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
-        return borrowck::format_borrow_errors(&errors, source, filename);
+        let filename = path.to_string_lossy();
+        return borrowck::format_borrow_errors(&errors, source, &filename);
     }
 
     render_component_summary(

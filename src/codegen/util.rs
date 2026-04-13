@@ -242,6 +242,17 @@ thread_local! {
 }
 
 impl<'ctx> Codegen<'ctx> {
+    fn libc_size_type(&self) -> inkwell::types::IntType<'ctx> {
+        #[cfg(target_pointer_width = "32")]
+        {
+            self.context.i32_type()
+        }
+        #[cfg(not(target_pointer_width = "32"))]
+        {
+            self.context.i64_type()
+        }
+    }
+
     fn normalize_inferred_object_type(&self, ty: Type) -> Type {
         self.normalize_codegen_type(&ty)
     }
@@ -594,7 +605,7 @@ impl<'ctx> Codegen<'ctx> {
         }
         // size_t fread(void* ptr, size_t size, size_t count, FILE* stream)
         let ptr_type = self.context.ptr_type(AddressSpace::default());
-        let size_t = self.context.i64_type();
+        let size_t = self.libc_size_type();
         let fn_type = size_t.fn_type(
             &[
                 ptr_type.into(),
@@ -690,7 +701,7 @@ impl<'ctx> Codegen<'ctx> {
             return f;
         }
         let ptr = self.context.ptr_type(AddressSpace::default());
-        let size_t = self.context.i64_type();
+        let size_t = self.libc_size_type();
         let fn_type = ptr.fn_type(&[ptr.into(), ptr.into(), size_t.into()], false);
         self.module.add_function(name, fn_type, None)
     }
@@ -734,7 +745,7 @@ impl<'ctx> Codegen<'ctx> {
             return f;
         }
         let ptr = self.context.ptr_type(AddressSpace::default());
-        let size_t = self.context.i64_type();
+        let size_t = self.libc_size_type();
         let fn_type = size_t.fn_type(&[ptr.into(), size_t.into(), ptr.into(), ptr.into()], false);
         self.module.add_function(name, fn_type, None)
     }
@@ -823,7 +834,7 @@ impl<'ctx> Codegen<'ctx> {
             return f;
         }
         let ptr = self.context.ptr_type(AddressSpace::default());
-        let fn_type = ptr.fn_type(&[ptr.into(), self.context.i64_type().into()], false);
+        let fn_type = ptr.fn_type(&[ptr.into(), self.libc_size_type().into()], false);
         self.module.add_function(name, fn_type, None)
     }
 
@@ -858,7 +869,7 @@ impl<'ctx> Codegen<'ctx> {
         if let Some(f) = self.module.get_function(name) {
             return f;
         }
-        let fn_type = self.context.i64_type().fn_type(
+        let fn_type = self.libc_size_type().fn_type(
             &[self.context.ptr_type(AddressSpace::default()).into()],
             false,
         );
@@ -902,7 +913,7 @@ impl<'ctx> Codegen<'ctx> {
             &[
                 self.context.ptr_type(AddressSpace::default()).into(),
                 self.context.ptr_type(AddressSpace::default()).into(),
-                self.context.i64_type().into(),
+                self.libc_size_type().into(),
             ],
             false,
         );
@@ -916,7 +927,7 @@ impl<'ctx> Codegen<'ctx> {
         }
         let ptr = self.context.ptr_type(AddressSpace::default());
         let fn_type = self.context.i32_type().fn_type(
-            &[ptr.into(), ptr.into(), self.context.i64_type().into()],
+            &[ptr.into(), ptr.into(), self.libc_size_type().into()],
             false,
         );
         self.module.add_function(name, fn_type, None)
@@ -1142,6 +1153,22 @@ impl<'ctx> Codegen<'ctx> {
             .build_store(alloca, value)
             .map_err(|_| CodegenError::new("failed to store borrowed temporary value"))?;
         Ok(alloca.into())
+    }
+
+    pub fn compile_mut_borrow(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
+        if let Expr::Ident(name) = expr {
+            let var = self
+                .variables
+                .get(name)
+                .ok_or_else(|| Self::undefined_variable_error(name))?;
+            if !var.mutable {
+                return Err(CodegenError::new(format!(
+                    "Cannot mutably borrow immutable variable '{}'",
+                    name
+                )));
+            }
+        }
+        self.compile_borrow(expr)
     }
 
     pub fn compile_deref(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
@@ -2173,14 +2200,8 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Index { object, index } => {
-                if let Expr::Ident(name) = &object.node {
-                    if !self.variables.contains_key(name)
-                        && self
-                            .resolve_contextual_function_value_name(&object.node)
-                            .is_none()
-                    {
-                        return Err(Self::undefined_variable_error(name));
-                    }
+                if let Some(name) = self.member_root_undefined_variable(&object.node) {
+                    return Err(Self::undefined_variable_error(&name));
                 }
                 let idx_val = self.compile_non_negative_integer_index_expr(
                     &index.node,

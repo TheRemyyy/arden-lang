@@ -14,6 +14,19 @@ use crate::codegen::core::{Codegen, CodegenError, Result};
 static CODEGEN_TARGET_DATA_LAYOUT: OnceLock<Option<String>> = OnceLock::new();
 
 impl<'ctx> Codegen<'ctx> {
+    fn host_pointer_size_bytes() -> u64 {
+        std::mem::size_of::<usize>() as u64
+    }
+
+    fn pointer_sized_int_type(&self) -> inkwell::types::IntType<'ctx> {
+        match Self::host_pointer_size_bytes() {
+            1 => self.context.i8_type(),
+            2 => self.context.i16_type(),
+            4 => self.context.i32_type(),
+            _ => self.context.i64_type(),
+        }
+    }
+
     fn zero_initialize_allocated_bytes(
         &mut self,
         buffer_ptr: PointerValue<'ctx>,
@@ -131,7 +144,7 @@ impl<'ctx> Codegen<'ctx> {
                 128 => 16,
                 _ => 8,
             },
-            inkwell::types::BasicTypeEnum::PointerType(_) => 8,
+            inkwell::types::BasicTypeEnum::PointerType(_) => Self::host_pointer_size_bytes(),
             inkwell::types::BasicTypeEnum::ArrayType(array_ty) => {
                 self.fallback_storage_size_of_llvm_type(array_ty.get_element_type())
                     * array_ty.len() as u64
@@ -641,11 +654,12 @@ impl<'ctx> Codegen<'ctx> {
                 .into_int_value());
         }
         if lhs.is_pointer_value() && rhs.is_pointer_value() {
+            let ptr_int_ty = self.pointer_sized_int_type();
             let lhs_int = self
                 .builder
                 .build_ptr_to_int(
                     lhs.into_pointer_value(),
-                    self.context.i64_type(),
+                    ptr_int_ty,
                     &format!("{name}_lhs_ptr_int"),
                 )
                 .map_err(|_| CodegenError::new("failed to cast lhs pointer for equality"))?;
@@ -653,7 +667,7 @@ impl<'ctx> Codegen<'ctx> {
                 .builder
                 .build_ptr_to_int(
                     rhs.into_pointer_value(),
-                    self.context.i64_type(),
+                    ptr_int_ty,
                     &format!("{name}_rhs_ptr_int"),
                 )
                 .map_err(|_| CodegenError::new("failed to cast rhs pointer for equality"))?;
@@ -685,29 +699,6 @@ impl<'ctx> Codegen<'ctx> {
                     name,
                 )
                 .map_err(|_| CodegenError::new("failed to compare floats for equality"));
-        }
-
-        if lhs.is_pointer_value() && rhs.is_pointer_value() {
-            let lhs_i = self
-                .builder
-                .build_ptr_to_int(
-                    lhs.into_pointer_value(),
-                    self.context.i64_type(),
-                    &format!("{name}_lhs"),
-                )
-                .map_err(|_| CodegenError::new("failed to cast lhs pointer to integer"))?;
-            let rhs_i = self
-                .builder
-                .build_ptr_to_int(
-                    rhs.into_pointer_value(),
-                    self.context.i64_type(),
-                    &format!("{name}_rhs"),
-                )
-                .map_err(|_| CodegenError::new("failed to cast rhs pointer to integer"))?;
-            return self
-                .builder
-                .build_int_compare(IntPredicate::EQ, lhs_i, rhs_i, name)
-                .map_err(|_| CodegenError::new("failed to compare pointer integers"));
         }
 
         let llvm_ty = self.llvm_type(ty);

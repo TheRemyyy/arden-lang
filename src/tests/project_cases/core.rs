@@ -1447,6 +1447,39 @@ fn project_build_recovers_cleanly_after_invalid_files_list_fix() {
 }
 
 #[test]
+fn project_parse_error_reports_full_relative_path_when_basenames_collide() {
+    let temp_root = make_temp_project_root("project-parse-error-colliding-basenames");
+    fs::create_dir_all(temp_root.join("src/app")).must("create app dir");
+    fs::create_dir_all(temp_root.join("src/lib")).must("create lib dir");
+    fs::write(
+        temp_root.join("arden.toml"),
+        "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/app/main.arden\"\nfiles = [\"src/app/main.arden\", \"src/lib/main.arden\"]\noutput = \"smoke\"\n",
+    )
+    .must("write arden.toml");
+    fs::write(
+        temp_root.join("src/app/main.arden"),
+        "package app;\nfunction main(): None { return None; }\n",
+    )
+    .must("write app main");
+    fs::write(
+        temp_root.join("src/lib/main.arden"),
+        "package lib;\nfunction broken(: Integer { return 1; }\n",
+    )
+    .must("write malformed lib main");
+
+    with_current_dir(&temp_root, || {
+        let check_err =
+            check_command(None, false).must_err("project check should fail on malformed lib main");
+        assert!(
+            check_err.contains("src/lib/main.arden"),
+            "expected full relative file path in parse error, got: {check_err}"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_commands_recover_cleanly_after_malformed_helper_fix() {
     let temp_root = make_temp_project_root("project-commands-recover-malformed-helper");
     fs::write(
