@@ -98,18 +98,28 @@ pub(super) fn create_project_test_runner_workspace(
     };
     let canonical_project_root = project_root.canonicalize().map_err(|e| {
         format!(
-            "Failed to resolve project root '{}': {}",
+            "Failed to resolve project root '{}' for test workspace creation: {}",
             project_root.display(),
             e
         )
     })?;
     let canonical_test_file = normalized_test_file.canonicalize().map_err(|e| {
         format!(
-            "Failed to resolve test file '{}': {}",
+            "Failed to resolve test file '{}' for test workspace creation: {}",
             normalized_test_file.display(),
             e
         )
     })?;
+    let canonical_original_entry =
+        project_root
+            .join(&config.entry)
+            .canonicalize()
+            .map_err(|e| {
+                format!(
+                    "Failed to resolve project entry '{}' for test workspace creation: {}",
+                    config.entry, e
+                )
+            })?;
 
     let test_rel = canonical_test_file
         .strip_prefix(&canonical_project_root)
@@ -121,16 +131,41 @@ pub(super) fn create_project_test_runner_workspace(
             )
         })?;
     let test_rel_string = test_rel.to_string_lossy().replace('\\', "/");
+    let mut copied_files: Vec<String> = Vec::new();
 
     for source_file in config.get_source_files(project_root) {
-        let rel = source_file.strip_prefix(project_root).map_err(|_| {
+        let canonical_source_file = source_file.canonicalize().map_err(|e| {
             format!(
-                "Project source '{}' is outside project root '{}'",
+                "Failed to resolve project source '{}': {}",
                 source_file.display(),
-                project_root.display()
+                e
             )
         })?;
-        let dest = temp_dir.join(rel);
+        if canonical_original_entry == canonical_source_file
+            && canonical_source_file != canonical_test_file
+        {
+            continue;
+        }
+        let rel = canonical_source_file
+            .strip_prefix(&canonical_project_root)
+            .map_err(|_| {
+                format!(
+                    "Project source '{}' is outside project root '{}'",
+                    canonical_source_file.display(),
+                    canonical_project_root.display()
+                )
+            })?;
+        let rel_string = rel.to_string_lossy().replace('\\', "/");
+        copied_files.push(rel_string.clone());
+        let rel_path = Path::new(&rel_string);
+        let dest = temp_dir.join(rel_path);
+        if !dest.starts_with(&temp_dir) {
+            return Err(format!(
+                "Refusing to write source '{}' outside test workspace '{}'",
+                canonical_source_file.display(),
+                temp_dir.display()
+            ));
+        }
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|e| {
                 format!(
@@ -140,7 +175,7 @@ pub(super) fn create_project_test_runner_workspace(
                 )
             })?;
         }
-        if source_file.canonicalize().ok().as_ref() == Some(&canonical_test_file) {
+        if canonical_source_file == canonical_test_file {
             fs::write(&dest, runner_code).map_err(|e| {
                 format!(
                     "Failed to write generated project test runner '{}': {}",
@@ -149,10 +184,10 @@ pub(super) fn create_project_test_runner_workspace(
                 )
             })?;
         } else {
-            fs::copy(&source_file, &dest).map_err(|e| {
+            fs::copy(&canonical_source_file, &dest).map_err(|e| {
                 format!(
                     "Failed to copy project source '{}' into test workspace '{}': {}",
-                    source_file.display(),
+                    canonical_source_file.display(),
                     dest.display(),
                     e
                 )
@@ -161,6 +196,12 @@ pub(super) fn create_project_test_runner_workspace(
     }
 
     let runner_dest = temp_dir.join(test_rel);
+    if !runner_dest.starts_with(&temp_dir) {
+        return Err(format!(
+            "Refusing to place generated runner outside test workspace '{}'",
+            temp_dir.display()
+        ));
+    }
     if !runner_dest.exists() {
         if let Some(parent) = runner_dest.parent() {
             fs::create_dir_all(parent).map_err(|e| {
@@ -182,18 +223,16 @@ pub(super) fn create_project_test_runner_workspace(
 
     let mut temp_config = config.clone();
     temp_config.entry = test_rel_string.clone();
-    if config.entry != test_rel_string {
-        temp_config.files.retain(|file| file != &config.entry);
-    }
+    temp_config.files = copied_files;
     if !temp_config
         .files
         .iter()
         .any(|file| file == &test_rel_string)
     {
         temp_config.files.push(test_rel_string);
-        temp_config.files.sort();
-        temp_config.files.dedup();
     }
+    temp_config.files.sort();
+    temp_config.files.dedup();
     temp_config.output = "runner".to_string();
     temp_config
         .save(&temp_dir.join("arden.toml"))
@@ -316,6 +355,45 @@ mod tests {
         assert_eq!(
             exe_path.file_name().and_then(|v| v.to_str()),
             Some("runner")
+        );
+
+        let _ = fs::remove_dir_all(&runner_workspace);
+        let _ = fs::remove_dir_all(&project_root);
+    }
+
+    #[test]
+    fn project_runner_workspace_normalizes_file_list_without_dotdot_segments() {
+        let project_root = make_temp_dir("normalize-files");
+        let source_dir = project_root.join("src");
+        fs::create_dir_all(&source_dir).expect("create source dir");
+        let test_file = source_dir.join("main.arden");
+        fs::write(
+            &test_file,
+            "@Test\nfunction smoke(): None { return None; }\nfunction main(): None { return None; }\n",
+        )
+        .expect("write source file");
+
+        let mut config = ProjectConfig::new("smoke");
+        config.files = vec!["src/../src/main.arden".to_string()];
+        config.entry = "src/../src/main.arden".to_string();
+
+        let (runner_workspace, _runner_output_path) = create_project_test_runner_workspace(
+            &project_root,
+            &config,
+            &test_file,
+            "function main(): None { return None; }\n",
+        )
+        .expect("create project test workspace with dotdot file entries");
+
+        let runner_config = ProjectConfig::load(&runner_workspace.join("arden.toml"))
+            .expect("load generated runner config");
+        assert!(
+            runner_config
+                .files
+                .iter()
+                .all(|file| !file.split('/').any(|segment| segment == "..")),
+            "runner config must not contain dotdot segments: {:?}",
+            runner_config.files
         );
 
         let _ = fs::remove_dir_all(&runner_workspace);

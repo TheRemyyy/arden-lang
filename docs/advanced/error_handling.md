@@ -67,6 +67,18 @@ function compute(): Result<Integer, String> {
 `arden check` enforces that `?` is only used in compatible return contexts.
 If surrounding function/lambda cannot propagate that error kind, it fails type checking.
 
+Concrete `?` rules:
+
+- `Option<T>?` requires enclosing function to return `Option<...>`
+- `Result<T, E>?` requires enclosing function to return `Result<..., E2>`
+- for `Result`, propagated error type must be compatible (`E` into `E2`)
+
+Typical diagnostics:
+
+- `'?' on Option requires the enclosing function to return Option`
+- `'?' on Result requires the enclosing function to return Result`
+- `'?' error type mismatch: cannot propagate Result error ...`
+
 ## Match-Based Handling
 
 Use `match` when you want explicit branch behavior:

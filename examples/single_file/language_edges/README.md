@@ -20,3 +20,5 @@ for f in examples/single_file/language_edges/*/*.arden; do arden run "$f"; done
 Spotlight:
 
 - [`44_exact_import_values`](./44_exact_import_values/44_exact_import_values.arden)
+
+- [`45_interface_inline_body_rules`](./45_interface_inline_body_rules/45_interface_inline_body_rules.arden)

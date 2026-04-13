@@ -1,0 +1,32 @@
+import std.io.*;
+
+interface HasLabel {
+    function label(): String {
+        return "interface-default";
+    }
+}
+
+class Item implements HasLabel {
+    value: String;
+
+    constructor(value: String) {
+        this.value = value;
+    }
+
+    // Current compiler behavior: class must still provide explicit implementation.
+    function label(): String {
+        return this.value;
+    }
+}
+
+function main(): None {
+    item: Item = Item("explicit-impl");
+    println(item.label());
+
+    // Invalid current pattern (kept as comment):
+    // class Broken implements HasLabel {
+    //     constructor() {}
+    // }
+
+    return None;
+}

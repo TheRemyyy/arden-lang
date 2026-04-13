@@ -53,8 +53,16 @@ import utils.strings as str;
 Import patterns supported in practice:
 
 - exact symbol import
+- exact member import (value/function/variant alias)
 - wildcard import (`...*`)
 - alias import (`... as alias`)
+
+Example:
+
+```arden
+import std.system.cwd as CurrentDir;
+import std.args.count as ArgCount;
+```
 
 ## Why Modules Matter In Real Projects
 
@@ -80,3 +88,4 @@ If you also need per-instance state and methods, use a class.
 - Examples:
   - [`08_modules`](../../examples/single_file/language_core/08_modules/08_modules.arden)
   - [`38_import_aliases`](../../examples/single_file/language_edges/38_import_aliases/38_import_aliases.arden)
+  - [`44_exact_import_values`](../../examples/single_file/language_edges/44_exact_import_values/44_exact_import_values.arden)

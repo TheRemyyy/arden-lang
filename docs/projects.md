@@ -43,6 +43,15 @@ Practical rule: treat `files` updates like API changes and review them in PRs.
 - relying on ad-hoc local paths that differ in CI
 - skipping `arden check` and discovering import/typing issues later in build
 
+## Common CLI Diagnostics (And Fast Fix)
+
+- `No arden.toml found ...`
+  - run command from project root or pass explicit file path for single-file mode
+- invalid `opt_level` in `arden.toml`
+  - allowed values: `0`, `1`, `2`, `3`, `s`, `z`, `fast`
+- entry/file path mismatch in `arden.toml`
+  - ensure `entry` and all `files` point to `.arden` files in repo
+
 ## Performance Tip
 
 Use `--timings` on `check`/`build` when feedback loops get slow.

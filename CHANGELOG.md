@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - No-check diagnostics: generic enum rejection now happens before specialization and reports the concrete enum name plus generic parameters (for clearer `--no-check` failures).
 - CLI perf tests: single-file bench/profile cleanup checks now track actual temp binary prefixes in `$TMPDIR` instead of unrelated neighboring paths.
 - CLI/testing/tooling: `profile` now uses its own temp-binary prefix (`arden-profile`), test-runner workspace paths are normalized/canonicalized more defensively (including `..` inputs), test-run failure diagnostics now include the runner executable path, and Linux smoke examples avoid `mapfile`-only Bash features.
+- Project/test-workspace path safety: project source/output validation now canonicalizes and checks symlink-target containment more strictly, duplicate source aliases resolving to the same file are rejected, and generated test-runner workspace file paths are normalized to prevent `..`/entry-collision regressions.
 - Project config IO: improved `arden.toml` read/write/parse diagnostics to always include the concrete file path and both supported parse shapes (`root` and `[project]`) for faster production triage.
 - Source discovery hardening: made recursive `.arden` collection reject symlink entries inside traversed trees (explicit fail-fast instead of silent traversal skipping).
 - Cache diagnostics: corrected env-override parse warning formatting for consistent log parsing.
@@ -47,6 +48,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Linker/LSP diagnostics: static-library `ar` launch/failure messages now include target output path; LSP startup runtime failure now reports explicit LSP context.
 - Project discovery diagnostics: `No arden.toml found` errors now include the concrete current working directory across `build/run/check/info/bench/profile` flows.
 - Test parsing diagnostics: `arden test` now reports lexer/parser failures with full test-file paths for faster pinpointing in multi-file suites.
+- Diagnostic hardening sweep (20+ micro-fixes): added richer source/target-path context across debug lexer errors, codegen failure reports, linker launch paths, bindgen boundary validation/output directory handling, and recursive test/source discovery error paths.
+- Project validation diagnostics: improved entry/source/output validation errors with clearer resolved-path/project-root context and more explicit output-path ancestor resolution failures.
+- Import-check diagnostics: when source rendering fails during import-error formatting, diagnostics now include the underlying file read error reason.
+- Bindgen boundary safety: reject missing header paths and directory output targets explicitly, auto-create output parent directories for file outputs, and add regression coverage for the new guards.
+- CI stability: fixed effect-attributes smoke examples (`@Any` caller boundaries), tightened test-file name detection to avoid false positives like `latest.arden`, and refined macOS symlink-ancestor handling so system temp aliases don't trip path guards.
 
 ## [1.3.7] - 2026-04-10
 

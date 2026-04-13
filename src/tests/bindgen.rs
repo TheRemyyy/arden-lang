@@ -1,4 +1,4 @@
-use super::TestExpectExt;
+use super::{TestExpectErrExt, TestExpectExt};
 use crate::bindgen::{generate_bindings, generate_from_prototype, strip_comments};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -165,4 +165,36 @@ fn spaced_array_parameters_preserve_real_parameter_names() {
         generated,
         "extern(c) function fill(name: String, label: String): None;"
     );
+}
+
+#[test]
+fn bindgen_rejects_missing_header_file() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .must("system time should be after unix epoch")
+        .as_nanos();
+    let header_path = std::env::temp_dir().join(format!("arden_bindgen_missing_{unique}.h"));
+
+    let error = generate_bindings(&header_path, None)
+        .must_err("bindgen should reject missing header files");
+    assert!(error.contains("does not exist"), "{error}");
+}
+
+#[test]
+fn bindgen_rejects_directory_output_path() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .must("system time should be after unix epoch")
+        .as_nanos();
+    let header_path = std::env::temp_dir().join(format!("arden_bindgen_dir_output_{unique}.h"));
+    let output_dir = std::env::temp_dir().join(format!("arden_bindgen_dir_output_{unique}"));
+    std::fs::write(&header_path, "int sum(int a, int b);\n").must("header should be written");
+    std::fs::create_dir_all(&output_dir).must("output directory should be created");
+
+    let error = generate_bindings(&header_path, Some(&output_dir))
+        .must_err("bindgen should reject directory output path");
+    assert!(error.contains("is a directory"), "{error}");
+
+    let _ = std::fs::remove_file(&header_path);
+    let _ = std::fs::remove_dir_all(&output_dir);
 }

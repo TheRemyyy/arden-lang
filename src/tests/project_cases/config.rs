@@ -128,6 +128,49 @@ fn validate_rejects_source_file_outside_project_root() {
     assert!(error.contains("outside the project root"), "{error}");
 }
 
+#[cfg(unix)]
+#[test]
+fn validate_rejects_source_path_through_symlinked_directory_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let project_root = unique_temp_dir("arden_project_validate_source_symlink_dir_escape");
+    let src_dir = project_root.join("src");
+    std::fs::create_dir_all(&src_dir).must("project src dir should be created");
+    std::fs::write(
+        src_dir.join("main.arden"),
+        "function main(): None { return None; }\n",
+    )
+    .must("entry file should be written");
+
+    let outside_dir = project_root
+        .parent()
+        .must("temp dir should have parent")
+        .join("arden_project_validate_source_symlink_dir_escape_outside");
+    std::fs::create_dir_all(&outside_dir).must("outside dir should be created");
+    std::fs::write(
+        outside_dir.join("evil.arden"),
+        "function helper(): None { return None; }\n",
+    )
+    .must("outside source should be written");
+
+    let linked_dir = project_root.join("linked_outside");
+    symlink(&outside_dir, &linked_dir).must("symlink should be created");
+
+    let mut config = ProjectConfig::new("demo");
+    config.files.push("linked_outside/evil.arden".to_string());
+
+    let error = config
+        .validate(&project_root)
+        .must_err("source path through symlinked directory should be rejected");
+
+    let _ = std::fs::remove_file(&linked_dir);
+    let _ = std::fs::remove_file(outside_dir.join("evil.arden"));
+    let _ = std::fs::remove_dir_all(&outside_dir);
+    let _ = std::fs::remove_dir_all(&project_root);
+
+    assert!(error.contains("outside the project root"), "{error}");
+}
+
 #[test]
 fn validate_rejects_directory_entry_path() {
     let project_root = unique_temp_dir("arden_project_validate_entry_dir");
@@ -222,6 +265,80 @@ fn validate_rejects_non_arden_source_path() {
 }
 
 #[test]
+fn validate_rejects_duplicate_source_entries_resolving_to_same_file() {
+    let project_root = unique_temp_dir("arden_project_validate_duplicate_resolved_path");
+    let src_dir = project_root.join("src");
+    std::fs::create_dir_all(&src_dir).must("project src dir should be created");
+    std::fs::write(
+        src_dir.join("main.arden"),
+        "function main(): None { return None; }\n",
+    )
+    .must("entry file should be written");
+
+    let mut config = ProjectConfig::new("demo");
+    config.files = vec![
+        "src/main.arden".to_string(),
+        "src/../src/main.arden".to_string(),
+    ];
+
+    let error = config
+        .validate(&project_root)
+        .must_err("duplicate resolved source paths should be rejected");
+
+    let _ = std::fs::remove_dir_all(&project_root);
+
+    assert!(error.contains("resolves to the same file"), "{error}");
+}
+
+#[test]
+fn validate_accepts_entry_and_files_with_different_relative_aliases_to_same_file() {
+    let project_root = unique_temp_dir("arden_project_validate_entry_file_alias");
+    let src_dir = project_root.join("src");
+    std::fs::create_dir_all(&src_dir).must("project src dir should be created");
+    std::fs::write(
+        src_dir.join("main.arden"),
+        "function main(): None { return None; }\n",
+    )
+    .must("entry file should be written");
+
+    let mut config = ProjectConfig::new("demo");
+    config.entry = "src/main.arden".to_string();
+    config.files = vec!["src/../src/main.arden".to_string()];
+
+    config
+        .validate(&project_root)
+        .must("entry and files resolving to same source should be accepted");
+
+    let _ = std::fs::remove_dir_all(&project_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn validate_accepts_symlinked_source_file_inside_project_root() {
+    use std::os::unix::fs::symlink;
+
+    let project_root = unique_temp_dir("arden_project_validate_source_symlink_inside");
+    let src_dir = project_root.join("src");
+    std::fs::create_dir_all(&src_dir).must("project src dir should be created");
+    let real_main = src_dir.join("main.arden");
+    std::fs::write(&real_main, "function main(): None { return None; }\n")
+        .must("entry file should be written");
+    let linked_main = src_dir.join("main_link.arden");
+    symlink(&real_main, &linked_main).must("symlink should be created");
+
+    let mut config = ProjectConfig::new("demo");
+    config.entry = "src/main.arden".to_string();
+    config.files = vec!["src/main_link.arden".to_string()];
+
+    config
+        .validate(&project_root)
+        .must("in-root symlinked source file should be accepted");
+
+    let _ = std::fs::remove_file(&linked_main);
+    let _ = std::fs::remove_dir_all(&project_root);
+}
+
+#[test]
 fn validate_rejects_output_path_outside_project_root() {
     let project_root = unique_temp_dir("arden_project_validate_output_escape");
     let src_dir = project_root.join("src");
@@ -242,6 +359,74 @@ fn validate_rejects_output_path_outside_project_root() {
     let _ = std::fs::remove_dir_all(&project_root);
 
     assert!(error.contains("outside the project root"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn validate_rejects_output_path_symlink_target_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let project_root = unique_temp_dir("arden_project_validate_output_symlink_escape");
+    let src_dir = project_root.join("src");
+    std::fs::create_dir_all(&src_dir).must("project src dir should be created");
+    std::fs::write(
+        src_dir.join("main.arden"),
+        "function main(): None { return None; }\n",
+    )
+    .must("entry file should be written");
+
+    let outside_dir = project_root
+        .parent()
+        .must("temp dir should have parent")
+        .join("arden_project_validate_output_symlink_escape_outside");
+    std::fs::create_dir_all(&outside_dir).must("outside dir should be created");
+    let outside_output = outside_dir.join("output-bin");
+    std::fs::write(&outside_output, "placeholder").must("outside output should be written");
+
+    let linked_output = project_root.join("out_link");
+    symlink(&outside_output, &linked_output).must("output symlink should be created");
+
+    let mut config = ProjectConfig::new("demo");
+    config.output = "out_link".to_string();
+
+    let error = config
+        .validate(&project_root)
+        .must_err("symlinked output path to outside root should be rejected");
+
+    let _ = std::fs::remove_file(&linked_output);
+    let _ = std::fs::remove_file(&outside_output);
+    let _ = std::fs::remove_dir_all(&outside_dir);
+    let _ = std::fs::remove_dir_all(&project_root);
+
+    assert!(error.contains("outside the project root"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn validate_rejects_output_path_symlinked_to_source_file_inside_root() {
+    use std::os::unix::fs::symlink;
+
+    let project_root = unique_temp_dir("arden_project_validate_output_symlink_source_collision");
+    let src_dir = project_root.join("src");
+    std::fs::create_dir_all(&src_dir).must("project src dir should be created");
+    let main_file = src_dir.join("main.arden");
+    std::fs::write(&main_file, "function main(): None { return None; }\n")
+        .must("entry file should be written");
+
+    let output_link = project_root.join("output_link");
+    symlink(&main_file, &output_link).must("output symlink should be created");
+
+    let mut config = ProjectConfig::new("demo");
+    config.output = "output_link".to_string();
+
+    let error = config
+        .validate(&project_root)
+        .must_err("symlinked output to source file should be rejected");
+
+    let _ = std::fs::remove_file(&output_link);
+    let _ = std::fs::remove_dir_all(&project_root);
+
+    assert!(error.contains("must not overwrite source file"), "{error}");
 }
 
 #[test]
@@ -408,6 +593,24 @@ fn find_project_root_accepts_existing_directory_with_dot_in_name() {
     let discovered = find_project_root(&project_root);
 
     let _ = std::fs::remove_dir_all(&parent_root);
+
+    assert_eq!(discovered.as_deref(), Some(project_root.as_path()));
+}
+
+#[test]
+fn find_project_root_accepts_relative_path_when_current_dir_is_unavailable() {
+    let project_root = unique_temp_dir("arden_project_find_root_relative_fallback");
+    let src_dir = project_root.join("src");
+    std::fs::create_dir_all(&src_dir).must("project src dir should be created");
+    std::fs::write(
+        project_root.join("arden.toml"),
+        "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\n",
+    )
+    .must("project config should be written");
+
+    let discovered = with_current_dir(&project_root, || find_project_root(Path::new("./src")));
+
+    let _ = std::fs::remove_dir_all(&project_root);
 
     assert_eq!(discovered.as_deref(), Some(project_root.as_path()));
 }

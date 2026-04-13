@@ -24,6 +24,12 @@ fn is_test_like_file_matches_test_and_spec_suffixes() {
     assert!(!crate::cli::test_discovery::is_test_like_file(Path::new(
         "demo_test.txt"
     )));
+    assert!(!crate::cli::test_discovery::is_test_like_file(Path::new(
+        "latest.arden"
+    )));
+    assert!(!crate::cli::test_discovery::is_test_like_file(Path::new(
+        "contest.arden"
+    )));
 }
 
 #[cfg(unix)]
@@ -65,7 +71,37 @@ fn find_test_files_rejects_symlinked_root_directory() {
 
     let err = crate::cli::test_discovery::find_test_files(&linked_dir)
         .must_err("symlink root should fail");
-    assert!(err.contains("must not be a symlinked directory"), "{err}");
+    assert!(
+        err.contains("must not be a symlinked directory")
+            || err.contains("must not traverse symlinked directories"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn find_test_files_rejects_symlinked_ancestor_directory() {
+    let temp_root = make_temp_project_root("cli-test-discovery-ancestor-symlink");
+    let real_parent = temp_root.join("real-parent");
+    let real_tests_dir = real_parent.join("tests");
+    fs::create_dir_all(&real_tests_dir).must("create real tests dir");
+    fs::write(
+        real_tests_dir.join("escape_test.arden"),
+        "@Test\nfunction smoke(): None { return None; }\n",
+    )
+    .must("write test file");
+    let linked_parent = temp_root.join("linked-parent");
+    std::os::unix::fs::symlink(&real_parent, &linked_parent).must("create parent symlink");
+    let linked_tests_dir = linked_parent.join("tests");
+
+    let err = crate::cli::test_discovery::find_test_files(&linked_tests_dir)
+        .must_err("symlink ancestor should fail");
+    assert!(
+        err.contains("must not traverse symlinked directories"),
+        "{err}"
+    );
 
     let _ = fs::remove_dir_all(temp_root);
 }

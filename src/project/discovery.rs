@@ -5,7 +5,10 @@ pub fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
     let normalized = if start_dir.is_absolute() {
         start_dir.to_path_buf()
     } else {
-        std::env::current_dir().ok()?.join(start_dir)
+        match std::env::current_dir() {
+            Ok(current_dir) => current_dir.join(start_dir),
+            Err(_) => start_dir.to_path_buf(),
+        }
     };
 
     let mut current = if normalized.is_dir() {

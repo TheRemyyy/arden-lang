@@ -19,9 +19,12 @@ Each single-file example folder contains:
 2. `single_file/language_core/05_classes/05_classes.arden`
 3. `single_file/safety_and_async/10_ownership/10_ownership.arden`
 4. `single_file/safety_and_async/14_async/14_async.arden`
-5. `single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden`
-6. `single_file/language_edges/35_visibility_enforcement/35_visibility_enforcement.arden`
-7. `starter_project/`
+5. `single_file/safety_and_async/41_async_boundary_rules/41_async_boundary_rules.arden`
+6. `single_file/tooling_and_ffi/24_test_attributes/24_test_attributes.arden`
+7. `single_file/language_edges/35_visibility_enforcement/35_visibility_enforcement.arden`
+8. `single_file/language_edges/44_exact_import_values/44_exact_import_values.arden`
+9. `single_file/language_edges/45_interface_inline_body_rules/45_interface_inline_body_rules.arden`
+10. `starter_project/`
 
 ## Run
 

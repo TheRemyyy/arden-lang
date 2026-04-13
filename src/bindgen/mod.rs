@@ -255,6 +255,13 @@ pub(crate) fn generate_from_prototype(proto: &str) -> Option<String> {
 }
 
 pub fn generate_bindings(header: &Path, output: Option<&Path>) -> Result<usize, String> {
+    if !header.exists() {
+        return Err(format!("Header '{}' does not exist", header.display()));
+    }
+    if !header.is_file() {
+        return Err(format!("Header '{}' is not a file", header.display()));
+    }
+
     let raw = fs::read_to_string(header)
         .map_err(|e| format!("Failed to read header '{}': {}", header.display(), e))?;
     let stripped = strip_comments(&raw);
@@ -274,6 +281,23 @@ pub fn generate_bindings(header: &Path, output: Option<&Path>) -> Result<usize, 
 
     let out_text = lines.join("\n") + "\n";
     if let Some(path) = output {
+        if path.exists() && path.is_dir() {
+            return Err(format!(
+                "Bindgen output path '{}' is a directory; expected a file path",
+                path.display()
+            ));
+        }
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).map_err(|e| {
+                    format!(
+                        "Failed to create bindgen output directory '{}': {}",
+                        parent.display(),
+                        e
+                    )
+                })?;
+            }
+        }
         fs::write(path, out_text)
             .map_err(|e| format!("Failed to write output '{}': {}", path.display(), e))?;
     } else {

@@ -34,6 +34,18 @@ Arden is not just a parser demo. The repository already includes:
 4. [Ownership](advanced/ownership.md), [Error Handling](advanced/error_handling.md), [Async](advanced/async.md), [Effects](advanced/effects.md)
 5. [Extern and FFI](advanced/ffi.md), [Projects](features/projects.md), [CLI](compiler/cli.md), [Architecture](compiler/architecture.md)
 
+## Newcomer Cheat Sheet
+
+If you are reading Arden for the first time, these symbols cover most confusion:
+
+- `mut x` -> binding can be reassigned
+- `x` (without `mut`) -> immutable binding
+- `&x` -> read-only borrow
+- `&mut x` -> exclusive mutable borrow
+- `import std.<module>.*;` -> required for `Math.*`, `Str.*`, `Time.*`, `System.*`, `Args.*`, `File.*`
+- `Option<T>` vs `Result<T, E>` -> missing value vs recoverable failure with reason
+- `Task<T>` -> async value you must `await` (or handle with timeout/status APIs)
+
 ## 60-Second Sanity Loop
 
 ```bash
@@ -46,10 +58,14 @@ arden test --path examples/single_file/tooling_and_ffi/24_test_attributes/24_tes
 
 - basics: [`01_hello`](../examples/single_file/basics/01_hello/01_hello.arden)
 - ownership: [`10_ownership`](../examples/single_file/safety_and_async/10_ownership/10_ownership.arden)
+- async boundary rules: [`41_async_boundary_rules`](../examples/single_file/safety_and_async/41_async_boundary_rules/41_async_boundary_rules.arden)
 - async: [`14_async`](../examples/single_file/safety_and_async/14_async/14_async.arden)
 - effects: [`26_effect_system`](../examples/single_file/tooling_and_ffi/26_effect_system/26_effect_system.arden)
 - extern/ffi: [`27_extern_c_interop`](../examples/single_file/tooling_and_ffi/27_extern_c_interop/27_extern_c_interop.arden)
+- borrow-mut behavior matrix: [`43_borrow_mut_semantics`](../examples/single_file/tooling_and_ffi/43_borrow_mut_semantics/43_borrow_mut_semantics.arden)
+- exact imports: [`44_exact_import_values`](../examples/single_file/language_edges/44_exact_import_values/44_exact_import_values.arden)
 - visibility/contracts: [`35_visibility_enforcement`](../examples/single_file/language_edges/35_visibility_enforcement/35_visibility_enforcement.arden), [`37_interfaces_contracts`](../examples/single_file/language_edges/37_interfaces_contracts/37_interfaces_contracts.arden)
+- interface inline-body rule: [`45_interface_inline_body_rules`](../examples/single_file/language_edges/45_interface_inline_body_rules/45_interface_inline_body_rules.arden)
 - full example index: [examples/README](../examples/README.md)
 
 ## Mental Model

@@ -80,6 +80,15 @@ ARDEN_OBJECT_SHARD_THRESHOLD=1 ARDEN_OBJECT_SHARD_SIZE=2 arden build --timings
 - mixing generated and source files without clear ownership
 - not pinning entrypoint and then debugging the wrong startup file
 
+## Common Diagnostics You Will Hit
+
+- `No arden.toml found ...`
+  - you are outside project root; `cd` into directory with `arden.toml`
+- invalid `opt_level` in config
+  - use one of `0`, `1`, `2`, `3`, `s`, `z`, `fast`
+- file graph errors after adding new file
+  - add file path into `files = [...]` and rerun `arden check`
+
 ## Related
 
 - [Projects summary](../projects.md)

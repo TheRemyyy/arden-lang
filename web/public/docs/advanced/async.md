@@ -107,6 +107,7 @@ See [Ownership and Borrowing](ownership.md).
 Current compiler boundary rules:
 
 - async function parameters cannot contain borrowed references (`&T`, `&mut T`, or nested borrowed-reference-bearing types)
+- async function return value cannot contain borrowed references across async boundary
 - async blocks cannot capture bindings whose types contain borrowed references
 
 Typical invalid patterns:

@@ -1345,9 +1345,14 @@ pub(crate) fn compile_program_ast(
         .unwrap_or("main");
 
     let mut codegen = Codegen::new(&context, module_name);
-    codegen
-        .compile(program)
-        .map_err(|e| format!("{}: Codegen error: {}", "error".red().bold(), e.message))?;
+    codegen.compile(program).map_err(|e| {
+        format!(
+            "{}: Codegen error in '{}': {}",
+            "error".red().bold(),
+            source_path.display(),
+            e.message
+        )
+    })?;
 
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
@@ -1421,7 +1426,14 @@ pub(crate) fn compile_program_ast_to_object_filtered(
     let compile_started_at = Instant::now();
     codegen
         .compile_filtered_with_decl_symbols(program, active_symbols, declaration_symbols)
-        .map_err(|e| format!("{}: Codegen error: {}", "error".red().bold(), e.message))?;
+        .map_err(|e| {
+            format!(
+                "{}: Codegen error in '{}': {}",
+                "error".red().bold(),
+                source_path.display(),
+                e.message
+            )
+        })?;
     if let Some(timings) = timings {
         timings
             .compile_filtered_ns
@@ -1509,12 +1521,9 @@ pub(crate) fn compile_file(
     ensure_output_parent_dir(&output_path)?;
 
     if !do_check {
-        let filename = file
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("input.arden");
-        let program = parse_program_from_source(&source, filename)?;
-        validate_entry_main_signature(&program, &source, filename)?;
+        let filename = file.to_string_lossy();
+        let program = parse_program_from_source(&source, &filename)?;
+        validate_entry_main_signature(&program, &source, &filename)?;
     }
 
     compile_source(
@@ -1548,17 +1557,14 @@ pub(crate) fn compile_source(
 ) -> Result<(), String> {
     validate_opt_level(opt_level)?;
 
-    let filename = source_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("input.arden");
+    let filename = source_path.to_string_lossy();
 
     // Tokenize
-    let program = parse_program_from_source(source, filename)?;
+    let program = parse_program_from_source(source, &filename)?;
 
     // Type check
     if do_check {
-        run_single_file_semantic_checks(source, filename, &program)?;
+        run_single_file_semantic_checks(source, &filename, &program)?;
     }
 
     // Codegen
@@ -1569,9 +1575,14 @@ pub(crate) fn compile_source(
         .unwrap_or("main");
 
     let mut codegen = Codegen::new(&context, module_name);
-    codegen
-        .compile(&program)
-        .map_err(|e| format!("{}: Codegen error: {}", "error".red().bold(), e.message))?;
+    codegen.compile(&program).map_err(|e| {
+        format!(
+            "{}: Codegen error in '{}': {}",
+            "error".red().bold(),
+            source_path.display(),
+            e.message
+        )
+    })?;
 
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");

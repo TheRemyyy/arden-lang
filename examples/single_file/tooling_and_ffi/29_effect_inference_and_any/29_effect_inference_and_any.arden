@@ -22,6 +22,7 @@ function permissiveWorker(): None {
     return None;
 }
 
+@Any
 function main(): None {
     println("=== Effect Inference + @Any ===");
     ioWrapper();

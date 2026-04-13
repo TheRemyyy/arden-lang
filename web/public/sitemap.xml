@@ -2,37 +2,37 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://www.arden-lang.dev/</loc>
-    <lastmod>2026-04-12T20:43:10.480Z</lastmod>
+    <lastmod>2026-04-13T14:37:53.280Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/install</loc>
-    <lastmod>2026-04-12T20:43:10.480Z</lastmod>
+    <lastmod>2026-04-13T14:37:53.280Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/changelog</loc>
-    <lastmod>2026-04-13T14:27:53.010Z</lastmod>
+    <lastmod>2026-04-13T14:54:32.515Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/terms</loc>
-    <lastmod>2026-04-12T20:43:10.480Z</lastmod>
+    <lastmod>2026-04-13T14:37:53.280Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/privacy</loc>
-    <lastmod>2026-04-12T20:43:10.480Z</lastmod>
+    <lastmod>2026-04-13T14:37:53.280Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/overview</loc>
-    <lastmod>2026-04-13T13:43:49.208Z</lastmod>
+    <lastmod>2026-04-13T14:53:20.668Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
@@ -44,7 +44,7 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/getting_started/quick_start</loc>
-    <lastmod>2026-04-12T21:34:20.325Z</lastmod>
+    <lastmod>2026-04-13T14:53:30.274Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -92,7 +92,7 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/interfaces</loc>
-    <lastmod>2026-04-13T14:15:32.030Z</lastmod>
+    <lastmod>2026-04-13T14:39:35.814Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -110,13 +110,13 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/modules</loc>
-    <lastmod>2026-04-13T13:06:51.945Z</lastmod>
+    <lastmod>2026-04-13T14:53:38.841Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/projects</loc>
-    <lastmod>2026-04-12T22:05:59.706Z</lastmod>
+    <lastmod>2026-04-13T14:54:24.360Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -194,13 +194,13 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/advanced/async</loc>
-    <lastmod>2026-04-13T14:28:06.043Z</lastmod>
+    <lastmod>2026-04-13T14:39:39.572Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/advanced/error_handling</loc>
-    <lastmod>2026-04-13T14:11:34.411Z</lastmod>
+    <lastmod>2026-04-13T14:40:48.538Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -224,7 +224,7 @@
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/projects</loc>
-    <lastmod>2026-04-12T22:02:11.577Z</lastmod>
+    <lastmod>2026-04-13T14:54:15.881Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>

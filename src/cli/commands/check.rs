@@ -48,13 +48,10 @@ pub(crate) fn check_file(file: Option<&Path>) -> Result<(), String> {
         )
     })?;
 
-    let filename = file_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("input.arden");
+    let filename = file_path.to_string_lossy();
 
-    let program = parse_program_from_source(&source, filename)?;
-    run_single_file_semantic_checks(&source, filename, &program)?;
+    let program = parse_program_from_source(&source, &filename)?;
+    run_single_file_semantic_checks(&source, &filename, &program)?;
 
     println!("{} {}", cli_success("Check passed"), cli_path(&file_path));
     Ok(())

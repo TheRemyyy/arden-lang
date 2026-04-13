@@ -25,9 +25,10 @@ pub(crate) fn run_entry_validation_phase(
         .map(|unit| &unit.program)
         .ok_or_else(|| {
             format!(
-                "{}: Entry file '{}' was not parsed",
+                "{}: Entry file '{}' was not parsed (parsed units: {})",
                 crate::cli_error("error"),
-                entry_path.display()
+                entry_path.display(),
+                parsed_files.len()
             )
         })?;
     let entry_filename = entry_path

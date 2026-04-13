@@ -153,11 +153,13 @@ fn apply_stable_command_dir(command: &mut Command, anchor_path: &Path) {
 }
 
 fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), String> {
+    let command_program = command.get_program().to_string_lossy().into_owned();
     let output = command.output().map_err(|error| {
         format!(
-            "{}: Failed to launch {}: {}",
+            "{}: Failed to launch {} ('{}'): {}",
             "error".red().bold(),
             tool_label,
+            command_program,
             error
         )
     })?;
@@ -485,13 +487,14 @@ fn macos_sdk_root() -> Result<PathBuf, String> {
     }
 
     let xcrun_path = find_tool_in_path("xcrun").unwrap_or_else(|| PathBuf::from("/usr/bin/xcrun"));
-    let mut command = Command::new(xcrun_path);
+    let mut command = Command::new(&xcrun_path);
     command.arg("--sdk").arg("macosx").arg("--show-sdk-path");
     apply_fallback_current_dir(&mut command);
     let output = command.output().map_err(|error| {
         format!(
-            "{}: Failed to launch xcrun to resolve the macOS SDK path: {}",
+            "{}: Failed to launch xcrun '{}' to resolve the macOS SDK path: {}",
             "error".red().bold(),
+            xcrun_path.display(),
             error
         )
     })?;
@@ -533,13 +536,14 @@ fn macos_sdk_version() -> Result<String, String> {
     }
 
     let xcrun_path = find_tool_in_path("xcrun").unwrap_or_else(|| PathBuf::from("/usr/bin/xcrun"));
-    let mut command = Command::new(xcrun_path);
+    let mut command = Command::new(&xcrun_path);
     command.arg("--sdk").arg("macosx").arg("--show-sdk-version");
     apply_fallback_current_dir(&mut command);
     let output = command.output().map_err(|error| {
         format!(
-            "{}: Failed to launch xcrun to resolve the macOS SDK version: {}",
+            "{}: Failed to launch xcrun '{}' to resolve the macOS SDK version: {}",
             "error".red().bold(),
+            xcrun_path.display(),
             error
         )
     })?;

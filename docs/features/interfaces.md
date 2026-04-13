@@ -46,7 +46,7 @@ function main(): None {
 }
 ```
 
-## Interface Inheritance and Default Implementations
+## Interface Inheritance and Inline Method Bodies
 
 Compiler surface includes:
 
@@ -59,7 +59,11 @@ Current behavior:
 - classes still must explicitly implement required interface methods
   even when interface method has an inline body
 
-Use this to share default behavior while still enforcing capability contracts.
+Practical implication:
+
+- do not assume Java/C#-style automatic default-method inheritance into classes
+- write explicit class methods for required interface members
+- treat inline interface bodies as contract-adjacent behavior definition, not implicit class implementation
 
 ## Minimal Capability Pattern
 
@@ -94,3 +98,4 @@ If you have a single concrete model and no abstraction need, a class alone is si
 - [Classes](classes.md)
 - [Generics](../advanced/generics.md)
 - Example: [`37_interfaces_contracts`](../../examples/single_file/language_edges/37_interfaces_contracts/37_interfaces_contracts.arden)
+- Example: [`45_interface_inline_body_rules`](../../examples/single_file/language_edges/45_interface_inline_body_rules/45_interface_inline_body_rules.arden)

@@ -22,6 +22,7 @@ Run ownership and async examples next:
 ```bash
 arden run examples/single_file/safety_and_async/10_ownership/10_ownership.arden
 arden run examples/single_file/safety_and_async/14_async/14_async.arden
+arden run examples/single_file/safety_and_async/41_async_boundary_rules/41_async_boundary_rules.arden
 ```
 
 ## 3. Learn Effects and Testing
@@ -38,6 +39,13 @@ arden check examples/single_file/safety_and_async/10_ownership/10_ownership.arde
 ```
 
 `check` is the fastest way to validate syntax + types + borrow rules without full final artifact flow.
+
+## Quick Syntax Survival Notes
+
+- use `mut` only when variable reassignment is needed
+- `&x` is read-only borrow, `&mut x` is exclusive mutable borrow
+- stdlib module calls (`Math.*`, `Str.*`, `Time.*`, `System.*`, `Args.*`, `File.*`) require explicit imports
+- `main()` must be synchronous and return `None` or `Integer`
 
 ## 5. Start A Project
 
@@ -59,6 +67,13 @@ arden info
 arden test
 arden fmt
 arden lint
+```
+
+## 7. Explore Language Edges
+
+```bash
+arden run examples/single_file/language_edges/44_exact_import_values/44_exact_import_values.arden
+arden run examples/single_file/language_edges/45_interface_inline_body_rules/45_interface_inline_body_rules.arden
 ```
 
 ## Next Docs

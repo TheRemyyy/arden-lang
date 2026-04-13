@@ -137,7 +137,18 @@ pub(crate) fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, 
         if metadata.file_type().is_symlink() {
             #[cfg(target_os = "macos")]
             {
-                if dir == Path::new("/var") || dir == Path::new("/tmp") {
+                let temp_dir = std::env::temp_dir();
+                let canonical_temp_dir = temp_dir.canonicalize().ok();
+                let canonical_dir = dir.canonicalize().ok();
+                if dir == Path::new("/var")
+                    || dir == Path::new("/tmp")
+                    || temp_dir.starts_with(dir)
+                    || canonical_temp_dir
+                        .as_ref()
+                        .zip(canonical_dir.as_ref())
+                        .map(|(temp, ancestor)| temp.starts_with(ancestor))
+                        .unwrap_or(false)
+                {
                     current = dir.parent();
                     continue;
                 }
@@ -194,7 +205,6 @@ pub(crate) fn validate_source_file_path(path: &Path) -> Result<(), String> {
             path.display()
         ));
     }
-
     Ok(())
 }
 
@@ -248,19 +258,23 @@ pub(crate) fn unique_temp_binary_path(tag: &str, source: &Path) -> Result<PathBu
 }
 
 fn collect_arden_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    for entry in fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?
-    {
+    for entry in fs::read_dir(dir).map_err(|e| {
+        format!(
+            "Failed to read directory '{}' while collecting .arden files: {}",
+            dir.display(),
+            e
+        )
+    })? {
         let entry = entry.map_err(|e| {
             format!(
-                "Failed to read directory entry in '{}': {}",
+                "Failed to read directory entry in '{}' while collecting .arden files: {}",
                 dir.display(),
                 e
             )
         })?;
         let file_type = entry.file_type().map_err(|e| {
             format!(
-                "Failed to inspect directory entry '{}': {}",
+                "Failed to inspect directory entry '{}' while collecting .arden files: {}",
                 entry.path().display(),
                 e
             )

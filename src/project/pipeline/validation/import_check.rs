@@ -100,12 +100,18 @@ pub(crate) fn run_import_check_phase(
                             if let Ok(source) = source.as_deref() {
                                 rendered.push_str(&error.format_with_source(source, filename));
                             } else {
+                                let source_read_error = source
+                                    .as_ref()
+                                    .err()
+                                    .map(std::string::ToString::to_string)
+                                    .unwrap_or_else(|| "unknown read error".to_string());
                                 rendered.push_str(&format!(
-                                    "{}: {}\n{}: Failed to read '{}' while formatting import errors",
+                                    "{}: {}\n{}: Failed to read '{}' while formatting import errors: {}",
                                     "error".red().bold(),
                                     error.format(),
                                     "error".red().bold(),
                                     unit.file.display(),
+                                    source_read_error,
                                 ));
                             }
                             rendered.push('\n');

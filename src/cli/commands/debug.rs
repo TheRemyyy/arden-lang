@@ -19,8 +19,14 @@ pub(crate) fn lex_file(file: &Path) -> Result<(), String> {
         )
     })?;
 
-    let tokens = lexer::tokenize(&source)
-        .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
+    let tokens = lexer::tokenize(&source).map_err(|e| {
+        format!(
+            "{}: Lexer error in '{}': {}",
+            "error".red().bold(),
+            file.display(),
+            e
+        )
+    })?;
 
     println!("{}", cli_accent("Tokens"));
     for (token, span) in tokens {
@@ -42,17 +48,20 @@ pub(crate) fn parse_file(file: &Path) -> Result<(), String> {
         )
     })?;
 
-    let tokens = lexer::tokenize(&source)
-        .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
+    let tokens = lexer::tokenize(&source).map_err(|e| {
+        format!(
+            "{}: Lexer error in '{}': {}",
+            "error".red().bold(),
+            file.display(),
+            e
+        )
+    })?;
 
-    let filename = file
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("input.arden");
+    let filename = file.to_string_lossy();
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()
-        .map_err(|e| format_parse_error(&e, &source, filename))?;
+        .map_err(|e| format_parse_error(&e, &source, &filename))?;
 
     println!("{}", cli_accent("AST"));
     println!("{:#?}", program);

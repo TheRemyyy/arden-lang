@@ -8,6 +8,12 @@ pub(crate) fn find_test_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     if !dir.is_dir() {
         return Err(format!("Path '{}' is not a directory", dir.display()));
     }
+    if crate::cli::paths::path_traverses_symlinked_directories(dir)? {
+        return Err(format!(
+            "Path '{}' must not traverse symlinked directories",
+            dir.display()
+        ));
+    }
     let metadata = fs::symlink_metadata(dir)
         .map_err(|e| format!("Failed to inspect directory '{}': {}", dir.display(), e))?;
     if metadata.file_type().is_symlink() {
@@ -29,24 +35,67 @@ pub(crate) fn is_test_like_file(path: &Path) -> bool {
     }
 
     let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    let lowercase = file_name.to_ascii_lowercase();
-    lowercase.contains("test") || lowercase.contains("spec")
+    has_test_suffix(file_name, "test") || has_test_suffix(file_name, "spec")
+}
+
+fn has_test_suffix(file_name: &str, suffix: &str) -> bool {
+    let suffix_char_count = suffix.chars().count();
+    let file_char_count = file_name.chars().count();
+    if file_char_count < suffix_char_count {
+        return false;
+    }
+
+    let suffix_start_char = file_char_count - suffix_char_count;
+    let mut char_indices = file_name.char_indices();
+    let suffix_start_byte = if suffix_start_char == 0 {
+        0
+    } else {
+        let Some((idx, _)) = char_indices.nth(suffix_start_char) else {
+            return false;
+        };
+        idx
+    };
+
+    let suffix_text = &file_name[suffix_start_byte..];
+    if !suffix_text.eq_ignore_ascii_case(suffix) {
+        return false;
+    }
+    if suffix_start_byte == 0 {
+        return true;
+    }
+
+    let mut prefix_chars = file_name[..suffix_start_byte].chars();
+    let Some(previous_char) = prefix_chars.next_back() else {
+        return true;
+    };
+    if !previous_char.is_ascii_alphanumeric() {
+        return true;
+    }
+
+    let Some(suffix_first) = suffix_text.chars().next() else {
+        return false;
+    };
+    previous_char.is_ascii_lowercase() && suffix_first.is_ascii_uppercase()
 }
 
 fn find_test_files_recursive(dir: &Path, test_files: &mut Vec<PathBuf>) -> Result<(), String> {
-    for entry in fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?
-    {
+    for entry in fs::read_dir(dir).map_err(|e| {
+        format!(
+            "Failed to read directory '{}' while discovering tests: {}",
+            dir.display(),
+            e
+        )
+    })? {
         let entry = entry.map_err(|e| {
             format!(
-                "Failed to read directory entry in '{}': {}",
+                "Failed to read directory entry in '{}' while discovering tests: {}",
                 dir.display(),
                 e
             )
         })?;
         let file_type = entry.file_type().map_err(|e| {
             format!(
-                "Failed to inspect directory entry '{}': {}",
+                "Failed to inspect directory entry '{}' while discovering tests: {}",
                 entry.path().display(),
                 e
             )
