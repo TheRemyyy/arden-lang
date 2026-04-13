@@ -54,6 +54,35 @@ pub struct ObjectWriteTimingSnapshot {
     pub write_object_call_count: usize,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::Codegen;
+
+    #[test]
+    fn baseline_cpu_for_x86_64_uses_stable_x86_64_level() {
+        assert_eq!(
+            Codegen::baseline_cpu_for_triple("x86_64-unknown-linux-gnu"),
+            "x86-64"
+        );
+        assert_eq!(
+            Codegen::baseline_cpu_for_triple("x86_64-pc-windows-msvc"),
+            "x86-64"
+        );
+    }
+
+    #[test]
+    fn baseline_cpu_for_non_x86_64_defaults_to_generic() {
+        assert_eq!(
+            Codegen::baseline_cpu_for_triple("aarch64-apple-darwin"),
+            "generic"
+        );
+        assert_eq!(
+            Codegen::baseline_cpu_for_triple("riscv64gc-unknown-linux-gnu"),
+            "generic"
+        );
+    }
+}
+
 struct ObjectWriteTimingTotals {
     emit_object_bytes_ns: AtomicU64,
     with_target_machine_ns: AtomicU64,
@@ -244,6 +273,47 @@ thread_local! {
 }
 
 impl<'ctx> Codegen<'ctx> {
+    fn should_use_native_codegen_cpu() -> bool {
+        std::env::var("ARDEN_CODEGEN_NATIVE_CPU")
+            .map(|value| {
+                let normalized = value.trim().to_ascii_lowercase();
+                matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+            })
+            .unwrap_or(false)
+    }
+
+    fn baseline_cpu_for_triple(triple: &str) -> &'static str {
+        if triple.starts_with("x86_64") {
+            "x86-64"
+        } else {
+            "generic"
+        }
+    }
+
+    fn resolve_codegen_cpu_and_features(
+        target_triple: Option<&str>,
+        triple_string: &str,
+    ) -> std::result::Result<(String, String), String> {
+        if target_triple.is_none() && Self::should_use_native_codegen_cpu() {
+            let host_cpu_name = TargetMachine::get_host_cpu_name();
+            let host_cpu_features = TargetMachine::get_host_cpu_features();
+            let cpu = host_cpu_name
+                .to_str()
+                .map_err(|e| format!("Failed to decode host CPU name: {}", e))?
+                .to_string();
+            let features = host_cpu_features
+                .to_str()
+                .map_err(|e| format!("Failed to decode host CPU features: {}", e))?
+                .to_string();
+            return Ok((cpu, features));
+        }
+
+        Ok((
+            Self::baseline_cpu_for_triple(triple_string).to_string(),
+            String::new(),
+        ))
+    }
+
     pub(crate) fn libc_size_type(&self) -> inkwell::types::IntType<'ctx> {
         #[cfg(target_pointer_width = "32")]
         {
@@ -3234,28 +3304,12 @@ impl<'ctx> Codegen<'ctx> {
         );
         let triple_string = triple.as_str().to_string_lossy().into_owned();
         let host_cpu_query_started_at = Instant::now();
-        let host_cpu_name = TargetMachine::get_host_cpu_name();
-        let host_cpu_features = TargetMachine::get_host_cpu_features();
+        let (cpu, features) =
+            Self::resolve_codegen_cpu_and_features(target_triple, &triple_string)?;
         OBJECT_WRITE_TIMING_TOTALS.host_cpu_query_ns.fetch_add(
             elapsed_nanos_u64(host_cpu_query_started_at),
             Ordering::Relaxed,
         );
-        let cpu = if target_triple.is_some() {
-            "generic".to_string()
-        } else {
-            host_cpu_name
-                .to_str()
-                .map_err(|e| format!("Failed to decode host CPU name: {}", e))?
-                .to_string()
-        };
-        let features = if target_triple.is_some() {
-            "".to_string()
-        } else {
-            host_cpu_features
-                .to_str()
-                .map_err(|e| format!("Failed to decode host CPU features: {}", e))?
-                .to_string()
-        };
         let opt_level_resolve_started_at = Instant::now();
         let opt_key = match Self::resolve_optimization_level(opt_level) {
             OptimizationLevel::None => "0",

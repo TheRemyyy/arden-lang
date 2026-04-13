@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- CI hardening for LLVM 22 builds: default Cargo target CPU is now baseline (`x86-64`/`generic`) instead of `native`, codegen target-machine defaults now use stable baseline CPU/features unless explicitly opted into native tuning (`ARDEN_CODEGEN_NATIVE_CPU=1`), and Cargo cache keys now include `.cargo/config.toml` to prevent stale CPU-incompatible artifact reuse between runners.
 - Corrected multiple platform ABI mismatches in codegen/runtime C interop declarations and call sites (`size_t`/`long`/`time_t`/`pthread_t`), and added LLVM IR regression coverage for libc signature emission.
 - Normalized remaining `malloc`/`realloc`/`snprintf` call sites to explicit `size_t` casting helpers, removing cross-platform integer-width ABI drift in async, stdlib, and container codegen paths.
 - Fixed async-block return-type inference to honor explicit `return` statements, which resolves false `Type mismatch: expected None, got Integer` failures in `Task.await_timeout(...)` call chains.

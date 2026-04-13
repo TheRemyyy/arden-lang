@@ -14,6 +14,14 @@ use crate::codegen::core::{Codegen, CodegenError, Result};
 static CODEGEN_TARGET_DATA_LAYOUT: OnceLock<Option<String>> = OnceLock::new();
 
 impl<'ctx> Codegen<'ctx> {
+    fn baseline_cpu_for_layout_triple(triple: &str) -> &'static str {
+        if triple.starts_with("x86_64") {
+            "x86-64"
+        } else {
+            "generic"
+        }
+    }
+
     fn host_pointer_size_bytes() -> u64 {
         std::mem::size_of::<usize>() as u64
     }
@@ -111,12 +119,12 @@ impl<'ctx> Codegen<'ctx> {
         Target::initialize_native(&InitializationConfig::default()).ok()?;
         let triple = TargetMachine::get_default_triple();
         let target = Target::from_triple(&triple).ok()?;
-        let cpu = TargetMachine::get_host_cpu_name();
-        let features = TargetMachine::get_host_cpu_features();
+        let triple_string = triple.as_str().to_str().ok()?.to_string();
+        let cpu = Self::baseline_cpu_for_layout_triple(&triple_string);
         let machine = target.create_target_machine(
             &triple,
-            cpu.to_str().unwrap_or("generic"),
-            features.to_str().unwrap_or(""),
+            cpu,
+            "",
             OptimizationLevel::Default,
             RelocMode::Default,
             CodeModel::Default,
