@@ -4,7 +4,7 @@
 
 # Arden
 
-**A native systems language focused on fast feedback, strong static checks, and practical tooling.**
+**A native system language focused on fast feedback, strong static checks, and practical tooling.**
 
 [![Website](https://img.shields.io/badge/Website-Arden-white?style=flat-square&logo=vercel)](https://arden-lang.dev/)
 [![Rust](https://img.shields.io/badge/Rust-1.85+-orange.svg?style=flat-square)](https://www.rust-lang.org/)
@@ -29,7 +29,7 @@ Today the repository already includes:
 - async tasks and runtime control helpers
 - formatter, linter, test runner, benchmark harness, and CI smoke coverage in the same repo
 
-This is still an experimental language, but it is not a toy parser demo.
+This is still an nearly release language.
 
 ## What You Get In This Repository
 
