@@ -1471,7 +1471,7 @@ fn project_parse_error_reports_full_relative_path_when_basenames_collide() {
         let check_err =
             check_command(None, false).must_err("project check should fail on malformed lib main");
         assert!(
-            check_err.contains("src/lib/main.arden"),
+            check_err.contains("src/lib/main.arden") || check_err.contains("src\\lib\\main.arden"),
             "expected full relative file path in parse error, got: {check_err}"
         );
     });

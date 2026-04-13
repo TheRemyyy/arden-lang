@@ -1077,7 +1077,6 @@ impl<'ctx> Codegen<'ctx> {
                             .map_err(|_| CodegenError::new("failed to branch for Set growth"))?;
 
                         self.builder.position_at_end(grow_bb);
-                        let realloc = self.get_or_declare_realloc();
                         let grown_capacity = self
                             .builder
                             .build_int_mul(
@@ -1096,14 +1095,12 @@ impl<'ctx> Codegen<'ctx> {
                                 "set_new_size",
                             )
                             .map_err(|_| CodegenError::new("failed to compute Set growth size"))?;
-                        let grown_call = self
-                            .builder
-                            .build_call(
-                                realloc,
-                                &[data_ptr.into(), new_size.into()],
-                                "set_grown_ptr",
-                            )
-                            .map_err(|_| CodegenError::new("failed to emit Set realloc call"))?;
+                        let grown_call = self.build_realloc_call(
+                            data_ptr,
+                            new_size,
+                            "set_grown_ptr",
+                            "failed to emit Set realloc call",
+                        )?;
                         let grown_ptr = self.extract_call_pointer_value(
                             grown_call,
                             "realloc failed for Set growth",
@@ -2200,7 +2197,6 @@ impl<'ctx> Codegen<'ctx> {
             .build_store(length_ptr, i64_type.const_zero())
             .map_err(|_| CodegenError::new("failed to initialize List length"))?;
 
-        let malloc = self.get_or_declare_malloc();
         let total_size = self
             .builder
             .build_int_mul(
@@ -2209,10 +2205,11 @@ impl<'ctx> Codegen<'ctx> {
                 "list_ctor_total_size",
             )
             .map_err(|_| CodegenError::new("failed to compute List allocation size"))?;
-        let data_call = self
-            .builder
-            .build_call(malloc, &[total_size.into()], "list_ctor_data")
-            .map_err(|_| CodegenError::new("failed to emit List malloc call"))?;
+        let data_call = self.build_malloc_call(
+            total_size,
+            "list_ctor_data",
+            "failed to emit List malloc call",
+        )?;
         let data_ptr = self.extract_call_pointer_value(
             data_call,
             "malloc did not produce a pointer while allocating list constructor storage",
@@ -2294,15 +2291,12 @@ impl<'ctx> Codegen<'ctx> {
             .map_err(|_| CodegenError::new("failed to initialize empty List length"))?;
 
         // Allocate data - malloc(capacity * 8) for i64 elements
-        let malloc = self.get_or_declare_malloc();
         let size = self
             .context
             .i64_type()
             .const_int(initial_capacity * elem_size, false);
-        let call_result = self
-            .builder
-            .build_call(malloc, &[size.into()], "data")
-            .map_err(|_| CodegenError::new("failed to emit empty List malloc call"))?;
+        let call_result =
+            self.build_malloc_call(size, "data", "failed to emit empty List malloc call")?;
         let data_ptr = self.extract_call_value_with_context(
             call_result,
             "malloc did not produce a value while allocating list storage",
@@ -2359,11 +2353,11 @@ impl<'ctx> Codegen<'ctx> {
             .map_err(|_| CodegenError::new("failed to load old List data pointer"))?
             .into_pointer_value();
 
-        let malloc = self.get_or_declare_malloc();
-        let grown_call = self
-            .builder
-            .build_call(malloc, &[new_size.into()], "grown_data")
-            .map_err(|_| CodegenError::new("failed to emit List growth malloc call"))?;
+        let grown_call = self.build_malloc_call(
+            new_size,
+            "grown_data",
+            "failed to emit List growth malloc call",
+        )?;
         let grown_data = self.extract_call_pointer_value(
             grown_call,
             "malloc did not produce a pointer while growing list storage",
@@ -2518,7 +2512,6 @@ impl<'ctx> Codegen<'ctx> {
             .map_err(|_| CodegenError::new("failed to initialize Map length"))?;
 
         // Allocate keys and values arrays
-        let malloc = self.get_or_declare_malloc();
         let (key_ty, value_ty) = match map_expr_ty {
             Type::Map(key, value) => (&**key, &**value),
             _ => (&Type::Integer, &Type::Integer),
@@ -2534,10 +2527,8 @@ impl<'ctx> Codegen<'ctx> {
             .i64_type()
             .const_int(initial_capacity * value_size, false);
 
-        let keys_call = self
-            .builder
-            .build_call(malloc, &[keys_size.into()], "keys")
-            .map_err(|_| CodegenError::new("failed to emit Map keys malloc call"))?;
+        let keys_call =
+            self.build_malloc_call(keys_size, "keys", "failed to emit Map keys malloc call")?;
         let keys_ptr = self.extract_call_value_with_context(
             keys_call,
             "malloc did not produce a value while allocating map keys storage",
@@ -2556,10 +2547,11 @@ impl<'ctx> Codegen<'ctx> {
             .build_store(keys_field, keys_ptr)
             .map_err(|_| CodegenError::new("failed to store Map keys pointer"))?;
 
-        let values_call = self
-            .builder
-            .build_call(malloc, &[values_size.into()], "values")
-            .map_err(|_| CodegenError::new("failed to emit Map values malloc call"))?;
+        let values_call = self.build_malloc_call(
+            values_size,
+            "values",
+            "failed to emit Map values malloc call",
+        )?;
         let values_ptr = self.extract_call_value_with_context(
             values_call,
             "malloc did not produce a value while allocating map values storage",
@@ -2639,7 +2631,6 @@ impl<'ctx> Codegen<'ctx> {
             .map_err(|_| CodegenError::new("failed to initialize Set length"))?;
 
         // Allocate data - malloc(capacity * 8)
-        let malloc = self.get_or_declare_malloc();
         let elem_size = match set_expr_ty {
             Type::Set(inner) => self.storage_size_of_llvm_type(self.llvm_type(inner)),
             _ => 8,
@@ -2648,10 +2639,7 @@ impl<'ctx> Codegen<'ctx> {
             .context
             .i64_type()
             .const_int(initial_capacity * elem_size, false);
-        let call_result = self
-            .builder
-            .build_call(malloc, &[size.into()], "data")
-            .map_err(|_| CodegenError::new("failed to emit Set malloc call"))?;
+        let call_result = self.build_malloc_call(size, "data", "failed to emit Set malloc call")?;
         let data_ptr = self.extract_call_value_with_context(
             call_result,
             "malloc did not produce a value while allocating set storage",
@@ -2682,15 +2670,13 @@ impl<'ctx> Codegen<'ctx> {
         allocation_name: &str,
         context_name: &str,
     ) -> Result<BasicValueEnum<'ctx>> {
-        let malloc = self.get_or_declare_malloc();
         let llvm_ty = self.llvm_type(value_ty);
         let size = self
             .context
             .i64_type()
             .const_int(self.storage_size_of_llvm_type(llvm_ty), false);
         let call_result = self
-            .builder
-            .build_call(malloc, &[size.into()], allocation_name)
+            .build_malloc_call(size, allocation_name, "")
             .map_err(|_| {
                 CodegenError::new(format!(
                     "failed to emit malloc call for {context_name} storage"
@@ -2715,13 +2701,11 @@ impl<'ctx> Codegen<'ctx> {
         allocation_name: &str,
         context_name: &str,
     ) -> Result<BasicValueEnum<'ctx>> {
-        let malloc = self.get_or_declare_malloc();
         let llvm_ty = self.llvm_type(value_ty);
         let size_bytes = self.storage_size_of_llvm_type(llvm_ty);
         let size = self.context.i64_type().const_int(size_bytes, false);
         let call_result = self
-            .builder
-            .build_call(malloc, &[size.into()], allocation_name)
+            .build_malloc_call(size, allocation_name, "")
             .map_err(|_| {
                 CodegenError::new(format!(
                     "failed to emit malloc call for {context_name} storage"
@@ -2748,15 +2732,13 @@ impl<'ctx> Codegen<'ctx> {
         let struct_ty = class_info.struct_type;
         let field_types = class_info.field_types.clone();
         let field_indices = class_info.field_indices.clone();
-        let malloc = self.get_or_declare_malloc();
         let size_bytes = self.storage_size_of_llvm_type(struct_ty.into());
         let size = self.context.i64_type().const_int(size_bytes, false);
-        let call_result = self
-            .builder
-            .build_call(malloc, &[size.into()], "default_class_alloc")
-            .map_err(|_| {
-                CodegenError::new("failed to emit malloc call for class default storage")
-            })?;
+        let call_result = self.build_malloc_call(
+            size,
+            "default_class_alloc",
+            "failed to emit malloc call for class default storage",
+        )?;
         let ptr = self.extract_call_pointer_value(
             call_result,
             "malloc did not produce a pointer while allocating class default storage",
@@ -2837,17 +2819,11 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>> {
         match self.deref_codegen_type(ty) {
             Type::String => {
-                let malloc = self.get_or_declare_malloc();
-                let call_result = self
-                    .builder
-                    .build_call(
-                        malloc,
-                        &[self.context.i64_type().const_int(1, false).into()],
-                        "default_string_alloc",
-                    )
-                    .map_err(|_| {
-                        CodegenError::new("failed to emit malloc call for default String storage")
-                    })?;
+                let call_result = self.build_malloc_call(
+                    self.context.i64_type().const_int(1, false),
+                    "default_string_alloc",
+                    "failed to emit malloc call for default String storage",
+                )?;
                 let ptr = self.extract_call_pointer_value(
                     call_result,
                     "malloc did not produce a pointer while allocating default String storage",
@@ -4611,7 +4587,6 @@ impl<'ctx> Codegen<'ctx> {
             .map_err(|_| CodegenError::new("failed to branch for Map growth"))?;
 
         self.builder.position_at_end(grow_bb);
-        let realloc = self.get_or_declare_realloc();
         let grown_capacity = self
             .builder
             .build_int_mul(capacity, i64_type.const_int(2, false), "grown_capacity")
@@ -4624,14 +4599,12 @@ impl<'ctx> Codegen<'ctx> {
                 "new_key_size",
             )
             .map_err(|_| CodegenError::new("failed to compute grown Map key storage"))?;
-        let grown_keys_call = self
-            .builder
-            .build_call(
-                realloc,
-                &[keys_ptr.into(), new_key_size.into()],
-                "grown_keys",
-            )
-            .map_err(|_| CodegenError::new("failed to emit realloc for Map keys"))?;
+        let grown_keys_call = self.build_realloc_call(
+            keys_ptr,
+            new_key_size,
+            "grown_keys",
+            "failed to emit realloc for Map keys",
+        )?;
         let grown_keys =
             self.extract_call_pointer_value(grown_keys_call, "realloc failed for Map key growth")?;
         let new_val_size = self
@@ -4642,14 +4615,12 @@ impl<'ctx> Codegen<'ctx> {
                 "new_val_size",
             )
             .map_err(|_| CodegenError::new("failed to compute grown Map value storage"))?;
-        let grown_vals_call = self
-            .builder
-            .build_call(
-                realloc,
-                &[values_ptr.into(), new_val_size.into()],
-                "grown_vals",
-            )
-            .map_err(|_| CodegenError::new("failed to emit realloc for Map values"))?;
+        let grown_vals_call = self.build_realloc_call(
+            values_ptr,
+            new_val_size,
+            "grown_vals",
+            "failed to emit realloc for Map values",
+        )?;
         let grown_vals = self
             .extract_call_pointer_value(grown_vals_call, "realloc failed for Map value growth")?;
         self.builder

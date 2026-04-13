@@ -24,14 +24,14 @@ impl<'ctx> Codegen<'ctx> {
         env_fields.push(ptr_ty.into());
         let env_type = self.context.struct_type(&env_fields, false);
 
-        let malloc = self.get_or_declare_malloc();
         let env_size = env_type
             .size_of()
             .ok_or_else(|| CodegenError::new("failed to compute async block env size"))?;
-        let env_alloc = self
-            .builder
-            .build_call(malloc, &[env_size.into()], "async_block_env")
-            .map_err(|_| CodegenError::new("failed to allocate async block environment"))?;
+        let env_alloc = self.build_malloc_call(
+            env_size,
+            "async_block_env",
+            "failed to allocate async block environment",
+        )?;
         let env_raw =
             self.extract_call_pointer_value(env_alloc, "malloc failed for async block env")?;
         let env_cast = self
@@ -235,14 +235,11 @@ impl<'ctx> Codegen<'ctx> {
             .map_err(|_| CodegenError::new("failed to emit async block body call"))?;
 
         let result_ptr = if matches!(inner_return_type, Type::None) {
-            let alloc = self
-                .builder
-                .build_call(
-                    malloc,
-                    &[self.context.i64_type().const_int(1, false).into()],
-                    "async_block_none_alloc",
-                )
-                .map_err(|_| CodegenError::new("failed to allocate async block none result"))?;
+            let alloc = self.build_malloc_call(
+                self.context.i64_type().const_int(1, false),
+                "async_block_none_alloc",
+                "failed to allocate async block none result",
+            )?;
             let ptr = self
                 .extract_call_pointer_value(alloc, "malloc failed for async block none result")?;
             let none_ptr = self
@@ -262,10 +259,11 @@ impl<'ctx> Codegen<'ctx> {
             let size = ret_ty
                 .size_of()
                 .ok_or_else(|| CodegenError::new("failed to compute async block result size"))?;
-            let alloc = self
-                .builder
-                .build_call(malloc, &[size.into()], "async_block_alloc")
-                .map_err(|_| CodegenError::new("failed to allocate async block result"))?;
+            let alloc = self.build_malloc_call(
+                size,
+                "async_block_alloc",
+                "failed to allocate async block result",
+            )?;
             let ptr =
                 self.extract_call_pointer_value(alloc, "malloc failed for async block result")?;
             let typed_ptr = self
@@ -484,16 +482,12 @@ impl<'ctx> Codegen<'ctx> {
             .build_call(body, &[thunk_env.into()], "async_body_call")
             .map_err(|_| CodegenError::new("failed to emit async body call"))?;
 
-        let malloc = self.get_or_declare_malloc();
         let result_storage = if matches!(inner_return_type, Type::None) {
-            let raw = self
-                .builder
-                .build_call(
-                    malloc,
-                    &[self.context.i64_type().const_int(1, false).into()],
-                    "async_none_alloc",
-                )
-                .map_err(|_| CodegenError::new("failed to allocate async Task<None> result"))?;
+            let raw = self.build_malloc_call(
+                self.context.i64_type().const_int(1, false),
+                "async_none_alloc",
+                "failed to allocate async Task<None> result",
+            )?;
             let ptr =
                 self.extract_call_pointer_value(raw, "malloc failed for async Task<None> result")?;
             let none_ptr = self
@@ -513,10 +507,11 @@ impl<'ctx> Codegen<'ctx> {
             let size = ret_ty
                 .size_of()
                 .ok_or_else(|| CodegenError::new("failed to compute async result size"))?;
-            let raw = self
-                .builder
-                .build_call(malloc, &[size.into()], "async_result_alloc")
-                .map_err(|_| CodegenError::new("failed to allocate async result storage"))?;
+            let raw = self.build_malloc_call(
+                size,
+                "async_result_alloc",
+                "failed to allocate async result storage",
+            )?;
             let ptr = self.extract_call_pointer_value(raw, "malloc failed for async result")?;
             let typed_ptr = self
                 .builder
@@ -610,10 +605,11 @@ impl<'ctx> Codegen<'ctx> {
         let env_size = env_type
             .size_of()
             .ok_or_else(|| CodegenError::new("failed to compute async environment size"))?;
-        let env_alloc = self
-            .builder
-            .build_call(malloc, &[env_size.into()], "async_env_alloc")
-            .map_err(|_| CodegenError::new("failed to allocate async environment"))?;
+        let env_alloc = self.build_malloc_call(
+            env_size,
+            "async_env_alloc",
+            "failed to allocate async environment",
+        )?;
         let env_raw_ptr =
             self.extract_call_pointer_value(env_alloc, "malloc failed for async environment")?;
         let env_cast = self
@@ -893,15 +889,15 @@ impl<'ctx> Codegen<'ctx> {
 
                 // Store a safe default payload so await after cancel stays valid for heap-backed
                 // values like user classes and ranges instead of returning a null object pointer.
-                let malloc = self.get_or_declare_malloc();
                 let llvm_inner = self.llvm_type(inner);
                 let size = llvm_inner
                     .size_of()
                     .ok_or_else(|| CodegenError::new("failed to size Task inner type"))?;
-                let raw = self
-                    .builder
-                    .build_call(malloc, &[size.into()], "task_cancel_alloc")
-                    .map_err(|_| CodegenError::new("failed to allocate canceled task result"))?;
+                let raw = self.build_malloc_call(
+                    size,
+                    "task_cancel_alloc",
+                    "failed to allocate canceled task result",
+                )?;
                 let result_ptr = self.extract_call_pointer_value(
                     raw,
                     "malloc failed while creating canceled task value",

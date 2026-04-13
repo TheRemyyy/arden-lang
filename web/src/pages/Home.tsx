@@ -113,7 +113,7 @@ const discoveryLinks = [
 
 export function Home() {
     return (
-        <div className="overflow-x-hidden pt-16 text-[var(--text)]">
+        <div className="home-scale overflow-x-hidden pt-16 text-[var(--text)]">
             <section className="site-grid relative min-h-[calc(100vh-4rem)] overflow-hidden">
                 <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-10 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.12fr_0.88fr] lg:items-center lg:pb-16 lg:pt-10">
                     <div className="relative z-10">

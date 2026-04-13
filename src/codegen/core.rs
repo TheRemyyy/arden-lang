@@ -9562,14 +9562,11 @@ impl<'ctx> Codegen<'ctx> {
             .get(&class.name)
             .ok_or_else(|| CodegenError::new(format!("Unknown class: {}", class.name)))?;
         let struct_type = class_info.struct_type;
-        let malloc = self.get_or_declare_malloc();
         let size = struct_type
             .size_of()
             .ok_or_else(|| CodegenError::new("Failed to compute class struct size"))?;
-        let ptr = self
-            .builder
-            .build_call(malloc, &[size.into()], "instance")
-            .map_err(|e| CodegenError::new(format!("malloc call failed: {}", e)))?;
+        let ptr =
+            self.build_malloc_call(size, "instance", "malloc call failed for class instance")?;
         let instance =
             self.extract_call_pointer_value(ptr, "malloc call did not produce a pointer result")?;
 
@@ -10029,15 +10026,11 @@ impl<'ctx> Codegen<'ctx> {
         env_task_slot_ptr: PointerValue<'ctx>,
     ) -> Result<PointerValue<'ctx>> {
         let task_ty = self.task_struct_type();
-        let malloc = self.get_or_declare_malloc();
         let size = task_ty
             .size_of()
             .ok_or_else(|| CodegenError::new("failed to compute Task runtime size"))?;
 
-        let raw = self
-            .builder
-            .build_call(malloc, &[size.into()], "task_alloc")
-            .map_err(|e| CodegenError::new(format!("failed to call malloc for Task: {e}")))?;
+        let raw = self.build_malloc_call(size, "task_alloc", "failed to call malloc for Task")?;
         let task_raw =
             self.extract_call_pointer_value(raw, "malloc should return pointer for Task")?;
 
@@ -12293,18 +12286,14 @@ impl<'ctx> Codegen<'ctx> {
         let closure_struct = closure_value.into_struct_value();
         let closure_ty = closure_struct.get_type();
         let env_struct_ty = self.context.struct_type(&[closure_ty.into()], false);
-        let malloc = self.get_or_declare_malloc();
         let env_size = env_struct_ty
             .size_of()
             .ok_or_else(|| CodegenError::new("failed to size function adapter env"))?;
-        let env_alloc = self
-            .builder
-            .build_call(malloc, &[env_size.into()], "fn_adapter_env_alloc")
-            .map_err(|e| {
-                CodegenError::new(format!(
-                    "failed to call malloc for function adapter env: {e}"
-                ))
-            })?;
+        let env_alloc = self.build_malloc_call(
+            env_size,
+            "fn_adapter_env_alloc",
+            "failed to call malloc for function adapter env",
+        )?;
         let env_ptr =
             self.extract_call_pointer_value(env_alloc, "malloc failed for function adapter env")?;
         let stored_closure_ptr = unsafe {
@@ -13001,7 +12990,6 @@ impl<'ctx> Codegen<'ctx> {
         name: &str,
     ) -> Result<PointerValue<'ctx>> {
         let strlen_fn = self.get_or_declare_strlen();
-        let malloc = self.get_or_declare_malloc();
         let strcpy_fn = self.get_or_declare_strcpy();
         let strcat_fn = self.get_or_declare_strcat();
 
@@ -13027,10 +13015,11 @@ impl<'ctx> Codegen<'ctx> {
                 &format!("{name}_bufsize"),
             )
             .map_err(|_| CodegenError::new("failed to compute display buffer size"))?;
-        let buffer_call = self
-            .builder
-            .build_call(malloc, &[buffer_size.into()], &format!("{name}_buf"))
-            .map_err(|_| CodegenError::new("failed to allocate display concatenation buffer"))?;
+        let buffer_call = self.build_malloc_call(
+            buffer_size,
+            &format!("{name}_buf"),
+            "failed to allocate display concatenation buffer",
+        )?;
         let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
         self.builder
             .build_call(strcpy_fn, &[buffer.into(), left.into()], "")
@@ -13619,7 +13608,6 @@ impl<'ctx> Codegen<'ctx> {
             && matches!(right_ty, Type::String)
         {
             let strlen_fn = self.get_or_declare_strlen();
-            let malloc = self.get_or_declare_malloc();
             let strcpy_fn = self.get_or_declare_strcpy();
             let strcat_fn = self.get_or_declare_strcat();
             let s1 = lhs.into_pointer_value();
@@ -13647,10 +13635,11 @@ impl<'ctx> Codegen<'ctx> {
                     "bufsize",
                 )
                 .map_err(|_| CodegenError::new("failed to compute string buffer size"))?;
-            let buffer_call = self
-                .builder
-                .build_call(malloc, &[buffer_size.into()], "buf")
-                .map_err(|_| CodegenError::new("failed to allocate concatenated string buffer"))?;
+            let buffer_call = self.build_malloc_call(
+                buffer_size,
+                "buf",
+                "failed to allocate concatenated string buffer",
+            )?;
             let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
             self.builder
                 .build_call(strcpy_fn, &[buffer.into(), s1.into()], "")
@@ -14407,14 +14396,14 @@ impl<'ctx> Codegen<'ctx> {
         let receiver_llvm_ty = receiver_value.get_type();
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         let env_struct_ty = self.context.struct_type(&[receiver_llvm_ty], false);
-        let malloc = self.get_or_declare_malloc();
         let env_size = env_struct_ty
             .size_of()
             .ok_or_else(|| CodegenError::new("failed to size bound-method env"))?;
-        let env_alloc = self
-            .builder
-            .build_call(malloc, &[env_size.into()], "bound_method_env_alloc")
-            .map_err(|_| CodegenError::new("failed to allocate bound-method environment"))?;
+        let env_alloc = self.build_malloc_call(
+            env_size,
+            "bound_method_env_alloc",
+            "failed to allocate bound-method environment",
+        )?;
         let env_ptr =
             self.extract_call_pointer_value(env_alloc, "malloc failed for bound-method env")?;
         let receiver_ptr = unsafe {
@@ -15405,7 +15394,6 @@ impl<'ctx> Codegen<'ctx> {
 
         // Allocate the exact output size plus the trailing null terminator.
         let snprintf = self.get_or_declare_snprintf();
-        let malloc = self.get_or_declare_malloc();
         let buffer_size = self
             .builder
             .build_int_add(
@@ -15414,10 +15402,11 @@ impl<'ctx> Codegen<'ctx> {
                 "interp_buffer_size",
             )
             .map_err(|_| CodegenError::new("failed to compute string interpolation buffer size"))?;
-        let buffer_call = self
-            .builder
-            .build_call(malloc, &[buffer_size.into()], "strbuf")
-            .map_err(|_| CodegenError::new("failed to allocate string interpolation buffer"))?;
+        let buffer_call = self.build_malloc_call(
+            buffer_size,
+            "strbuf",
+            "failed to allocate string interpolation buffer",
+        )?;
         let buffer = self.extract_call_pointer_value(
             buffer_call,
             "malloc did not produce a buffer pointer for string interpolation",
@@ -15432,9 +15421,11 @@ impl<'ctx> Codegen<'ctx> {
         fmt_global.set_initializer(&fmt_val);
 
         // Call snprintf with the exact output size to avoid heap overwrites on long strings.
+        let buffer_size_size_t =
+            self.cast_int_to_libc_size_type(buffer_size, "interp_buffer_size_size_t")?;
         let mut snprintf_args: Vec<BasicMetadataValueEnum> = vec![
             buffer.into(),
-            buffer_size.into(),
+            buffer_size_size_t.into(),
             fmt_global.as_pointer_value().into(),
         ];
         snprintf_args.extend(args);

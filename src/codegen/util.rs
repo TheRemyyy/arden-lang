@@ -13,7 +13,9 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
-use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue, ValueKind};
+use inkwell::values::{
+    BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue, ValueKind,
+};
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 
 use std::cell::RefCell;
@@ -1060,6 +1062,43 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    pub fn cast_int_to_libc_size_type(
+        &self,
+        value: IntValue<'ctx>,
+        cast_name: &str,
+    ) -> Result<IntValue<'ctx>> {
+        self.builder
+            .build_int_cast(value, self.libc_size_type(), cast_name)
+            .map_err(|_| CodegenError::new("failed to cast integer value to libc size_t"))
+    }
+
+    pub fn build_malloc_call(
+        &mut self,
+        size: IntValue<'ctx>,
+        call_name: &str,
+        context: &str,
+    ) -> Result<inkwell::values::CallSiteValue<'ctx>> {
+        let malloc = self.get_or_declare_malloc();
+        let size_t = self.cast_int_to_libc_size_type(size, "malloc_size_t")?;
+        self.builder
+            .build_call(malloc, &[size_t.into()], call_name)
+            .map_err(|_| CodegenError::new(context))
+    }
+
+    pub fn build_realloc_call(
+        &mut self,
+        ptr: PointerValue<'ctx>,
+        size: IntValue<'ctx>,
+        call_name: &str,
+        context: &str,
+    ) -> Result<inkwell::values::CallSiteValue<'ctx>> {
+        let realloc = self.get_or_declare_realloc();
+        let size_t = self.cast_int_to_libc_size_type(size, "realloc_size_t")?;
+        self.builder
+            .build_call(realloc, &[ptr.into(), size_t.into()], call_name)
+            .map_err(|_| CodegenError::new(context))
+    }
+
     /// Helper to transform a string character by character using a C function (like toupper/tolower)
     pub fn compile_string_transform(
         &mut self,
@@ -1068,7 +1107,6 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>> {
         let s_ptr = s.into_pointer_value();
         let strlen_fn = self.get_or_declare_strlen();
-        let malloc_fn = self.get_or_declare_malloc();
 
         let len_call = self
             .builder
@@ -1081,10 +1119,11 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_int_add(len, one, "size")
             .map_err(|_| CodegenError::new("failed to compute string transform buffer size"))?;
-        let buf_call = self
-            .builder
-            .build_call(malloc_fn, &[size.into()], "buf")
-            .map_err(|_| CodegenError::new("failed to emit malloc call for string transform"))?;
+        let buf_call = self.build_malloc_call(
+            size,
+            "buf",
+            "failed to emit malloc call for string transform",
+        )?;
         let buf = self.extract_call_value(buf_call)?.into_pointer_value();
 
         let current_fn = self
@@ -1286,14 +1325,14 @@ impl<'ctx> Codegen<'ctx> {
         }
         let env_struct_ty = self.context.struct_type(&env_types, false);
 
-        let malloc = self.get_or_declare_malloc();
         let size = env_struct_ty
             .size_of()
             .ok_or_else(|| CodegenError::new("Failed to compute lambda environment size"))?;
-        let env_ptr_call = self
-            .builder
-            .build_call(malloc, &[size.into()], "env_ptr")
-            .map_err(|_| CodegenError::new("failed to emit malloc call for lambda environment"))?;
+        let env_ptr_call = self.build_malloc_call(
+            size,
+            "env_ptr",
+            "failed to emit malloc call for lambda environment",
+        )?;
         let env_ptr_raw = self.extract_call_pointer_value(
             env_ptr_call,
             "malloc did not produce a pointer while allocating lambda environment",
@@ -4182,7 +4221,6 @@ impl<'ctx> Codegen<'ctx> {
             ));
         }
         let range_type = self.get_range_type(element_type)?;
-        let malloc = self.get_or_declare_malloc();
         let printf = self.get_or_declare_printf();
         let exit_fn = self.get_or_declare_exit();
         let current_fn = self
@@ -4199,10 +4237,11 @@ impl<'ctx> Codegen<'ctx> {
         let size = range_type
             .size_of()
             .ok_or_else(|| CodegenError::new("failed to compute range allocation size"))?;
-        let alloc_call = self
-            .builder
-            .build_call(malloc, &[size.into()], "range_alloc")
-            .map_err(|_| CodegenError::new("failed to emit malloc call for range allocation"))?;
+        let alloc_call = self.build_malloc_call(
+            size,
+            "range_alloc",
+            "failed to emit malloc call for range allocation",
+        )?;
         let range_ptr =
             self.extract_call_pointer_value(alloc_call, "malloc should return pointer")?;
 

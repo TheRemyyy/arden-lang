@@ -6,6 +6,13 @@
   <description>Release notes and changelog updates for Arden.</description>
   <language>en-us</language>
   <item>
+    <title>Unreleased</title>
+    <link>https://www.arden-lang.dev/changelog#unreleased</link>
+    <guid>https://www.arden-lang.dev/changelog#unreleased</guid>
+    <description>Corrected multiple platform ABI mismatches in codegen/runtime C interop declarations and call sites (`size_t`/`long`/`time_t`/`pthread_t`), and added LLVM IR regression coverage for libc signature emission.</description>
+    <pubDate>Mon, 13 Apr 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
     <title>v1.3.8</title>
     <link>https://www.arden-lang.dev/changelog#1-3-8</link>
     <guid>https://www.arden-lang.dev/changelog#1-3-8</guid>

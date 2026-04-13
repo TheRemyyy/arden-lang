@@ -651,7 +651,6 @@ impl<'ctx> Codegen<'ctx> {
                 )?;
 
                 let strlen_fn = self.get_or_declare_strlen();
-                let malloc = self.get_or_declare_malloc();
                 let strcpy_fn = self.get_or_declare_strcpy();
                 let strcat_fn = self.get_or_declare_strcat();
 
@@ -685,10 +684,11 @@ impl<'ctx> Codegen<'ctx> {
                     )
                     .map_err(|_| CodegenError::new("failed to compute Str.concat buffer size"))?;
 
-                let buffer_call = self
-                    .builder
-                    .build_call(malloc, &[buffer_size.into()], "buf")
-                    .map_err(|_| CodegenError::new("failed to allocate Str.concat buffer"))?;
+                let buffer_call = self.build_malloc_call(
+                    buffer_size,
+                    "buf",
+                    "failed to allocate Str.concat buffer",
+                )?;
                 let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
 
                 // strcpy(buffer, s1)
@@ -724,7 +724,6 @@ impl<'ctx> Codegen<'ctx> {
                     self.compile_string_argument_expr(&args[0].node, "Str.trim() requires String")?;
                 let strlen_fn = self.get_or_declare_strlen();
                 let isspace_fn = self.get_or_declare_isspace();
-                let malloc_fn = self.get_or_declare_malloc();
                 let strncpy_fn = self.get_or_declare_strncpy();
 
                 let len_call = self
@@ -919,10 +918,11 @@ impl<'ctx> Codegen<'ctx> {
                         "alloc",
                     )
                     .map_err(|_| CodegenError::new("failed to compute Str.trim allocation size"))?;
-                let buf_call = self
-                    .builder
-                    .build_call(malloc_fn, &[alloc_size.into()], "buf")
-                    .map_err(|_| CodegenError::new("failed to allocate Str.trim buffer"))?;
+                let buf_call = self.build_malloc_call(
+                    alloc_size,
+                    "buf",
+                    "failed to allocate Str.trim buffer",
+                )?;
                 let buf = self.extract_call_value(buf_call)?.into_pointer_value();
 
                 let src_ptr = unsafe {
@@ -1090,8 +1090,6 @@ impl<'ctx> Codegen<'ctx> {
             "read_line" => {
                 // Read a line from stdin with a growing buffer so long lines do not
                 // truncate and we do not depend on platform-specific stdin symbols.
-                let malloc = self.get_or_declare_malloc();
-                let realloc = self.get_or_declare_realloc();
                 let getchar_fn = self.get_or_declare_getchar();
 
                 let i8_type = self.context.i8_type();
@@ -1100,10 +1098,11 @@ impl<'ctx> Codegen<'ctx> {
                 let ptr_type = self.context.ptr_type(AddressSpace::default());
                 let chunk_chars = i64_type.const_int(1024, false);
                 let initial_capacity = i64_type.const_int(1025, false);
-                let buffer_call = self
-                    .builder
-                    .build_call(malloc, &[initial_capacity.into()], "linebuf")
-                    .map_err(|_| CodegenError::new("failed to allocate read_line buffer"))?;
+                let buffer_call = self.build_malloc_call(
+                    initial_capacity,
+                    "linebuf",
+                    "failed to allocate read_line buffer",
+                )?;
                 let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
                 let buffer_slot = self
                     .builder
@@ -1291,14 +1290,12 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(ptr_type, buffer_slot, "read_line_grow_buffer")
                     .map_err(|_| CodegenError::new("failed to load read_line grow buffer"))?
                     .into_pointer_value();
-                let realloc_call = self
-                    .builder
-                    .build_call(
-                        realloc,
-                        &[grown_buffer.into(), grown_capacity.into()],
-                        "read_line_realloc",
-                    )
-                    .map_err(|_| CodegenError::new("failed to emit realloc for read_line"))?;
+                let realloc_call = self.build_realloc_call(
+                    grown_buffer,
+                    grown_capacity,
+                    "read_line_realloc",
+                    "failed to emit realloc for read_line",
+                )?;
                 let realloc_ptr = self.extract_call_value(realloc_call)?.into_pointer_value();
                 let realloc_failed = self
                     .builder
@@ -1538,7 +1535,6 @@ impl<'ctx> Codegen<'ctx> {
                 let rewind = self.get_or_declare_rewind();
                 let fread = self.get_or_declare_fread();
                 let fclose = self.get_or_declare_fclose();
-                let malloc = self.get_or_declare_malloc();
 
                 let mode = self.context.const_string(b"rb", true); // Binary mode to get exact bytes
                 let mode_global = self.module.add_global(mode.get_type(), None, "mode_r");
@@ -1665,10 +1661,11 @@ impl<'ctx> Codegen<'ctx> {
                     .map_err(|_| {
                         CodegenError::new("failed to compute File.read allocation size")
                     })?;
-                let buffer_call = self
-                    .builder
-                    .build_call(malloc, &[alloc_size.into()], "buffer")
-                    .map_err(|_| CodegenError::new("failed to allocate File.read buffer"))?;
+                let buffer_call = self.build_malloc_call(
+                    alloc_size,
+                    "buffer",
+                    "failed to allocate File.read buffer",
+                )?;
                 let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
 
                 // fread(buffer, 1, size, f)
@@ -2098,7 +2095,6 @@ impl<'ctx> Codegen<'ctx> {
                 let time_fn = self.get_or_declare_time();
                 let localtime_fn = self.get_or_declare_localtime();
                 let strftime_fn = self.get_or_declare_strftime();
-                let malloc = self.get_or_declare_malloc();
 
                 // 1. Get current time
                 let null = self.context.ptr_type(AddressSpace::default()).const_null();
@@ -2170,10 +2166,8 @@ impl<'ctx> Codegen<'ctx> {
                     )
                     .map_err(|_| CodegenError::new("failed to select Time.now buffer size"))?
                     .into_int_value();
-                let buf_ptr_val = self
-                    .builder
-                    .build_call(malloc, &[buf_size.into()], "buf")
-                    .map_err(|_| CodegenError::new("failed to allocate Time.now buffer"))?;
+                let buf_ptr_val =
+                    self.build_malloc_call(buf_size, "buf", "failed to allocate Time.now buffer")?;
                 let buf_ptr = self.extract_call_value(buf_ptr_val)?.into_pointer_value();
                 let last_byte_offset = self
                     .builder
@@ -2591,8 +2585,6 @@ impl<'ctx> Codegen<'ctx> {
                 let popen_fn = self.get_or_declare_popen();
                 let pclose_fn = self.get_or_declare_pclose();
                 let fread_fn = self.get_or_declare_fread();
-                let malloc = self.get_or_declare_malloc();
-                let realloc = self.get_or_declare_realloc();
 
                 let mode = self.context.const_string(b"r", true);
                 let mode_global = self.module.add_global(mode.get_type(), None, "mode_pop_r");
@@ -2681,10 +2673,11 @@ impl<'ctx> Codegen<'ctx> {
                         CodegenError::new("failed to allocate System.exec total read slot")
                     })?;
 
-                let buf_call = self
-                    .builder
-                    .build_call(malloc, &[initial_capacity.into()], "buf")
-                    .map_err(|_| CodegenError::new("failed to allocate System.exec buffer"))?;
+                let buf_call = self.build_malloc_call(
+                    initial_capacity,
+                    "buf",
+                    "failed to allocate System.exec buffer",
+                )?;
                 let buf = self.extract_call_value(buf_call)?.into_pointer_value();
                 self.builder
                     .build_store(buf_slot, buf)
@@ -2829,14 +2822,12 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(ptr_type, buf_slot, "exec_grow_buf")
                     .map_err(|_| CodegenError::new("failed to load System.exec grow buffer"))?
                     .into_pointer_value();
-                let realloc_call = self
-                    .builder
-                    .build_call(
-                        realloc,
-                        &[grow_buf.into(), new_capacity.into()],
-                        "exec_realloc",
-                    )
-                    .map_err(|_| CodegenError::new("failed to emit realloc for System.exec"))?;
+                let realloc_call = self.build_realloc_call(
+                    grow_buf,
+                    new_capacity,
+                    "exec_realloc",
+                    "failed to emit realloc for System.exec",
+                )?;
                 let realloc_buf = self.extract_call_value(realloc_call)?.into_pointer_value();
                 let realloc_failed = self
                     .builder

@@ -9,7 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 🐛 Fixed
 
 - Corrected multiple platform ABI mismatches in codegen/runtime C interop declarations and call sites (`size_t`/`long`/`time_t`/`pthread_t`), and added LLVM IR regression coverage for libc signature emission.
+- Normalized remaining `malloc`/`realloc`/`snprintf` call sites to explicit `size_t` casting helpers, removing cross-platform integer-width ABI drift in async, stdlib, and container codegen paths.
 - Fixed async-block return-type inference to honor explicit `return` statements, which resolves false `Type mismatch: expected None, got Integer` failures in `Task.await_timeout(...)` call chains.
+- Release portable smoke: hardened `scripts/release/smoke_portable_unix.sh` with explicit archive/install-script existence checks, per-step timeout guard (`SMOKE_STEP_TIMEOUT_SECONDS`, default `600`), and stage logs to prevent silent multi-hour hangs.
+- Web homepage hero: restored vertical centering on large `100vh` layouts by aligning the top hero grid to center instead of end.
+- Web readability on large displays: added homepage-only ultra-wide scaling (larger typographic base + wider content max-widths at `>=1700px` and `>=2200px`) so 100% browser zoom does not look visually shrunken.
 
 ## [1.3.8] - 2026-04-13
 
@@ -61,8 +65,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Project validation diagnostics: improved entry/source/output validation errors with clearer resolved-path/project-root context and more explicit output-path ancestor resolution failures.
 - Import-check diagnostics: when source rendering fails during import-error formatting, diagnostics now include the underlying file read error reason.
 - Bindgen boundary safety: reject missing header paths and directory output targets explicitly, auto-create output parent directories for file outputs, and add regression coverage for the new guards.
-- Release portable smoke: hardened `scripts/release/smoke_portable_unix.sh` with explicit archive/install-script existence checks, per-step timeout guard (`SMOKE_STEP_TIMEOUT_SECONDS`, default `600`), and stage logs to prevent silent multi-hour hangs.
-- Web homepage hero: restored vertical centering on large `100vh` layouts by aligning the top hero grid to center instead of end.
 - Codegen/no-check reliability and portability: restored root-cause undefined-root diagnostics for nested member chains/generic receiver calls, and switched libc `size_t` + pointer-fallback sizing away from hardcoded 64-bit assumptions.
 - CI stability: fixed effect-attributes smoke examples (`@Any` caller boundaries), tightened test-file name detection to avoid false positives like `latest.arden`, and refined macOS symlink-ancestor handling so system temp aliases don't trip path guards.
 

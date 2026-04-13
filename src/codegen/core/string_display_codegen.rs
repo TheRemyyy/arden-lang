@@ -340,15 +340,11 @@ impl<'ctx> Codegen<'ctx> {
             Type::Char => self.compile_char_to_string(value.into_int_value()),
             Type::Integer | Type::Float => {
                 let sprintf = self.get_or_declare_sprintf();
-                let malloc = self.get_or_declare_malloc();
-                let buffer_call = self
-                    .builder
-                    .build_call(
-                        malloc,
-                        &[self.context.i64_type().const_int(64, false).into()],
-                        "display_buf",
-                    )
-                    .map_err(|_| CodegenError::new("failed to allocate numeric display buffer"))?;
+                let buffer_call = self.build_malloc_call(
+                    self.context.i64_type().const_int(64, false),
+                    "display_buf",
+                    "failed to allocate numeric display buffer",
+                )?;
                 let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
 
                 let (fmt, print_arg): (&str, BasicMetadataValueEnum) = if value.is_float_value() {
@@ -408,21 +404,17 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         codepoint: IntValue<'ctx>,
     ) -> Result<PointerValue<'ctx>> {
-        let malloc = self.get_or_declare_malloc();
         let current_fn = self
             .current_function
             .ok_or_else(|| CodegenError::new("char-to-string used outside function"))?;
         let i8_type = self.context.i8_type();
         let i32_type = self.context.i32_type();
         let i64_type = self.context.i64_type();
-        let buf_call = self
-            .builder
-            .build_call(
-                malloc,
-                &[i64_type.const_int(5, false).into()],
-                "char_str_buf",
-            )
-            .map_err(|_| CodegenError::new("failed to allocate char display buffer"))?;
+        let buf_call = self.build_malloc_call(
+            i64_type.const_int(5, false),
+            "char_str_buf",
+            "failed to allocate char display buffer",
+        )?;
         let buffer = self.extract_call_value(buf_call)?.into_pointer_value();
 
         let one_byte_bb = self.context.append_basic_block(current_fn, "char_str_one");
