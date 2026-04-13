@@ -58,7 +58,7 @@ export function Footer() {
                     rel="me noopener noreferrer"
                     className="transition-colors hover:text-white"
                 >
-                    TheRemyyy
+                    Made by TheRemyyy
                 </a>
             </div>
         </footer>
