@@ -29,7 +29,7 @@ Today the repository already includes:
 - async tasks and runtime control helpers
 - formatter, linter, test runner, benchmark harness, and CI smoke coverage in the same repo
 
-This is still an experimental language, but it is not a toy parser demo.
+This is still an nearly release language.
 
 ## What You Get In This Repository
 
