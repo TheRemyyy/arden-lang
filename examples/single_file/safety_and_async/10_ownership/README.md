@@ -4,8 +4,11 @@ Focused example: **Ownership and Borrowing**.
 
 What this demonstrates:
 - `owned` move semantics
-- `borrow` and `borrow mut` parameters
+- `borrow` and `borrow mut` parameter modes
 - `&`/`&mut` references and mutability forwarding
+
+Practical note:
+- for in-place mutation APIs, `&mut T` parameters are the reliable pattern
 
 Run:
 

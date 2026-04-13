@@ -28,8 +28,14 @@ pub(crate) fn format_targets(path: Option<&Path>, check_only: bool) -> Result<()
 
     let mut changed = Vec::new();
     for file in targets {
-        let source = fs::read_to_string(&file)
-            .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
+        let source = fs::read_to_string(&file).map_err(|e| {
+            format!(
+                "{}: Failed to read file '{}': {}",
+                "error".red().bold(),
+                file.display(),
+                e
+            )
+        })?;
         let formatted = formatter::format_source(&source)
             .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
 
@@ -81,8 +87,14 @@ pub(crate) fn format_targets(path: Option<&Path>, check_only: bool) -> Result<()
 
 pub(crate) fn lint_target(path: Option<&Path>) -> Result<(), String> {
     let file = resolve_default_file(path)?;
-    let source = fs::read_to_string(&file)
-        .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
+    let source = fs::read_to_string(&file).map_err(|e| {
+        format!(
+            "{}: Failed to read file '{}': {}",
+            "error".red().bold(),
+            file.display(),
+            e
+        )
+    })?;
     let result = lint::lint_source(&source, false)
         .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
 
@@ -104,8 +116,14 @@ pub(crate) fn lint_target(path: Option<&Path>) -> Result<(), String> {
 
 pub(crate) fn fix_target(path: Option<&Path>) -> Result<(), String> {
     let file = resolve_default_file(path)?;
-    let source = fs::read_to_string(&file)
-        .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
+    let source = fs::read_to_string(&file).map_err(|e| {
+        format!(
+            "{}: Failed to read file '{}': {}",
+            "error".red().bold(),
+            file.display(),
+            e
+        )
+    })?;
     let result = lint::lint_source(&source, true)
         .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
     let fixed_source = result.fixed_source.unwrap_or(source.clone());

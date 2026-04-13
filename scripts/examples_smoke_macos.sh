@@ -38,7 +38,10 @@ echo
 echo "[2/5] Running single-file examples..."
 echo
 
-mapfile -t SINGLE_FILE_EXAMPLES < <(
+SINGLE_FILE_EXAMPLES=()
+while IFS= read -r file; do
+  SINGLE_FILE_EXAMPLES+=("${file}")
+done < <(
   find "${REPO_ROOT}/examples/single_file" "${REPO_ROOT}/examples/demos" \
     -type f -name '*.arden' | LC_ALL=C sort
 )

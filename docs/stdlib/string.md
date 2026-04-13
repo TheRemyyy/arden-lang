@@ -101,8 +101,13 @@ Wrong mental model:
 Right mental model:
 
 ```arden
-if (Str.compare(a, b) == 0) {
-    // equal
+import std.string.*;
+
+function isEqual(a: String, b: String): Boolean {
+    if (Str.compare(a, b) == 0) {
+        return true;
+    }
+    return false;
 }
 ```
 

@@ -1,5 +1,5 @@
 // Test 07: Interfaces
-// Tests: interface definition, method signatures, default implementations, implements
+// Tests: interface definition, method signatures, inline interface method bodies, implements
 
 import std.io.*;
 
@@ -20,7 +20,7 @@ interface Comparable {
     function equals(other: Integer): Boolean;
 }
 
-// Interface with default implementation
+// Interface with inline method bodies (classes still explicitly implement required contracts)
 interface Greeting {
     function greet(): None {
         println("Hello!");

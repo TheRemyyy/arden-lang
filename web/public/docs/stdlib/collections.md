@@ -40,6 +40,11 @@ Common methods:
 - `set(index: Integer, value: T): None`
 - `length(): Integer`
 
+Runtime behavior:
+
+- `get` on invalid index fails at runtime (`List.get() index out of bounds`)
+- `pop` on empty list fails at runtime (`List.pop() on empty list`)
+
 ## `Map<K, V>`
 
 Use for key-value lookups.
@@ -64,6 +69,11 @@ Common methods:
 - `get(key: K): V`
 - `contains(key: K): Boolean`
 - `length(): Integer`
+
+Runtime behavior:
+
+- `get` (or index access `map[key]`) on missing key fails at runtime
+  (`Map.get() missing key`)
 
 ## `Set<T>`
 
@@ -108,6 +118,26 @@ Mutating operations require mutable access paths:
 - mutable borrow (`&mut List<T>`, `&mut Map<K, V>`, ...)
 
 Immutable references can call read methods, but mutating methods and index writes are rejected.
+
+## Safe Access Patterns
+
+Avoid direct `get/pop` on unknown state.
+
+```arden
+function try_first(xs: List<Integer>): Result<Integer, String> {
+    if (xs.length() == 0) {
+        return Result.error("list is empty");
+    }
+    return Result.ok(xs.get(0));
+}
+
+function try_lookup(m: Map<String, Integer>, key: String): Result<Integer, String> {
+    if (!m.contains(key)) {
+        return Result.error("missing key: " + key);
+    }
+    return Result.ok(m.get(key));
+}
+```
 
 ## Decision Guide
 

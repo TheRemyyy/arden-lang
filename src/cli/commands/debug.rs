@@ -10,8 +10,14 @@ use std::path::Path;
 pub(crate) fn lex_file(file: &Path) -> Result<(), String> {
     validate_source_file_path(file)?;
 
-    let source = fs::read_to_string(file)
-        .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
+    let source = fs::read_to_string(file).map_err(|e| {
+        format!(
+            "{}: Failed to read file '{}': {}",
+            "error".red().bold(),
+            file.display(),
+            e
+        )
+    })?;
 
     let tokens = lexer::tokenize(&source)
         .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
@@ -27,8 +33,14 @@ pub(crate) fn lex_file(file: &Path) -> Result<(), String> {
 pub(crate) fn parse_file(file: &Path) -> Result<(), String> {
     validate_source_file_path(file)?;
 
-    let source = fs::read_to_string(file)
-        .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
+    let source = fs::read_to_string(file).map_err(|e| {
+        format!(
+            "{}: Failed to read file '{}': {}",
+            "error".red().bold(),
+            file.display(),
+            e
+        )
+    })?;
 
     let tokens = lexer::tokenize(&source)
         .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;

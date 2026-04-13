@@ -19,10 +19,12 @@ pub(crate) fn check_file(file: Option<&Path>) -> Result<(), String> {
         validate_source_file_path(file)?;
         file.to_path_buf()
     } else {
-        let project_root = find_project_root(&current_dir_checked()?).ok_or_else(|| {
+        let cwd = current_dir_checked()?;
+        let project_root = find_project_root(&cwd).ok_or_else(|| {
             format!(
-                "{}: No arden.toml found. Specify a file or run from a project directory.",
-                "error".red().bold()
+                "{}: No arden.toml found from current directory '{}'. Specify a file or run from a project directory.",
+                "error".red().bold(),
+                cwd.display()
             )
         })?;
 
@@ -37,8 +39,14 @@ pub(crate) fn check_file(file: Option<&Path>) -> Result<(), String> {
 
     println!("{} {}", cli_accent("Checking"), cli_path(&file_path));
 
-    let source = fs::read_to_string(&file_path)
-        .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
+    let source = fs::read_to_string(&file_path).map_err(|e| {
+        format!(
+            "{}: Failed to read file '{}': {}",
+            "error".red().bold(),
+            file_path.display(),
+            e
+        )
+    })?;
 
     let filename = file_path
         .file_name()

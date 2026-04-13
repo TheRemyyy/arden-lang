@@ -441,7 +441,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: param.ty.clone(),
-                    mutable: param.mutable,
+                    mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                 },
             );
         }

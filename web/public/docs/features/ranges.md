@@ -41,6 +41,18 @@ function main(): None {
 }
 ```
 
+Iteration contract:
+
+- `has_next()` tells you whether the current position is within configured bounds
+- `next()` advances and returns current value
+- `next()` itself does not enforce bounds; calling it after `has_next() == false`
+  continues arithmetic progression
+
+Example behavior:
+
+- `range(0, 1)` then repeated `next()` yields `0`, `1`, `2`, ...
+- therefore, always gate `next()` with `has_next()` in bounded loops
+
 ## In `for` Loops
 
 ```arden
@@ -75,7 +87,8 @@ function main(): None {
 - assuming end is included (it is excluded)
 - using zero step (`range(0, 10, 0)`) which is invalid
 - mismatching numeric kinds across arguments
-- using wrong step direction (`range(0, 10, -1)` never advances toward end)
+- using wrong step direction (`range(0, 10, -1)` starts with `has_next=false`)
+- calling `next()` after `has_next()` is already `false`
 
 ## Related
 

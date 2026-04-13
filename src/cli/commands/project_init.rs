@@ -29,15 +29,18 @@ pub(crate) fn create_new_project(name: &str, path: Option<&Path>) -> Result<(), 
 
     fs::create_dir_all(&project_path).map_err(|e| {
         format!(
-            "{}: Failed to create project directory: {}",
+            "{}: Failed to create project directory '{}': {}",
             "error".red().bold(),
+            project_path.display(),
             e
         )
     })?;
-    fs::create_dir_all(project_path.join("src")).map_err(|e| {
+    let src_dir = project_path.join("src");
+    fs::create_dir_all(&src_dir).map_err(|e| {
         format!(
-            "{}: Failed to create src directory: {}",
+            "{}: Failed to create src directory '{}': {}",
             "error".red().bold(),
+            src_dir.display(),
             e
         )
     })?;
@@ -60,8 +63,9 @@ function main(): None {{
     let main_path = project_path.join("src").join("main.arden");
     fs::write(&main_path, main_content).map_err(|e| {
         format!(
-            "{}: Failed to create main.arden: {}",
+            "{}: Failed to create main.arden '{}': {}",
             "error".red().bold(),
+            main_path.display(),
             e
         )
     })?;
@@ -145,8 +149,9 @@ output_kind = "bin"
     let readme_path = project_path.join("README.md");
     fs::write(&readme_path, readme_content).map_err(|e| {
         format!(
-            "{}: Failed to create README.md: {}",
+            "{}: Failed to create README.md '{}': {}",
             "error".red().bold(),
+            readme_path.display(),
             e
         )
     })?;

@@ -135,6 +135,13 @@ pub(crate) fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, 
             )
         })?;
         if metadata.file_type().is_symlink() {
+            #[cfg(target_os = "macos")]
+            {
+                if dir == Path::new("/var") || dir == Path::new("/tmp") {
+                    current = dir.parent();
+                    continue;
+                }
+            }
             return Ok(true);
         }
         current = dir.parent();
@@ -218,8 +225,9 @@ pub(crate) fn unique_temp_binary_path(tag: &str, source: &Path) -> Result<PathBu
         .duration_since(UNIX_EPOCH)
         .map_err(|e| {
             format!(
-                "{}: Failed to create unique temporary binary name: {}",
+                "{}: Failed to create unique temporary binary name for '{}': {}",
                 "error".red().bold(),
+                source.display(),
                 e
             )
         })?
@@ -258,7 +266,12 @@ fn collect_arden_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result
             )
         })?;
         let path = entry.path();
-        if file_type.is_dir() {
+        if file_type.is_symlink() {
+            return Err(format!(
+                "Path '{}' must not contain symlink entries",
+                path.display()
+            ));
+        } else if file_type.is_dir() {
             collect_arden_files_recursive(&path, files)?;
         } else if file_type.is_file()
             && path.extension().and_then(|ext| ext.to_str()) == Some("arden")

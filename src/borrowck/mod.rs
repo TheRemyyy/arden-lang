@@ -307,20 +307,10 @@ impl BorrowChecker {
                 self.needs_drop(&param.ty),
                 Some(param.ty.clone()),
             );
-
-            // If it's a borrow parameter, initialize it as borrowed
-            match param.mode {
-                ParamMode::Borrow => {
-                    if let Some(var) = self.get_var_mut(&param.name) {
-                        var.state = OwnershipState::Borrowed(1);
-                    }
+            if matches!(param.mode, ParamMode::Borrow) {
+                if let Some(var) = self.get_var_mut(&param.name) {
+                    var.state = OwnershipState::Borrowed(1);
                 }
-                ParamMode::BorrowMut => {
-                    if let Some(var) = self.get_var_mut(&param.name) {
-                        var.state = OwnershipState::MutBorrowed(0..0);
-                    }
-                }
-                ParamMode::Owned => {}
             }
         }
 
@@ -348,18 +338,10 @@ impl BorrowChecker {
                     self.needs_drop(&param.ty),
                     Some(param.ty.clone()),
                 );
-                match param.mode {
-                    ParamMode::Borrow => {
-                        if let Some(var) = self.get_var_mut(&param.name) {
-                            var.state = OwnershipState::Borrowed(1);
-                        }
+                if matches!(param.mode, ParamMode::Borrow) {
+                    if let Some(var) = self.get_var_mut(&param.name) {
+                        var.state = OwnershipState::Borrowed(1);
                     }
-                    ParamMode::BorrowMut => {
-                        if let Some(var) = self.get_var_mut(&param.name) {
-                            var.state = OwnershipState::MutBorrowed(0..0);
-                        }
-                    }
-                    ParamMode::Owned => {}
                 }
             }
             self.check_block(&ctor.body);
@@ -385,20 +367,10 @@ impl BorrowChecker {
                     self.needs_drop(&param.ty),
                     Some(param.ty.clone()),
                 );
-
-                // Initialize borrow state for parameters
-                match param.mode {
-                    ParamMode::Borrow => {
-                        if let Some(var) = self.get_var_mut(&param.name) {
-                            var.state = OwnershipState::Borrowed(1);
-                        }
+                if matches!(param.mode, ParamMode::Borrow) {
+                    if let Some(var) = self.get_var_mut(&param.name) {
+                        var.state = OwnershipState::Borrowed(1);
                     }
-                    ParamMode::BorrowMut => {
-                        if let Some(var) = self.get_var_mut(&param.name) {
-                            var.state = OwnershipState::MutBorrowed(0..0);
-                        }
-                    }
-                    ParamMode::Owned => {}
                 }
             }
             self.check_block(&method.body);

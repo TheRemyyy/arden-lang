@@ -11,21 +11,37 @@ Arden makes recoverable failure explicit in types, so callers cannot ignore erro
 
 ## `Option<T>`
 
-```arden
-enum Option<T> {
-    Some(T),
-    None
-}
-```
+Built-in shape (conceptually):
+
+- `Some(T)`
+- `None`
+
+Construction styles accepted by current compiler:
+
+- enum-variant style: `Option.Some(v)`, `Option.None`
+- helper style: `Option.some(v)`, `Option.none()`
+- zero-arg generic constructor: `Option<T>()` (initializes to `None`)
 
 ## `Result<T, E>`
 
-```arden
-enum Result<T, E> {
-    Ok(T),
-    Error(E)
-}
-```
+Built-in shape (conceptually):
+
+- `Ok(T)`
+- `Error(E)`
+
+Construction styles accepted by current compiler:
+
+- enum-variant style: `Result.Ok(v)`, `Result.Error(e)`
+- helper style: `Result.ok(v)`, `Result.error(e)`
+- zero-arg generic constructor: `Result<T, E>()` (initializes to `Error(default(E))`)
+
+Display note for zero-arg `Result<T, E>()`:
+
+- with `E = Integer`, default often appears as `Error(0)`
+- with `E = String`, default often appears as `Error()`
+
+Practical recommendation: use explicit `ok/error` (or enum variants) in normal
+code so intent is obvious at call sites.
 
 ## `?` Operator
 

@@ -27,6 +27,11 @@ The compiler guarantees:
 2. no use-after-move
 3. no writes through immutable access paths
 
+Snippet note:
+
+- this page intentionally includes focused fragments that may omit `main()`
+- use linked example files for fully runnable end-to-end programs
+
 ## Ownership Basics
 
 Each non-trivial value has exactly one owner at a time.
@@ -144,17 +149,27 @@ Arden function parameters have explicit ownership modes:
 
 - `owned value: T` (default): takes ownership (move)
 - `borrow value: T`: immutable borrow
-- `borrow mut value: T`: mutable borrow
+- `borrow mut value: T`: borrow-mut mode (caller-side exclusivity contract)
 
 ```arden
 import std.io.*;
 
 function consume(owned s: String): None { return None; }
 function read(borrow s: String): None { println(s); return None; }
-function edit(borrow mut x: Integer): None { x += 1; return None; }
+function inspect_mut(borrow mut x: Integer): None { _v: Integer = x; return None; }
 ```
 
-This is the core way to communicate API intent.
+Practical rule:
+
+- for explicit caller-visible in-place mutation semantics, prefer `&mut T` parameters
+- use borrow modes to communicate call-site ownership/borrowing intent explicitly
+
+Current compiler behavior notes:
+
+- `borrow mut` requires mutable caller binding
+- inside callee, `borrow mut` parameter supports reads and reassignment
+- caller-visible mutation propagation is type-dependent
+  (for predictable propagation, prefer explicit `&mut T`)
 
 ## Method Receiver Mutability (Important)
 
@@ -321,7 +336,7 @@ r: &C = &c;
 
 - default to `owned` parameters unless the caller must keep using the value
 - use `borrow` for read-only helpers
-- use `borrow mut` for in-place mutation APIs
+- use `&mut T` parameters for in-place mutation APIs
 - keep borrow scopes small (introduce blocks) when you need to move later
 - if a borrow error feels confusing, simplify to one owner variable and one borrow at a time, then rebuild
 
@@ -330,4 +345,6 @@ r: &C = &c;
 - [Memory Management](memory_management.md)
 - [Types](../basics/types.md)
 - [Variables and Mutability](../basics/variables.md)
+- borrow-mut behavior example:
+  [`43_borrow_mut_semantics`](../../examples/single_file/tooling_and_ffi/43_borrow_mut_semantics/43_borrow_mut_semantics.arden)
 - [Examples](../../examples/README.md)

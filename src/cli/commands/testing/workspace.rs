@@ -28,7 +28,13 @@ pub(super) fn create_test_runner_workspace(
 ) -> Result<(PathBuf, PathBuf, PathBuf), String> {
     let unique = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|e| format!("Failed to create unique test runner path: {}", e))?
+        .map_err(|e| {
+            format!(
+                "Failed to create unique test runner path for '{}': {}",
+                test_file.display(),
+                e,
+            )
+        })?
         .as_nanos();
     let stem = test_file
         .file_stem()
@@ -40,11 +46,19 @@ pub(super) fn create_test_runner_workspace(
         std::process::id(),
         unique
     ));
-    fs::create_dir_all(&temp_dir)
-        .map_err(|e| format!("Failed to create test runner workspace: {}", e))?;
+    fs::create_dir_all(&temp_dir).map_err(|e| {
+        format!(
+            "Failed to create test runner workspace '{}': {}",
+            temp_dir.display(),
+            e
+        )
+    })?;
 
     let runner_path = temp_dir.join("runner.arden");
+    #[cfg(windows)]
     let exe_path = temp_dir.join("runner.exe");
+    #[cfg(not(windows))]
+    let exe_path = temp_dir.join("runner");
     Ok((temp_dir, runner_path, exe_path))
 }
 
@@ -56,29 +70,54 @@ pub(super) fn create_project_test_runner_workspace(
 ) -> Result<(PathBuf, PathBuf), String> {
     let unique = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|e| format!("Failed to create unique test runner project path: {}", e))?
+        .map_err(|e| {
+            format!(
+                "Failed to create unique test runner project path for '{}': {}",
+                test_file.display(),
+                e
+            )
+        })?
         .as_nanos();
     let temp_dir = std::env::temp_dir().join(format!(
         "arden-project-test-runner-{}-{}",
         std::process::id(),
         unique
     ));
-    fs::create_dir_all(&temp_dir)
-        .map_err(|e| format!("Failed to create test runner project workspace: {}", e))?;
+    fs::create_dir_all(&temp_dir).map_err(|e| {
+        format!(
+            "Failed to create test runner project workspace '{}': {}",
+            temp_dir.display(),
+            e
+        )
+    })?;
 
     let normalized_test_file = if test_file.is_absolute() {
         test_file.to_path_buf()
     } else {
         current_dir_checked()?.join(test_file)
     };
+    let canonical_project_root = project_root.canonicalize().map_err(|e| {
+        format!(
+            "Failed to resolve project root '{}': {}",
+            project_root.display(),
+            e
+        )
+    })?;
+    let canonical_test_file = normalized_test_file.canonicalize().map_err(|e| {
+        format!(
+            "Failed to resolve test file '{}': {}",
+            normalized_test_file.display(),
+            e
+        )
+    })?;
 
-    let test_rel = normalized_test_file
-        .strip_prefix(project_root)
+    let test_rel = canonical_test_file
+        .strip_prefix(&canonical_project_root)
         .map_err(|_| {
             format!(
                 "Test file '{}' is outside project root '{}'",
-                normalized_test_file.display(),
-                project_root.display()
+                canonical_test_file.display(),
+                canonical_project_root.display()
             )
         })?;
     let test_rel_string = test_rel.to_string_lossy().replace('\\', "/");
@@ -93,26 +132,52 @@ pub(super) fn create_project_test_runner_workspace(
         })?;
         let dest = temp_dir.join(rel);
         if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create runner source directory: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Failed to create runner source directory '{}': {}",
+                    parent.display(),
+                    e
+                )
+            })?;
         }
-        if source_file == normalized_test_file {
-            fs::write(&dest, runner_code)
-                .map_err(|e| format!("Failed to write generated project test runner: {}", e))?;
+        if source_file.canonicalize().ok().as_ref() == Some(&canonical_test_file) {
+            fs::write(&dest, runner_code).map_err(|e| {
+                format!(
+                    "Failed to write generated project test runner '{}': {}",
+                    dest.display(),
+                    e
+                )
+            })?;
         } else {
-            fs::copy(&source_file, &dest)
-                .map_err(|e| format!("Failed to copy project source into test workspace: {}", e))?;
+            fs::copy(&source_file, &dest).map_err(|e| {
+                format!(
+                    "Failed to copy project source '{}' into test workspace '{}': {}",
+                    source_file.display(),
+                    dest.display(),
+                    e
+                )
+            })?;
         }
     }
 
     let runner_dest = temp_dir.join(test_rel);
     if !runner_dest.exists() {
         if let Some(parent) = runner_dest.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create runner destination directory: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Failed to create runner destination directory '{}': {}",
+                    parent.display(),
+                    e
+                )
+            })?;
         }
-        fs::write(&runner_dest, runner_code)
-            .map_err(|e| format!("Failed to write generated runner source: {}", e))?;
+        fs::write(&runner_dest, runner_code).map_err(|e| {
+            format!(
+                "Failed to write generated runner source '{}': {}",
+                runner_dest.display(),
+                e
+            )
+        })?;
     }
 
     let mut temp_config = config.clone();
@@ -132,7 +197,13 @@ pub(super) fn create_project_test_runner_workspace(
     temp_config.output = "runner".to_string();
     temp_config
         .save(&temp_dir.join("arden.toml"))
-        .map_err(|e| format!("Failed to write test runner project config: {}", e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to write test runner project config '{}': {}",
+                temp_dir.join("arden.toml").display(),
+                e
+            )
+        })?;
 
     let runner_output_path = resolve_project_output_path(&temp_dir, &temp_config);
 
@@ -182,6 +253,70 @@ mod tests {
             .expect("load runner workspace config");
         let expected_output_path = resolve_project_output_path(&runner_workspace, &runner_config);
         assert_eq!(runner_output_path, expected_output_path);
+
+        let _ = fs::remove_dir_all(&runner_workspace);
+        let _ = fs::remove_dir_all(&project_root);
+    }
+
+    #[test]
+    fn project_runner_workspace_accepts_dotdot_test_paths_inside_project() {
+        let project_root = make_temp_dir("dotdot-path");
+        let source_dir = project_root.join("src");
+        fs::create_dir_all(&source_dir).expect("create source dir");
+        let test_file = source_dir.join("main.arden");
+        fs::write(
+            &test_file,
+            "@Test\nfunction smoke(): None { return None; }\nfunction main(): None { return None; }\n",
+        )
+        .expect("write source file");
+
+        let dotted_path = project_root
+            .join("src")
+            .join("..")
+            .join("src")
+            .join("main.arden");
+        let config = ProjectConfig::new("smoke");
+        let (runner_workspace, runner_output_path) = create_project_test_runner_workspace(
+            &project_root,
+            &config,
+            &dotted_path,
+            "function main(): None { return None; }\n",
+        )
+        .expect("create project test workspace using dotdot test path");
+
+        assert!(
+            runner_output_path.starts_with(&runner_workspace),
+            "runner output should stay in workspace: {}",
+            runner_output_path.display()
+        );
+
+        let _ = fs::remove_dir_all(&runner_workspace);
+        let _ = fs::remove_dir_all(&project_root);
+    }
+
+    #[test]
+    fn single_file_runner_workspace_uses_platform_output_name() {
+        let project_root = make_temp_dir("single-workspace-name");
+        let test_file = project_root.join("case.arden");
+        fs::write(
+            &test_file,
+            "@Test\nfunction smoke(): None { return None; }\n",
+        )
+        .expect("write source");
+
+        let (runner_workspace, _runner_source, exe_path) =
+            create_test_runner_workspace(&test_file).expect("create single-file workspace");
+
+        #[cfg(windows)]
+        assert_eq!(
+            exe_path.file_name().and_then(|v| v.to_str()),
+            Some("runner.exe")
+        );
+        #[cfg(not(windows))]
+        assert_eq!(
+            exe_path.file_name().and_then(|v| v.to_str()),
+            Some("runner")
+        );
 
         let _ = fs::remove_dir_all(&runner_workspace);
         let _ = fs::remove_dir_all(&project_root);

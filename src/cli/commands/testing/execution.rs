@@ -34,8 +34,13 @@ pub(super) fn compile_and_run_test(
     exe_path: &Path,
     filtered_out: usize,
 ) -> Result<(), String> {
-    let source = fs::read_to_string(source_path)
-        .map_err(|e| format!("Failed to read test runner: {}", e))?;
+    let source = fs::read_to_string(source_path).map_err(|e| {
+        format!(
+            "Failed to read test runner '{}': {}",
+            source_path.display(),
+            e
+        )
+    })?;
     compile_source(&source, source_path, exe_path, false, true, None, None)?;
     run_test_executable(exe_path, filtered_out)
 }
@@ -52,7 +57,7 @@ pub(super) fn run_test_executable(exe_path: &Path, filtered_out: usize) -> Resul
     let output = Command::new(exe_path)
         .current_dir(working_dir)
         .output()
-        .map_err(|e| format!("Failed to run test runner: {}", e))?;
+        .map_err(|e| format!("Failed to run test runner '{}': {}", exe_path.display(), e))?;
 
     let report = print_test_runner_output(
         &String::from_utf8_lossy(&output.stdout),
@@ -75,7 +80,8 @@ pub(super) fn run_test_executable(exe_path: &Path, filtered_out: usize) -> Resul
 
     if !output.status.success() {
         return Err(format!(
-            "test run failed: {}",
+            "test run failed for '{}': {}",
+            exe_path.display(),
             format_exit_failure(output.status)
         ));
     }

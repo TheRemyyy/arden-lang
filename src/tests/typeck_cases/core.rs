@@ -736,6 +736,38 @@ fn rejects_unknown_enum_generic_bound() {
 }
 
 #[test]
+fn user_defined_generic_enum_reports_explicit_not_supported_error() {
+    let src = r#"
+        enum Boxed<T> {
+            Item(value: T)
+        }
+
+        function unwrap_value(v: Boxed<Integer>): Integer {
+            return match (v) {
+                Boxed.Item(x) => { x }
+            };
+        }
+
+        function main(): None {
+            value: Boxed<Integer> = Boxed.Item(7);
+            require(unwrap_value(value) == 7);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err("user-defined generic enum should be rejected clearly");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("user-defined generic enums are not supported yet"),
+        "{joined}"
+    );
+}
+
+#[test]
 fn rejects_unknown_interface_generic_bound() {
     let src = r#"
         interface Renderable<T extends Missing> {
@@ -3750,6 +3782,21 @@ fn effect_attributes_allow_any_caller_invoking_any_function() {
 }
 
 #[test]
+fn effect_attributes_allow_inferred_caller_invoking_any_function() {
+    let src = r#"
+        @Any
+        function dyn_effect(): None { return None; }
+
+        function main(): None {
+            dyn_effect();
+            return None;
+        }
+    "#;
+
+    check_source(src).must("inferred caller should be allowed to call @Any callee");
+}
+
+#[test]
 fn effect_attributes_reject_transitive_any_effect_through_inferred_wrapper() {
     let src = r#"
         @Any
@@ -3801,4 +3848,1236 @@ fn effect_attributes_reject_pure_caller_invoking_effectful_function_value_variab
         joined.contains("Pure function cannot call effectful function"),
         "{joined}"
     );
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_after_function_value_contract_copy() {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        @Pure
+        function main(): None {
+            f: () -> None = io_call;
+            g: () -> None = f;
+            g();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject copied effectful function value contract");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_when_function_value_contract_flows_through_if() {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        @Pure
+        function main(): None {
+            f: () -> None = if (true) { io_call } else { io_call };
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject effectful function value flowing through if");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_when_effectful_function_value_is_called_via_if_callee_expr()
+{
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        @Pure
+        function main(): None {
+            f: () -> None = io_call;
+            (if (true) { f } else { f })();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject effectful function value called via if callee");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_when_effectful_function_value_is_called_via_match_callee_expr(
+) {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        @Pure
+        function main(): None {
+            f: () -> None = io_call;
+            (match (true) {
+                true => { f }
+                false => { f }
+            })();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject effectful function value called via match callee");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_when_effectful_function_value_is_called_via_block_callee_expr(
+) {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        @Pure
+        function main(): None {
+            f: () -> None = io_call;
+            ({ f })();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject effectful function value called via block callee");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_when_function_value_contract_flows_through_match() {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        @Pure
+        function main(): None {
+            f: () -> None = match (true) {
+                true => { io_call }
+                false => { io_call }
+            };
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject effectful function value flowing through match");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_io_caller_when_any_function_value_flows_through_if() {
+    let src = r#"
+        @Any
+        function dyn_effect(): None { return None; }
+
+        @Io
+        function main(): None {
+            f: () -> None = if (true) { dyn_effect } else { dyn_effect };
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("non-any explicit caller should reject @Any function value flowing through if");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_passing_effectful_function_to_higher_order_param() {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        function run(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Pure
+        function main(): None {
+            run(io_call);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject passing effectful function into higher-order callee");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_io_caller_passing_any_function_to_higher_order_param() {
+    let src = r#"
+        @Any
+        function dyn_effect(): None { return None; }
+
+        function run(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Io
+        function main(): None {
+            run(dyn_effect);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("non-any explicit caller should reject passing @Any function into higher-order");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_allow_any_caller_passing_any_function_to_higher_order_param() {
+    let src = r#"
+        @Any
+        function dyn_effect(): None { return None; }
+
+        function run(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Any
+        function main(): None {
+            run(dyn_effect);
+            return None;
+        }
+    "#;
+
+    check_source(src).must("@Any caller should allow passing @Any function into higher-order");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_passing_io_builtin_function_value_to_higher_order_param() {
+    let src = r#"
+        import std.system.*;
+
+        function run(f: () -> String): String {
+            return f();
+        }
+
+        @Pure
+        function main(): None {
+            _value: String = run(cwd);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject passing io builtin function value into higher-order");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_passing_effectful_function_factory_result_to_higher_order()
+{
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        function make(): () -> None {
+            return io_call;
+        }
+
+        function run(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Pure
+        function main(): None {
+            run(make());
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "pure caller should reject effectful function factory result passed into higher-order",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_passing_unknown_contract_function_factory_result_to_higher_order(
+) {
+    let src = r#"
+        @Net
+        function net_call(): None { return None; }
+
+        function make(): () -> None {
+            return net_call;
+        }
+
+        function run(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Io
+        function main(): None {
+            run(make());
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "explicit non-any caller should reject unknown function contract produced by call",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_function_value_from_factory_call_assignment() {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        function make(): () -> None {
+            return io_call;
+        }
+
+        @Pure
+        function main(): None {
+            f: () -> None = make();
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject calling function value assigned from factory call");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_invoking_function_value_from_factory_call_assignment(
+) {
+    let src = r#"
+        @Net
+        function net_call(): None { return None; }
+
+        function make(): () -> None {
+            return net_call;
+        }
+
+        @Io
+        function main(): None {
+            f: () -> None = make();
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "explicit non-any caller should reject calling function value assigned from factory call",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_passing_function_value_from_factory_call_assignment_to_higher_order(
+) {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        function make(): () -> None {
+            return io_call;
+        }
+
+        function run(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Pure
+        function main(): None {
+            f: () -> None = make();
+            run(f);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "pure caller should reject passing function value assigned from factory call to higher-order",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_passing_function_value_from_factory_call_assignment_to_higher_order(
+) {
+    let src = r#"
+        @Net
+        function net_call(): None { return None; }
+
+        function make(): () -> None {
+            return net_call;
+        }
+
+        function run(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Io
+        function main(): None {
+            f: () -> None = make();
+            run(f);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "explicit non-any caller should reject passing function value assigned from factory call to higher-order",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_call_produced_function_value_immediately() {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        function make(): () -> None {
+            return io_call;
+        }
+
+        @Pure
+        function main(): None {
+            make()();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject immediately calling call-produced function value");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_invoking_call_produced_function_value_immediately() {
+    let src = r#"
+        @Net
+        function net_call(): None { return None; }
+
+        function make(): () -> None {
+            return net_call;
+        }
+
+        @Io
+        function main(): None {
+            make()();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "explicit non-any caller should reject immediately calling call-produced function value",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_when_call_produced_function_value_flows_through_if() {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        function make(): () -> None {
+            return io_call;
+        }
+
+        @Pure
+        function main(): None {
+            f: () -> None = if (true) { make() } else { make() };
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject call-produced function value flowing through if");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_when_call_produced_function_value_is_called_via_if_callee_expr(
+) {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        function make(): () -> None {
+            return io_call;
+        }
+
+        @Pure
+        function main(): None {
+            (if (true) { make() } else { make() })();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "pure caller should reject calling call-produced function value through if callee expression",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_when_call_produced_function_value_is_called_via_if_callee_expr(
+) {
+    let src = r#"
+        @Net
+        function net_call(): None { return None; }
+
+        function make(): () -> None {
+            return net_call;
+        }
+
+        @Io
+        function main(): None {
+            (if (true) { make() } else { make() })();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "explicit non-any caller should reject calling call-produced function value through if callee expression",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_when_call_produced_function_value_flows_through_block() {
+    let src = r#"
+        @Io
+        function io_call(): None { return None; }
+
+        function make(): () -> None {
+            return io_call;
+        }
+
+        @Pure
+        function main(): None {
+            f: () -> None = { make() };
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject call-produced function value flowing through block");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_effectful_bound_method_value_variable() {
+    let src = r#"
+        class Worker {
+            @Io
+            function run(): None { return None; }
+        }
+
+        @Pure
+        function main(): None {
+            w: Worker = Worker();
+            f: () -> None = w.run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject invoking effectful bound method function value");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_invoking_any_bound_method_value_variable() {
+    let src = r#"
+        class Worker {
+            @Any
+            function run(): None { return None; }
+        }
+
+        @Io
+        function main(): None {
+            w: Worker = Worker();
+            f: () -> None = w.run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("explicit non-any caller should reject invoking @Any bound method value");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_passing_effectful_bound_method_value_to_higher_order() {
+    let src = r#"
+        class Worker {
+            @Io
+            function run(): None { return None; }
+        }
+
+        function invoke(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Pure
+        function main(): None {
+            w: Worker = Worker();
+            invoke(w.run);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject passing effectful bound method value to higher-order");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_passing_any_bound_method_value_to_higher_order() {
+    let src = r#"
+        class Worker {
+            @Any
+            function run(): None { return None; }
+        }
+
+        function invoke(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Io
+        function main(): None {
+            w: Worker = Worker();
+            invoke(w.run);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("explicit non-any caller should reject passing @Any bound method value");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_effectful_method_value_from_constructor_receiver()
+{
+    let src = r#"
+        class Worker {
+            @Io
+            function run(): None { return None; }
+        }
+
+        @Pure
+        function main(): None {
+            f: () -> None = Worker().run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "pure caller should reject invoking effectful method value from constructor receiver",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_effectful_method_value_from_call_receiver() {
+    let src = r#"
+        class Worker {
+            @Io
+            function run(): None { return None; }
+        }
+
+        function make_worker(): Worker {
+            return Worker();
+        }
+
+        @Pure
+        function main(): None {
+            f: () -> None = make_worker().run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject invoking effectful method from call receiver");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_invoking_any_method_value_from_constructor_receiver()
+{
+    let src = r#"
+        class Worker {
+            @Any
+            function run(): None { return None; }
+        }
+
+        @Io
+        function main(): None {
+            f: () -> None = Worker().run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "explicit non-any caller should reject @Any method value from constructor receiver",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_invoking_any_method_value_from_call_receiver() {
+    let src = r#"
+        class Worker {
+            @Any
+            function run(): None { return None; }
+        }
+
+        function make_worker(): Worker {
+            return Worker();
+        }
+
+        @Io
+        function main(): None {
+            f: () -> None = make_worker().run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("explicit non-any caller should reject @Any method value from call receiver");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_effectful_method_value_from_block_receiver() {
+    let src = r#"
+        class Worker {
+            @Io
+            function run(): None { return None; }
+        }
+
+        @Pure
+        function main(): None {
+            w: Worker = Worker();
+            f: () -> None = ({ w }).run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject effectful method value from block receiver");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_invoking_any_method_value_from_block_receiver() {
+    let src = r#"
+        class Worker {
+            @Any
+            function run(): None { return None; }
+        }
+
+        @Io
+        function main(): None {
+            w: Worker = Worker();
+            f: () -> None = ({ w }).run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("explicit non-any caller should reject @Any method value from block receiver");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_effectful_method_value_from_if_receiver() {
+    let src = r#"
+        class Worker {
+            @Io
+            function run(): None { return None; }
+        }
+
+        @Pure
+        function main(): None {
+            w: Worker = Worker();
+            f: () -> None = (if (true) { w } else { w }).run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject effectful method value from if receiver");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_invoking_any_method_value_from_if_receiver() {
+    let src = r#"
+        class Worker {
+            @Any
+            function run(): None { return None; }
+        }
+
+        @Io
+        function main(): None {
+            w: Worker = Worker();
+            f: () -> None = (if (true) { w } else { w }).run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("explicit non-any caller should reject @Any method value from if receiver");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_effectful_method_value_from_nested_method_call_receiver(
+) {
+    let src = r#"
+        class Worker {
+            @Io
+            function run(): None { return None; }
+        }
+
+        class Factory {
+            function make(): Worker {
+                return Worker();
+            }
+        }
+
+        @Pure
+        function main(): None {
+            f: () -> None = Factory().make().run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "pure caller should reject effectful method value from nested method-call receiver",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("Pure function cannot call effectful function"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_invoking_any_method_value_from_nested_method_call_receiver(
+) {
+    let src = r#"
+        class Worker {
+            @Any
+            function run(): None { return None; }
+        }
+
+        class Factory {
+            function make(): Worker {
+                return Worker();
+            }
+        }
+
+        @Io
+        function main(): None {
+            f: () -> None = Factory().make().run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src).must_err(
+        "explicit non-any caller should reject @Any method value from nested method-call receiver",
+    );
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("requires @Any"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_invoking_effectful_interface_method_value_variable() {
+    let src = r#"
+        interface Runner {
+            function run(): None;
+        }
+
+        class Worker implements Runner {
+            @Io
+            function run(): None { return None; }
+        }
+
+        @Pure
+        function main(): None {
+            r: Runner = Worker();
+            f: () -> None = r.run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs =
+        check_source(src).must_err("pure caller should reject effectful interface method value");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_invoking_any_interface_method_value_variable() {
+    let src = r#"
+        interface Runner {
+            function run(): None;
+        }
+
+        class Worker implements Runner {
+            @Any
+            function run(): None { return None; }
+        }
+
+        @Io
+        function main(): None {
+            r: Runner = Worker();
+            f: () -> None = r.run;
+            f();
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("explicit non-any caller should reject @Any interface method value");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_pure_caller_passing_effectful_interface_method_value_to_higher_order() {
+    let src = r#"
+        interface Runner {
+            function run(): None;
+        }
+
+        class Worker implements Runner {
+            @Io
+            function run(): None { return None; }
+        }
+
+        function invoke(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Pure
+        function main(): None {
+            r: Runner = Worker();
+            invoke(r.run);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("pure caller should reject passing effectful interface method value");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
+}
+
+#[test]
+fn effect_attributes_reject_explicit_io_caller_passing_any_interface_method_value_to_higher_order()
+{
+    let src = r#"
+        interface Runner {
+            function run(): None;
+        }
+
+        class Worker implements Runner {
+            @Any
+            function run(): None { return None; }
+        }
+
+        function invoke(f: () -> None): None {
+            f();
+            return None;
+        }
+
+        @Io
+        function main(): None {
+            r: Runner = Worker();
+            invoke(r.run);
+            return None;
+        }
+    "#;
+
+    let errs = check_source(src)
+        .must_err("explicit non-any caller should reject passing @Any interface method value");
+    let joined = errs
+        .iter()
+        .map(|e| e.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("unknown effect contract"), "{joined}");
 }

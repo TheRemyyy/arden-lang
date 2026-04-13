@@ -7,6 +7,9 @@ What this demonstrates:
 - `implements` on classes
 - polymorphic calls through interface types
 
+Current behavior note:
+- interface method bodies can be declared inline, but classes should still implement required methods explicitly
+
 Run:
 
 ```bash

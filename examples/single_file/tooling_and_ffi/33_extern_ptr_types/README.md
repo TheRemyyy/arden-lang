@@ -4,7 +4,8 @@ Focused example: **Extern Ptr Types**.
 
 What this demonstrates:
 - `Ptr<T>` on FFI boundaries
-- pointer-oriented interop flow
+- malloc/free pointer ownership flow
+- `memset` rebind pattern after pointer-consuming extern call
 - explicit low-level type handling
 
 Run:

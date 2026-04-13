@@ -1,7 +1,7 @@
 import Search from 'lucide-react/dist/esm/icons/search';
 import { useState } from 'react';
 import { openSiteSearch } from '../lib/search-events';
-import { GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
+import { GITHUB_REPO_URL, SITE_NAME, UI_LOGO_SRC } from '../lib/site';
 
 const navLinks = [
     { href: '/docs/overview', label: 'Documentation' },
@@ -20,14 +20,14 @@ export function Header() {
                     <a href="/" className="inline-flex items-center gap-3 text-base font-semibold tracking-tight text-white" onClick={() => setIsMenuOpen(false)}>
                         <img
                             src={UI_LOGO_SRC}
-                            alt="Arden logo"
+                            alt={`${SITE_NAME} logo`}
                             width="32"
                             height="32"
                             decoding="async"
                             fetchPriority="high"
                             className="h-8 w-8 rounded-xl border border-white/10"
                         />
-                        <span>Arden</span>
+                        <span>{SITE_NAME}</span>
                     </a>
                 </div>
 

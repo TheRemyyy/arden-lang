@@ -8,6 +8,11 @@ Generics let you reuse logic without sacrificing compile-time type guarantees.
 
 Write one definition that works for many concrete types.
 
+Current scope:
+
+- user-defined generic functions/classes/interfaces are supported
+- user-defined generic enums are not supported yet
+
 ## Generic Functions
 
 ```arden
@@ -15,7 +20,10 @@ function identity<T>(value: T): T {
     return value;
 }
 
-a: Integer = identity<Integer>(10);
+function main(): None {
+    a: Integer = identity<Integer>(10);
+    return None;
+}
 ```
 
 Type arguments can often be inferred when context is strong enough.

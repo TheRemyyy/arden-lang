@@ -1,6 +1,7 @@
 //! Utility functions for codegen: C library declarations and helper methods
 use crate::ast::{
-    BinOp, Expr, Literal, MatchArm, Parameter, Pattern, Spanned, Stmt, StringPart, Type, UnaryOp,
+    BinOp, Expr, Literal, MatchArm, ParamMode, Parameter, Pattern, Spanned, Stmt, StringPart, Type,
+    UnaryOp,
 };
 use crate::cache::elapsed_nanos_u64;
 use crate::parser::parse_type_source;
@@ -1193,7 +1194,7 @@ impl<'ctx> Codegen<'ctx> {
                         } else {
                             param.ty.clone()
                         },
-                        mutable: param.mutable,
+                        mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                         mode: param.mode,
                     })
                     .collect()
@@ -1375,7 +1376,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: param.ty.clone(),
-                    mutable: param.mutable,
+                    mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                 },
             );
         }

@@ -31,7 +31,7 @@ function main(): None {
     {
         y: Integer = 20;
         println("{x} {y}");
-    }
+    };
 
     // y is out of scope here
     return None;
@@ -50,6 +50,14 @@ function main(): None {
 ```
 
 Declarations like `function`, `class`, `if`, `while`, and `match` do not need `;` after closing brace.
+
+## Top-Level Rule (Important)
+
+At file top-level, Arden expects declarations only (`function`, `class`, `enum`,
+`interface`, `module`, `import`, `package`).
+
+Standalone executable statements/assignments must live inside a function
+(usually `main()`).
 
 ## Assignment and Compound Assignment
 
@@ -70,7 +78,7 @@ Compound assignment works with fields and indexes too:
 
 ```arden
 function main(): None {
-    numbers: List<Integer> = List<Integer>();
+    mut numbers: List<Integer> = List<Integer>();
     numbers.push(10);
     numbers[0] -= 2;
 
@@ -120,11 +128,23 @@ Use `None` pattern without empty binding list `None()`.
 - path cannot start with `.`
 - path cannot contain empty segment (`..`)
 - package path cannot end with `.`
+- `package ...;` declaration must appear at the beginning of file
 
 ### Lambda syntax
 
 Pipe-style lambda syntax is not supported (`|x| ...`).
 Use Arden lambda syntax from existing examples/docs.
+
+### `main()` signature constraints
+
+`main()` constraints enforced by compiler:
+
+- no parameters
+- no generic parameters
+- not `async`
+- not `extern`
+- not variadic
+- return type only `None` or `Integer`
 
 ## Identifiers
 

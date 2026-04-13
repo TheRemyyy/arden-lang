@@ -1,7 +1,7 @@
 // Example 10: Ownership and Borrowing
 //
 // Goal:
-// - understand `owned` (move), `borrow` (read-only), `borrow mut` (exclusive mutable access)
+// - understand `owned` (move), `borrow` (read-only), `borrow mut` (exclusive borrow-mode contract)
 // - see how `&` and `&mut` references behave
 // - understand when values stay usable vs. become moved
 
@@ -40,7 +40,7 @@ function bump_ref(x: &mut Integer): None {
     return None;
 }
 
-// borrow mut mode: callee gets exclusive borrowed access to caller-owned value.
+// borrow mut mode: caller must pass mutable binding; this demo only observes the value.
 function observe_borrow_mut(borrow mut x: Integer): None {
     println("observe_borrow_mut saw {x}");
     return None;

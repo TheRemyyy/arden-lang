@@ -58,6 +58,38 @@ If build/link fails, verify linker and LLVM setup first.
 CI release workflows also produce portable bundles (`linux/macOS/windows`) containing compiler + expected runtime tooling.
 Use them when you want quick install without local Rust build.
 
+Download locations:
+
+- website installer page: [arden-lang.dev/install](https://www.arden-lang.dev/install)
+- GitHub latest release assets: [github.com/TheRemyyy/arden-lang/releases/latest](https://github.com/TheRemyyy/arden-lang/releases/latest)
+
+Quick portable flow:
+
+1. download the matching archive for your OS/CPU from latest release assets
+2. extract it
+3. run the included launcher (`arden` / `arden.bat` depending on bundle)
+4. verify with `arden --version` and `arden --help`
+
+Portable asset names currently used:
+
+- `arden-windows-x64-portable.zip`
+- `arden-linux-x64-portable.tar.gz`
+- `arden-macos-arm64-portable.tar.gz`
+- `arden-macos-x64-portable.tar.gz`
+
+Direct latest-download URL pattern:
+
+```text
+https://github.com/TheRemyyy/arden-lang/releases/latest/download/<ASSET_NAME>
+```
+
+Optional checksum verification:
+
+```bash
+curl -LO https://github.com/TheRemyyy/arden-lang/releases/latest/download/SHA256SUMS.txt
+sha256sum -c SHA256SUMS.txt
+```
+
 ## Common Setup Problems
 
 - compiler builds, but `arden` path points to old binary

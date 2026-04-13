@@ -14,6 +14,7 @@ Compiler tooling surface and C interop workflows.
 - `34_bindgen_workflow/34_bindgen_workflow.arden`
 - `41_effect_attributes_reference/41_effect_attributes_reference.arden`
 - `42_build_timings_and_shards/42_build_timings_and_shards.arden`
+- `43_borrow_mut_semantics/43_borrow_mut_semantics.arden`
 
 Recommended order for effects/FFI learning:
 
@@ -21,4 +22,5 @@ Recommended order for effects/FFI learning:
 2. `29_effect_inference_and_any`
 3. `41_effect_attributes_reference`
 4. `42_build_timings_and_shards` for CLI/env build diagnostics
-5. `27` -> `30` -> `31` -> `32` -> `33` -> `34` for extern/FFI progression
+5. `43_borrow_mut_semantics` for current borrow-mut parameter behavior
+6. `27` -> `30` -> `31` -> `32` -> `33` -> `34` for extern/FFI progression

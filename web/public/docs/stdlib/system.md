@@ -14,6 +14,15 @@ If you are not sure when to read env vars, run shell commands, inspect cwd/OS, o
 - `System.exec(...)` -> run command, capture stdout text
 - `System.exit(...)` -> terminate program with explicit exit code
 
+Beginner decision rule:
+
+- need config (`APP_ENV`, API URL, feature toggle) -> `System.getenv`
+- need path context for debugging/scripting -> `System.cwd`
+- need OS switch (`windows` vs `linux`) -> `System.os`
+- need to run a command and check success/failure -> `System.shell`
+- need command stdout text -> `System.exec`
+- building CLI and must return explicit status -> `System.exit`
+
 Import:
 
 ```arden
@@ -149,6 +158,12 @@ function main(): None {
   - that is a command-injection risk
 - Always check shell exit codes for command-based workflows.
 - Do not rely on exact command output formatting across OSes without fallback logic.
+
+## Common Newcomer Confusions
+
+- `System.shell("...")` returns process exit code, not command output text
+- `System.exec("...")` returns stdout text, not exit code
+- missing env var returns `""` (empty string), not `Option<String>`
 
 ## Example In Repo
 

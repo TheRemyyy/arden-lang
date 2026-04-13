@@ -24,12 +24,13 @@ function main(): None {
 }
 ```
 
-`let` is optional and equivalent:
+`let` keyword is not supported in Arden declarations.
+Use explicit typed binding directly:
 
 ```arden
 function main(): None {
-    let score: Integer = 10;
-    level: Integer = 10;
+    score: Integer = 10;
+    level: Integer = 20;
     return None;
 }
 ```
@@ -86,7 +87,10 @@ A variable owns its value by default. References borrow access:
 ```arden
 function main(): None {
     mut n: Integer = 5;
-    read: &Integer = &n;
+    {
+        read: &Integer = &n;
+        _x: Integer = *read;
+    };
     write: &mut Integer = &mut n;
     *write = 9;
     return None;

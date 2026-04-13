@@ -51,7 +51,26 @@ Arden stdlib is compiler-intrinsic, but module usage still requires explicit imp
 - ranges: `range`
 - process exit: `exit`
 - assertions: `assert`, `assert_eq`, `assert_ne`, `assert_true`, `assert_false`
-- panic helper: `fail`
+- panic helper: `fail()` or `fail("message")`
+- option/result constructors: `Option.some`, `Option.none`, `Result.ok`, `Result.error`
+
+Assertion quick reference:
+
+- `assert(condition: Boolean)`
+- `assert_true(condition: Boolean)`
+- `assert_false(condition: Boolean)`
+- `assert_eq(left: T, right: T)` (compatible types)
+- `assert_ne(left: T, right: T)` (compatible types)
+
+Option/Result quick reference:
+
+- `Option.some(value)` / `Option.none()`
+- `Result.ok(value)` / `Result.error(errorValue)`
+
+Also valid, but less explicit:
+
+- `Option<T>()` -> `None`
+- `Result<T, E>()` -> `Error(default(E))`
 
 ## Function Values
 
@@ -62,10 +81,17 @@ import std.args.*;
 import std.math.*;
 import std.system.*;
 
-conv: (Integer) -> Float = to_float;
-cwd: () -> String = System.cwd;
-argc: () -> Integer = Args.count;
-rand: () -> Float = Math.random;
+function main(): None {
+    conv: (Integer) -> Float = to_float;
+    cwd: () -> String = System.cwd;
+    argc: () -> Integer = Args.count;
+    rand: () -> Float = Math.random;
+    _f: Float = conv(7);
+    _cwd: String = cwd();
+    _argc: Integer = argc();
+    _r: Float = rand();
+    return None;
+}
 ```
 
 ## Quick Decision Guide
@@ -83,6 +109,7 @@ rand: () -> Float = Math.random;
 - assuming module symbols are globally available without import
 - mixing `System.shell` (exit code) and `System.exec` (stdout text)
 - calling `Args.get(i)` without checking `Args.count()` first
+  (`Args.get` returns `String`; out-of-range index is runtime error)
 - treating `Str.compare(a, b)` as boolean instead of integer relation (`<0`, `0`, `>0`)
 
 ## Where To Start

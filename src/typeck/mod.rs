@@ -156,6 +156,7 @@ impl NumericConst {
 pub enum FunctionEffectContract {
     Effects(Vec<String>),
     Any,
+    Unknown,
 }
 
 #[derive(Debug, Clone)]
@@ -200,6 +201,7 @@ pub struct ClassInfo {
 #[derive(Debug, Clone)]
 pub struct EnumInfo {
     pub variants: HashMap<String, Vec<ResolvedType>>,
+    pub generic_type_vars: Vec<usize>,
 }
 
 /// Interface metadata
@@ -559,19 +561,30 @@ impl TypeChecker {
         }
 
         if !self.current_effects.iter().any(|e| e == effect) {
+            let suggested_attr = match effect {
+                "io" => "Io".to_string(),
+                "net" => "Net".to_string(),
+                "alloc" => "Alloc".to_string(),
+                "unsafe" => "Unsafe".to_string(),
+                "thread" => "Thread".to_string(),
+                _ => {
+                    let mut chars = effect.chars();
+                    match chars.next() {
+                        Some(first) => {
+                            let mut value = first.to_ascii_uppercase().to_string();
+                            value.push_str(chars.as_str());
+                            value
+                        }
+                        None => "Any".to_string(),
+                    }
+                }
+            };
             self.error(
                 format!(
                     "Missing effect '{}' for call to '{}'. Add @{} (or @Any) on the caller function",
                     effect,
                     callee,
-                    match effect {
-                        "io" => "Io",
-                        "net" => "Net",
-                        "alloc" => "Alloc",
-                        "unsafe" => "Unsafe",
-                        "thread" => "Thread",
-                        _ => "Io",
-                    }
+                    suggested_attr
                 ),
                 span,
             );
@@ -593,7 +606,7 @@ impl TypeChecker {
                 );
                 return;
             }
-            if !self.current_allow_any {
+            if self.current_has_explicit_effects && !self.current_allow_any {
                 self.error(
                     format!(
                         "Call to @Any function '{}' requires @Any on the caller function",
@@ -649,6 +662,27 @@ impl TypeChecker {
                 }
                 for eff in effects {
                     self.enforce_required_effect(eff, span.clone(), callee);
+                }
+            }
+            FunctionEffectContract::Unknown => {
+                if self.current_is_pure {
+                    self.error(
+                        format!(
+                            "Pure function cannot call function value '{}' with unknown effect contract",
+                            callee
+                        ),
+                        span,
+                    );
+                    return;
+                }
+                if self.current_has_explicit_effects && !self.current_allow_any {
+                    self.error(
+                        format!(
+                            "Call to function value '{}' with unknown effect contract requires @Any on the caller function",
+                            callee
+                        ),
+                        span,
+                    );
                 }
             }
         }
@@ -895,6 +929,36 @@ impl TypeChecker {
 
     fn class_base_name<'a>(&self, class_name: &'a str) -> &'a str {
         class_name.split('<').next().unwrap_or(class_name)
+    }
+
+    fn instantiated_enum_substitutions(
+        &self,
+        enum_name: &str,
+    ) -> (String, HashMap<usize, ResolvedType>) {
+        let base_name = self.class_base_name(enum_name).to_string();
+        let Some(en) = self.enums.get(&base_name) else {
+            return (base_name, HashMap::new());
+        };
+        if en.generic_type_vars.is_empty() || !enum_name.contains('<') || !enum_name.ends_with('>')
+        {
+            return (base_name, HashMap::new());
+        }
+
+        let Some(open_bracket) = enum_name.find('<') else {
+            return (base_name, HashMap::new());
+        };
+        let inner = &enum_name[open_bracket + 1..enum_name.len() - 1];
+        let parts = self.split_generic_args(inner);
+        if parts.len() != en.generic_type_vars.len() {
+            return (base_name, HashMap::new());
+        }
+        let substitutions = en
+            .generic_type_vars
+            .iter()
+            .zip(parts.iter())
+            .map(|(id, part)| (*id, self.parse_type_string(part)))
+            .collect();
+        (base_name, substitutions)
     }
 
     fn instantiated_class_substitutions(
@@ -1188,6 +1252,7 @@ impl TypeChecker {
                 | ResolvedType::Ref(_)
                 | ResolvedType::MutRef(_)
                 | ResolvedType::Ptr(_)
+                | ResolvedType::TypeVar(_)
         ) || matches!(ty, ResolvedType::Class(name) if !self.enums.contains_key(name))
     }
 
@@ -1449,9 +1514,21 @@ impl TypeChecker {
                     span.clone(),
                     &format!("Enum '{}'", en.name),
                 );
+                if !en.generic_params.is_empty() {
+                    self.error(
+                        format!(
+                            "Enum '{}' uses generic parameters, but user-defined generic enums are not supported yet",
+                            en.name
+                        ),
+                        span.clone(),
+                    );
+                    self.current_module_prefix = saved_module_prefix;
+                    return;
+                }
+                let enum_generic_bindings = self.make_generic_type_bindings(&en.generic_params);
                 for variant in &en.variants {
                     for field in &variant.fields {
-                        let ty = self.resolve_type(&field.ty);
+                        let ty = self.resolve_type_with_bindings(&field.ty, &enum_generic_bindings);
                         self.validate_resolved_type_exists(&ty, span.clone());
                         if !self.enum_payload_supported_for_codegen(&ty) {
                             self.error(
@@ -1529,7 +1606,12 @@ impl TypeChecker {
             for param in &method.params {
                 let ty = self.resolve_type(&param.ty);
                 self.validate_resolved_type_exists(&ty, span.clone());
-                self.declare_variable(&param.name, ty, param.mutable, span.clone());
+                self.declare_variable(
+                    &param.name,
+                    ty,
+                    param.mutable || matches!(param.mode, ParamMode::BorrowMut),
+                    span.clone(),
+                );
             }
             let return_type = self.resolve_type(&method.return_type);
             self.validate_resolved_type_exists(&return_type, span.clone());
@@ -1627,7 +1709,12 @@ impl TypeChecker {
                     span.clone(),
                 );
             }
-            self.declare_variable(&param.name, ty, param.mutable, span.clone());
+            self.declare_variable(
+                &param.name,
+                ty,
+                param.mutable || matches!(param.mode, ParamMode::BorrowMut),
+                span.clone(),
+            );
         }
 
         // Set current return type
@@ -1822,7 +1909,12 @@ impl TypeChecker {
                 let ty = self.resolve_type(&param.ty);
                 self.validate_resolved_type_exists(&ty, span.clone());
                 self.check_type_visibility(&ty, span.clone());
-                self.declare_variable(&param.name, ty, param.mutable, span.clone());
+                self.declare_variable(
+                    &param.name,
+                    ty,
+                    param.mutable || matches!(param.mode, ParamMode::BorrowMut),
+                    span.clone(),
+                );
             }
 
             self.check_block(&ctor.body);
@@ -1915,7 +2007,12 @@ impl TypeChecker {
                 let ty = self.resolve_type(&param.ty);
                 self.validate_resolved_type_exists(&ty, span.clone());
                 self.check_type_visibility(&ty, span.clone());
-                self.declare_variable(&param.name, ty, param.mutable, span.clone());
+                self.declare_variable(
+                    &param.name,
+                    ty,
+                    param.mutable || matches!(param.mode, ParamMode::BorrowMut),
+                    span.clone(),
+                );
             }
 
             let return_type = self.resolve_type(&method.return_type);
@@ -2356,20 +2453,28 @@ impl TypeChecker {
                         let resolved_enum_name = self
                             .resolve_enum_name(enum_name)
                             .unwrap_or_else(|| enum_name.clone());
+                        let (_enum_base, enum_substitutions) =
+                            self.instantiated_enum_substitutions(enum_name);
                         if let Some(enum_info) = self.enums.get(&resolved_enum_name).cloned() {
                             if let Some(field_tys) = enum_info.variants.get(&variant_name) {
+                                let expected_field_tys = field_tys
+                                    .iter()
+                                    .map(|ty| Self::substitute_type_vars(ty, &enum_substitutions))
+                                    .collect::<Vec<_>>();
                                 if field_tys.len() != bindings.len() {
                                     self.error(
                                         format!(
                                             "Pattern '{}' expects {} binding(s), got {}",
                                             variant_name,
-                                            field_tys.len(),
+                                            expected_field_tys.len(),
                                             bindings.len()
                                         ),
                                         span,
                                     );
                                 } else {
-                                    for (binding, ty) in bindings.iter().zip(field_tys.iter()) {
+                                    for (binding, ty) in
+                                        bindings.iter().zip(expected_field_tys.iter())
+                                    {
                                         self.declare_variable(
                                             binding,
                                             ty.clone(),
@@ -3072,8 +3177,28 @@ impl TypeChecker {
             return None;
         };
         let (enum_name, field_types) = self.resolve_enum_variant_function_value(expr)?;
-        let actual_ty =
-            ResolvedType::Function(field_types, Box::new(ResolvedType::Class(enum_name)));
+        let expected_return_enum = match expected {
+            ResolvedType::Function(_, ret) => match ret.as_ref() {
+                ResolvedType::Class(name) => Some(name.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let actual_ty = if let Some(expected_enum_name) = expected_return_enum {
+            let (expected_base, enum_substitutions) =
+                self.instantiated_enum_substitutions(&expected_enum_name);
+            if expected_base == enum_name {
+                let params = field_types
+                    .iter()
+                    .map(|ty| Self::substitute_type_vars(ty, &enum_substitutions))
+                    .collect::<Vec<_>>();
+                ResolvedType::Function(params, Box::new(ResolvedType::Class(expected_enum_name)))
+            } else {
+                ResolvedType::Function(field_types, Box::new(ResolvedType::Class(enum_name)))
+            }
+        } else {
+            ResolvedType::Function(field_types, Box::new(ResolvedType::Class(enum_name)))
+        };
         if self.types_compatible(expected, &actual_ty) {
             return Some(actual_ty);
         }
@@ -3207,6 +3332,15 @@ impl TypeChecker {
             Some(expected_ty),
         ) = (expr, expected)
         {
+            if let Some(enum_ty) = self.check_enum_variant_call_with_expected_type(
+                &callee.node,
+                args,
+                type_args,
+                span.clone(),
+                expected_ty,
+            ) {
+                return enum_ty;
+            }
             if let Some(path_parts) = flatten_field_chain(&callee.node) {
                 if path_parts.len() >= 2 {
                     if let Some(alias_path) = self.lookup_import_alias_path(&path_parts[0]) {
@@ -3352,6 +3486,99 @@ impl TypeChecker {
             return self.check_async_block_expr(body, span, Some(expected_inner.as_ref()));
         }
         self.check_expr(expr, span)
+    }
+
+    fn check_enum_variant_call_with_expected_type(
+        &mut self,
+        callee: &Expr,
+        args: &[Spanned<Expr>],
+        type_args: &[Type],
+        span: Span,
+        expected: &ResolvedType,
+    ) -> Option<ResolvedType> {
+        let ResolvedType::Class(expected_enum_name) = expected else {
+            return None;
+        };
+        let (resolved_expected_enum, enum_substitutions) =
+            self.instantiated_enum_substitutions(expected_enum_name);
+        let (resolved_callee_enum, variant_name) = self.resolve_enum_variant_owner(callee)?;
+        if resolved_expected_enum != resolved_callee_enum {
+            return None;
+        }
+        let enum_info = self.enums.get(&resolved_callee_enum)?;
+        let variant_fields = enum_info.variants.get(&variant_name).cloned()?;
+        if !type_args.is_empty() {
+            self.error(
+                format!(
+                    "Enum variant '{}.{}' does not accept type arguments",
+                    resolved_callee_enum, variant_name
+                ),
+                span.clone(),
+            );
+        }
+        let expected_fields = variant_fields
+            .iter()
+            .map(|ty| Self::substitute_type_vars(ty, &enum_substitutions))
+            .collect::<Vec<_>>();
+        if args.len() != expected_fields.len() {
+            self.error(
+                format!(
+                    "Enum variant '{}.{}' expects {} argument(s), got {}",
+                    resolved_callee_enum,
+                    variant_name,
+                    expected_fields.len(),
+                    args.len()
+                ),
+                span,
+            );
+            return Some(expected.clone());
+        }
+        for (arg, expected_ty) in args.iter().zip(expected_fields.iter()) {
+            let actual =
+                self.check_expr_with_expected_type(&arg.node, arg.span.clone(), Some(expected_ty));
+            if !self.types_compatible(expected_ty, &actual) {
+                self.error(
+                    format!(
+                        "Enum variant argument type mismatch: expected {}, got {}",
+                        Self::format_resolved_type_for_diagnostic(expected_ty),
+                        Self::format_resolved_type_for_diagnostic(&actual)
+                    ),
+                    arg.span.clone(),
+                );
+            }
+        }
+        Some(expected.clone())
+    }
+
+    fn resolve_enum_variant_owner(&self, callee: &Expr) -> Option<(String, String)> {
+        if let Expr::Ident(name) = callee {
+            if let Some((enum_name, variant_name)) = self.resolve_import_alias_variant(name) {
+                return Some((enum_name, variant_name));
+            }
+        }
+        let Expr::Field { object, field } = callee else {
+            return None;
+        };
+        if let Some(path_parts) = flatten_field_chain(callee) {
+            if path_parts.len() >= 2 {
+                let owner_source = path_parts[..path_parts.len() - 1].join(".");
+                if let Some(resolved_owner) = self.resolve_nominal_reference_name(&owner_source) {
+                    if self.enums.contains_key(&resolved_owner) {
+                        return Some((resolved_owner, field.clone()));
+                    }
+                }
+            }
+        }
+        let Expr::Ident(owner_name) = &object.node else {
+            return None;
+        };
+        let resolved_owner = self
+            .resolve_import_alias_symbol(owner_name)
+            .or_else(|| self.resolve_nominal_reference_name(owner_name))
+            .or_else(|| self.resolve_enum_name(owner_name))?;
+        self.enums
+            .contains_key(&resolved_owner)
+            .then_some((resolved_owner, field.clone()))
     }
 
     fn check_static_container_call_with_expected_type(
@@ -4716,6 +4943,96 @@ impl TypeChecker {
         if !matches!(expected_type, ResolvedType::Function(_, _)) {
             return None;
         }
+        self.infer_function_value_effect_contract_from_expr(value_expr)
+    }
+
+    fn infer_function_value_effect_contract_from_block(
+        &self,
+        block: &Block,
+    ) -> Option<FunctionEffectContract> {
+        let tail_expr = block.iter().rev().find_map(|stmt| match &stmt.node {
+            Stmt::Expr(expr) => Some(&expr.node),
+            _ => None,
+        })?;
+        self.infer_function_value_effect_contract_from_expr(tail_expr)
+    }
+
+    fn merge_function_effect_contracts(
+        left: Option<FunctionEffectContract>,
+        right: Option<FunctionEffectContract>,
+    ) -> Option<FunctionEffectContract> {
+        match (left, right) {
+            (None, None) => None,
+            (Some(contract), None) | (None, Some(contract)) => Some(contract),
+            (Some(FunctionEffectContract::Any), _) | (_, Some(FunctionEffectContract::Any)) => {
+                Some(FunctionEffectContract::Any)
+            }
+            (Some(FunctionEffectContract::Unknown), _)
+            | (_, Some(FunctionEffectContract::Unknown)) => Some(FunctionEffectContract::Unknown),
+            (
+                Some(FunctionEffectContract::Effects(mut a)),
+                Some(FunctionEffectContract::Effects(b)),
+            ) => {
+                a.extend(b);
+                a.sort();
+                a.dedup();
+                Some(FunctionEffectContract::Effects(a))
+            }
+        }
+    }
+
+    fn infer_function_value_effect_contract_from_expr(
+        &self,
+        value_expr: &Expr,
+    ) -> Option<FunctionEffectContract> {
+        if let Expr::Ident(name) = value_expr {
+            if let Some(contract) = self
+                .lookup_variable(name)
+                .and_then(|var| var.callable_effects.clone())
+            {
+                return Some(contract);
+            }
+        }
+        match value_expr {
+            Expr::Call { .. } | Expr::Await(_) => {
+                return Some(FunctionEffectContract::Unknown);
+            }
+            Expr::GenericFunctionValue { callee, .. } => {
+                return self.infer_function_value_effect_contract_from_expr(&callee.node);
+            }
+            Expr::Field { object, field } => {
+                if let Some(contract) =
+                    self.infer_bound_method_value_effect_contract(&object.node, field)
+                {
+                    return Some(contract);
+                }
+            }
+            Expr::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                let then_contract =
+                    self.infer_function_value_effect_contract_from_block(then_branch);
+                let else_contract = else_branch
+                    .as_ref()
+                    .and_then(|block| self.infer_function_value_effect_contract_from_block(block));
+                return Self::merge_function_effect_contracts(then_contract, else_contract);
+            }
+            Expr::Match { arms, .. } => {
+                let mut merged: Option<FunctionEffectContract> = None;
+                for arm in arms {
+                    let contract = self.infer_function_value_effect_contract_from_block(&arm.body);
+                    merged = Self::merge_function_effect_contracts(merged, contract);
+                }
+                return merged;
+            }
+            Expr::Block(body) => {
+                return self.infer_function_value_effect_contract_from_block(body);
+            }
+            _ => {}
+        }
+
         let name = self.resolve_contextual_function_value_name(value_expr)?;
         if let Some(sig) = self.functions.get(&name) {
             if sig.allow_any {
@@ -4728,6 +5045,151 @@ impl TypeChecker {
         }
         Self::builtin_required_effect(&name)
             .map(|effect| FunctionEffectContract::Effects(vec![effect.to_string()]))
+    }
+
+    fn infer_bound_method_value_effect_contract(
+        &self,
+        object_expr: &Expr,
+        method_name: &str,
+    ) -> Option<FunctionEffectContract> {
+        let receiver_class = self.infer_receiver_class_name_for_method_value(object_expr)?;
+        let receiver_base = self.class_base_name(&receiver_class);
+        if self.interfaces.contains_key(receiver_base) {
+            let mut methods = HashMap::new();
+            let mut visited = std::collections::HashSet::new();
+            self.collect_interface_methods(&receiver_class, &mut methods, &mut visited);
+            if methods.contains_key(method_name) {
+                return Some(FunctionEffectContract::Unknown);
+            }
+        }
+        let (base_name, _) = self.instantiated_class_substitutions(&receiver_class);
+        let (_owner, sig, _visibility) = self.lookup_class_method(&base_name, method_name)?;
+        if sig.allow_any {
+            return Some(FunctionEffectContract::Any);
+        }
+        if !sig.effects.is_empty() {
+            return Some(FunctionEffectContract::Effects(sig.effects.clone()));
+        }
+        None
+    }
+
+    fn infer_receiver_class_name_for_method_value(&self, object_expr: &Expr) -> Option<String> {
+        match object_expr {
+            Expr::Ident(name) => {
+                let receiver_ty = self.lookup_variable(name).map(|var| &var.ty)?;
+                match Self::peel_reference_type(receiver_ty) {
+                    ResolvedType::Class(name) => Some(name.clone()),
+                    _ => None,
+                }
+            }
+            Expr::This => self.current_class.clone(),
+            Expr::Construct { ty, .. } => self
+                .resolve_nominal_reference_name(ty)
+                .or_else(|| Some(ty.clone()))
+                .and_then(|resolved| {
+                    let base = self.class_base_name(&resolved).to_string();
+                    self.classes.contains_key(&base).then_some(resolved)
+                }),
+            Expr::Call { callee, .. } => self.infer_callable_return_class_name(&callee.node),
+            Expr::GenericFunctionValue { callee, .. } => {
+                self.infer_callable_return_class_name(&callee.node)
+            }
+            Expr::Block(body) => {
+                let tail_expr = body.iter().rev().find_map(|stmt| match &stmt.node {
+                    Stmt::Expr(expr) => Some(&expr.node),
+                    _ => None,
+                })?;
+                self.infer_receiver_class_name_for_method_value(tail_expr)
+            }
+            Expr::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                let then_expr = then_branch.iter().rev().find_map(|stmt| match &stmt.node {
+                    Stmt::Expr(expr) => Some(&expr.node),
+                    _ => None,
+                });
+                let else_expr = else_branch.as_ref().and_then(|branch| {
+                    branch.iter().rev().find_map(|stmt| match &stmt.node {
+                        Stmt::Expr(expr) => Some(&expr.node),
+                        _ => None,
+                    })
+                });
+                let then_class = then_expr
+                    .and_then(|expr| self.infer_receiver_class_name_for_method_value(expr));
+                let else_class = else_expr
+                    .and_then(|expr| self.infer_receiver_class_name_for_method_value(expr));
+                Self::merge_inferred_receiver_classes(then_class, else_class)
+            }
+            Expr::Match { arms, .. } => {
+                let mut merged: Option<String> = None;
+                for arm in arms {
+                    let arm_expr = arm.body.iter().rev().find_map(|stmt| match &stmt.node {
+                        Stmt::Expr(expr) => Some(&expr.node),
+                        _ => None,
+                    });
+                    let arm_class = arm_expr
+                        .and_then(|expr| self.infer_receiver_class_name_for_method_value(expr));
+                    merged = Self::merge_inferred_receiver_classes(merged, arm_class);
+                }
+                merged
+            }
+            _ => None,
+        }
+    }
+
+    fn infer_callable_return_class_name(&self, callee_expr: &Expr) -> Option<String> {
+        if let Some(callee_name) = self.resolve_contextual_function_value_name(callee_expr) {
+            if let Some(sig) = self.functions.get(&callee_name) {
+                if let ResolvedType::Class(name) = Self::peel_reference_type(&sig.return_type) {
+                    return Some(name.clone());
+                }
+            }
+        }
+        if let Expr::Field { object, field } = callee_expr {
+            let receiver = self.infer_receiver_class_name_for_method_value(&object.node)?;
+            let (base_name, _) = self.instantiated_class_substitutions(&receiver);
+            let (_owner, sig, _visibility) = self.lookup_class_method(&base_name, field)?;
+            if let ResolvedType::Class(name) = Self::peel_reference_type(&sig.return_type) {
+                return Some(name.clone());
+            }
+        }
+        None
+    }
+
+    fn merge_inferred_receiver_classes(
+        left: Option<String>,
+        right: Option<String>,
+    ) -> Option<String> {
+        match (left, right) {
+            (None, None) => None,
+            (Some(name), None) | (None, Some(name)) => Some(name),
+            (Some(a), Some(b)) => {
+                let a_base = a.split('<').next().unwrap_or(&a);
+                let b_base = b.split('<').next().unwrap_or(&b);
+                if a_base == b_base {
+                    Some(a)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn enforce_function_argument_effect_contract(
+        &mut self,
+        param_type: &ResolvedType,
+        arg_expr: &Expr,
+        arg_span: Span,
+    ) {
+        if !matches!(param_type, ResolvedType::Function(_, _)) {
+            return;
+        }
+        let Some(contract) = self.infer_function_value_effect_contract_from_expr(arg_expr) else {
+            return;
+        };
+        self.enforce_function_value_effect_contract(&contract, arg_span, "function argument");
     }
 
     /// Parse a type string like "Integer" or "List<Integer>"

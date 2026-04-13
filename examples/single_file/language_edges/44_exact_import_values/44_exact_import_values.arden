@@ -1,0 +1,15 @@
+import std.io.*;
+import std.args.count as ArgCount;
+import std.system.cwd as CurrentDir;
+import Option.None as Empty;
+
+function main(): None {
+    argc: Integer = ArgCount;
+    cwd: String = CurrentDir;
+    default_port: Option<Integer> = Empty;
+
+    println("argc={argc}");
+    println("cwd={cwd}");
+    println("default_port_is_none={default_port.is_none()}");
+    return None;
+}

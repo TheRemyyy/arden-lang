@@ -47,14 +47,40 @@ function main(): None {
 ## Payload Variants
 
 ```arden
-enum Result<T, E> {
-    Ok(T),
-    Error(E)
+enum ParseToken {
+    Number(Integer),
+    Word(String),
+    End
 }
 ```
 
 Payload variants let each state carry data.
-Example: successful value in `Ok`, error value in `Error`.
+Example: `Number(42)` carries parsed numeric value; `Word("abc")` carries text.
+
+Current compiler support for user-defined enum payload types is intentionally
+limited. Supported payload categories today:
+
+- primitive scalars (`Integer`, `Float`, `Boolean`, `Char`)
+- `String`
+- class references
+- `&T` / `&mut T`
+- raw pointers (`Ptr<T>`)
+
+Unsupported payload shapes currently include (for example):
+
+- function types like `(Integer) -> Integer`
+- collection types like `List<Integer>`
+- nested generic enum payloads like `Option<MyType>`
+
+Unsupported payloads fail at type-check stage with diagnostics like:
+`Enum payload type 'List<Integer>' is not supported yet`.
+
+Note:
+
+- user-defined generic enums are not currently available in this compiler
+- generic enums like `Option<T>` and `Result<T, E>` are built-in language types
+- diagnostic shape for unsupported case:
+  `Enum 'X' uses generic parameters, but user-defined generic enums are not supported yet`
 
 ## Design Rule
 
@@ -72,6 +98,7 @@ Example:
 - adding wildcard (`_`) too early and losing clarity on handled cases
 - mixing unrelated concepts in one large enum
 - creating "catch-all" variant too early instead of modeling real states explicitly
+- trying to use reserved keywords (for example `None`) as custom variant names
 
 ## Decision Rule
 

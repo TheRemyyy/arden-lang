@@ -36,14 +36,19 @@ this indicates a runtime crash; rerun with `arden compile --emit-llvm ...` and r
 }
 
 fn run_binary(exe_path: &Path, args: &[String]) -> Result<(), String> {
-    let status = Command::new(exe_path)
-        .args(args)
-        .status()
-        .map_err(|e| format!("{}: Failed to run: {}", "error".red().bold(), e))?;
+    let status = Command::new(exe_path).args(args).status().map_err(|e| {
+        format!(
+            "{}: Failed to run '{}': {}",
+            "error".red().bold(),
+            exe_path.display(),
+            e
+        )
+    })?;
     if !status.success() {
         return Err(format!(
-            "{}: process {}",
+            "{}: process '{}' {}",
             "error".red().bold(),
+            exe_path.display(),
             format_exit_failure(status)
         ));
     }
@@ -58,8 +63,13 @@ pub(crate) fn run_project(
     show_timings: bool,
 ) -> Result<(), String> {
     let cwd = current_dir_checked()?;
-    let project_root = find_project_root(&cwd)
-        .ok_or_else(|| format!("{}: No arden.toml found", "error".red().bold()))?;
+    let project_root = find_project_root(&cwd).ok_or_else(|| {
+        format!(
+            "{}: No arden.toml found from current directory '{}'",
+            "error".red().bold(),
+            cwd.display()
+        )
+    })?;
 
     let config_path = project_root.join("arden.toml");
     let config = ProjectConfig::load(&config_path)?;

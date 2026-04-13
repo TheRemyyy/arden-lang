@@ -62,7 +62,10 @@ Arden supports borrowed references:
 ```arden
 function main(): None {
     mut x: Integer = 1;
-    r: &Integer = &x;
+    {
+        r: &Integer = &x;
+        _v: Integer = *r;
+    };
     rx: &mut Integer = &mut x;
     *rx = 2;
     return None;
@@ -88,6 +91,16 @@ Constructor argument shapes are checked statically:
 - `List<T>()` and `List<T>(capacity: Integer)` are valid
 - `Map<K, V>()`, `Set<T>()`, `Option<T>()`, `Result<T, E>()` take no value args
 - incompatible arity/types are compile errors
+
+Important default-constructor behavior:
+
+- `Option<T>()` initializes to `None`
+- `Result<T, E>()` initializes to `Error(...)` default of `E`
+
+For readability, prefer explicit constructors in business logic:
+
+- `Option.none()` / `Option.some(v)`
+- `Result.error(e)` / `Result.ok(v)`
 
 ## `Task<T>` and `Ptr<T>` (Compiler Feature)
 

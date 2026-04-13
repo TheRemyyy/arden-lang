@@ -223,6 +223,55 @@ fn this_method_uses_declared_param_modes() {
 }
 
 #[test]
+fn borrow_mut_parameter_allows_reads_inside_function_body() {
+    let source = r#"
+        import std.io.*;
+        function inspect_mut(borrow mut x: String): None {
+            println(x);
+            return None;
+        }
+        function main(): None {
+            mut s: String = "hi";
+            inspect_mut(s);
+            return None;
+        }
+    "#;
+    borrow_ok(source);
+}
+
+#[test]
+fn borrow_mut_parameter_allows_assignments_inside_function_body() {
+    let source = r#"
+        function edit(borrow mut x: Integer): None {
+            x += 1;
+            return None;
+        }
+        function main(): None {
+            mut n: Integer = 1;
+            edit(n);
+            return None;
+        }
+    "#;
+    borrow_ok(source);
+}
+
+#[test]
+fn borrow_mut_parameter_rejects_immutable_call_site_binding() {
+    let source = r#"
+        function marker(borrow mut x: String): None { return None; }
+        function main(): None {
+            s: String = "hi";
+            marker(s);
+            return None;
+        }
+    "#;
+    let errors = borrow_errors(source);
+    assert!(errors
+        .iter()
+        .any(|m| m.contains("Cannot mutably borrow immutable variable 's'")));
+}
+
+#[test]
 fn invalid_assign_does_not_clear_borrow_state() {
     let source = r#"
         function consume(owned s: String): None { return None; }

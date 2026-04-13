@@ -1,5 +1,7 @@
 use super::*;
 
+const INFERRED_ANY_EFFECT: &str = "__inferred_any__";
+
 impl TypeChecker {
     pub(crate) fn apply_effect_seeds(
         &mut self,
@@ -223,12 +225,15 @@ impl TypeChecker {
             .infer_effects_in_block(body, current_class)
             .into_iter()
             .collect();
+        let inferred_allow_any = inferred.iter().any(|eff| eff == INFERRED_ANY_EFFECT);
+        inferred.retain(|eff| eff != INFERRED_ANY_EFFECT);
         inferred.sort();
         inferred.dedup();
 
-        if inferred != sig.effects {
+        if inferred != sig.effects || inferred_allow_any != sig.allow_any {
             if let Some(edit_sig) = self.functions.get_mut(key) {
                 edit_sig.effects = inferred;
+                edit_sig.allow_any = inferred_allow_any;
                 return true;
             }
         }
@@ -255,13 +260,16 @@ impl TypeChecker {
             .infer_effects_in_block(body, Some(class_name))
             .into_iter()
             .collect();
+        let inferred_allow_any = inferred.iter().any(|eff| eff == INFERRED_ANY_EFFECT);
+        inferred.retain(|eff| eff != INFERRED_ANY_EFFECT);
         inferred.sort();
         inferred.dedup();
 
-        if inferred != method_sig.effects {
+        if inferred != method_sig.effects || inferred_allow_any != method_sig.allow_any {
             if let Some(class_edit) = self.classes.get_mut(class_name) {
                 if let Some(sig_edit) = class_edit.methods.get_mut(method_name) {
                     sig_edit.effects = inferred;
+                    sig_edit.allow_any = inferred_allow_any;
                     return true;
                 }
             }
@@ -354,6 +362,9 @@ impl TypeChecker {
                         out.insert(required.to_string());
                     }
                     if let Some(sig) = self.functions.get(&canonical) {
+                        if sig.allow_any {
+                            out.insert(INFERRED_ANY_EFFECT.to_string());
+                        }
                         for eff in &sig.effects {
                             out.insert(eff.clone());
                         }
@@ -367,6 +378,9 @@ impl TypeChecker {
                             out.insert(required.to_string());
                         }
                         if let Some(sig) = self.functions.get(&builtin_name) {
+                            if sig.allow_any {
+                                out.insert(INFERRED_ANY_EFFECT.to_string());
+                            }
                             for eff in &sig.effects {
                                 out.insert(eff.clone());
                             }
@@ -377,6 +391,9 @@ impl TypeChecker {
                         if let Some(class_name) = current_class {
                             if let Some(class_info) = self.classes.get(class_name) {
                                 if let Some(sig) = class_info.methods.get(field) {
+                                    if sig.allow_any {
+                                        out.insert(INFERRED_ANY_EFFECT.to_string());
+                                    }
                                     for eff in &sig.effects {
                                         out.insert(eff.clone());
                                     }
@@ -481,6 +498,9 @@ impl TypeChecker {
     ) {
         for class_info in self.classes.values() {
             if let Some(sig) = class_info.methods.get(method_name) {
+                if sig.allow_any {
+                    out.insert(INFERRED_ANY_EFFECT.to_string());
+                }
                 for eff in &sig.effects {
                     out.insert(eff.clone());
                 }

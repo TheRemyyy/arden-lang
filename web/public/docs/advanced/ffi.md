@@ -35,6 +35,7 @@ function main(): None {
 ## Compiler-Enforced Rules
 
 - `extern` function cannot be `async`
+- `extern` function generic parameters are not supported
 - variadic extern must have at least one fixed parameter
 - unsupported ABI names are rejected (supported: `c`, `system`)
 - `main()` cannot be declared `extern`
@@ -66,6 +67,32 @@ Types outside this set are rejected in extern signatures.
 
 `Ptr<T>` is a low-level pointer type intended for FFI boundaries.
 It is a type-level construct, not a general constructor workflow in normal Arden code.
+
+Practical extern pattern (`malloc`/`free` style):
+
+```arden
+extern(c) function malloc(size: Integer): Ptr<None>;
+extern(c) function free(ptr: Ptr<None>): None;
+extern(c) function memset(dst: Ptr<None>, value: Integer, len: Integer): Ptr<None>;
+
+function alloc_zeroed(size: Integer): Ptr<None> {
+    mut p: Ptr<None> = malloc(size);
+    p = memset(p, 0, size);
+    return p;
+}
+
+function main(): None {
+    p: Ptr<None> = alloc_zeroed(64);
+    free(p);
+    return None;
+}
+```
+
+Why `p = memset(p, ...)`:
+
+- pointer values are ownership-checked in normal flow
+- passing `p` by value to extern consumes that value path
+- using the returned pointer for the next step keeps ownership explicit
 
 ## First-Class Function Limitation
 

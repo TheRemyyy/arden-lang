@@ -9,9 +9,14 @@ Includes:
 - interface contracts
 - import aliases
 - compound assignment
+- exact member imports (function/value aliases)
 
 Run all edge samples:
 
 ```bash
 for f in examples/single_file/language_edges/*/*.arden; do arden run "$f"; done
 ```
+
+Spotlight:
+
+- [`44_exact_import_values`](./44_exact_import_values/44_exact_import_values.arden)

@@ -46,7 +46,7 @@ fn find_test_files_recursive(dir: &Path, test_files: &mut Vec<PathBuf>) -> Resul
         })?;
         let file_type = entry.file_type().map_err(|e| {
             format!(
-                "Failed to inspect directory entry '{}' : {}",
+                "Failed to inspect directory entry '{}': {}",
                 entry.path().display(),
                 e
             )

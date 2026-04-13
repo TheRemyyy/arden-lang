@@ -1,0 +1,29 @@
+import std.io.*;
+
+function inspect_now(text: &String): Integer {
+    return text.length();
+}
+
+async function background_len(owned text: String): Task<Integer> {
+    return text.length();
+}
+
+function main(): None {
+    msg: String = "async-boundary";
+
+    // Borrowed read is fine in synchronous path.
+    sync_len: Integer = inspect_now(&msg);
+    println("sync_len={sync_len}");
+
+    // Async boundary uses owned value (move), not borrowed reference.
+    task: Task<Integer> = background_len(msg);
+    async_len: Integer = await(task);
+    println("async_len={async_len}");
+
+    // Invalid patterns (left as comments):
+    // async function bad(x: &String): Task<Integer> { return 1; }
+    // r: &String = &msg;
+    // t: Task<Integer> = async { return r.length(); };
+
+    return None;
+}

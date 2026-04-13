@@ -60,6 +60,7 @@ arden test --filter Addition --path examples/single_file/tooling_and_ffi/24_test
 
 `@Ignore` requires `@Test` on the same function.
 `@Test` cannot be combined with lifecycle attributes.
+Each suite allows at most one `@BeforeAll` and one `@AfterAll`.
 
 `@Ignore` with reason example:
 
@@ -83,6 +84,7 @@ function notReadyYet(): None {
 - test one behavior per test where possible
 - use `--list` to verify discovery before long runs
 - use `--filter` for fast local iteration on one failure
+- use `fail("why this is invalid")` when a branch should be unreachable in a test
 
 ## Common Mistakes
 

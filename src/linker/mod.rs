@@ -167,10 +167,14 @@ fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), String
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let details = if stderr.trim().is_empty() {
-        stdout.trim()
+    let details = if !stderr.trim().is_empty() {
+        stderr.trim().to_string()
+    } else if !stdout.trim().is_empty() {
+        stdout.trim().to_string()
+    } else if let Some(code) = output.status.code() {
+        format!("exit code {code}")
     } else {
-        stderr.trim()
+        "terminated without an exit code".to_string()
     };
     Err(format!(
         "{}: {} failed: {}",
@@ -492,9 +496,21 @@ fn macos_sdk_root() -> Result<PathBuf, String> {
         )
     })?;
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let details = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else if let Some(code) = output.status.code() {
+            format!("exit code {code}")
+        } else {
+            "terminated without an exit code".to_string()
+        };
         return Err(format!(
-            "{}: Failed to resolve macOS SDK path with xcrun.",
-            "error".red().bold()
+            "{}: Failed to resolve macOS SDK path with xcrun: {}",
+            "error".red().bold(),
+            details
         ));
     }
 
@@ -528,9 +544,21 @@ fn macos_sdk_version() -> Result<String, String> {
         )
     })?;
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let details = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.trim().to_string()
+        } else if let Some(code) = output.status.code() {
+            format!("exit code {code}")
+        } else {
+            "terminated without an exit code".to_string()
+        };
         return Err(format!(
-            "{}: Failed to resolve the macOS SDK version with xcrun.",
-            "error".red().bold()
+            "{}: Failed to resolve the macOS SDK version with xcrun: {}",
+            "error".red().bold(),
+            details
         ));
     }
 
@@ -808,17 +836,31 @@ pub(crate) fn link_objects(
             let mut command = Command::new("ar");
             command.arg("rcs").arg(output_path).args(objects);
             apply_fallback_current_dir(&mut command);
-            let status = command.status().map_err(|e| {
+            let output = command.output().map_err(|e| {
                 format!(
-                    "{}: Failed to run ar for static library creation: {}",
+                    "{}: Failed to run ar for static library creation '{}': {}",
                     "error".red().bold(),
+                    output_path.display(),
                     e
                 )
             })?;
-            if !status.success() {
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let details = if !stderr.trim().is_empty() {
+                    stderr.trim().to_string()
+                } else if !stdout.trim().is_empty() {
+                    stdout.trim().to_string()
+                } else if let Some(code) = output.status.code() {
+                    format!("exit code {code}")
+                } else {
+                    "terminated without an exit code".to_string()
+                };
                 return Err(format!(
-                    "{}: ar failed while creating static library",
-                    "error".red().bold()
+                    "{}: ar failed while creating static library '{}': {}",
+                    "error".red().bold(),
+                    output_path.display(),
+                    details
                 ));
             }
             Ok(())

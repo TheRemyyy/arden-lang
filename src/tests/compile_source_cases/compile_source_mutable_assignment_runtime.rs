@@ -169,6 +169,63 @@ fn compile_source_runs_mutable_constructor_parameter_assignment_runtime() {
 }
 
 #[test]
+fn compile_source_runs_borrow_mut_parameter_read_runtime() {
+    let temp_root = make_temp_project_root("borrow-mut-parameter-read-runtime");
+    let source_path = temp_root.join("borrow_mut_parameter_read_runtime.arden");
+    let output_path = temp_root.join("borrow_mut_parameter_read_runtime");
+    let source = r#"
+            function len_plus_one(borrow mut value: String): Integer {
+                return value.length() + 1;
+            }
+
+            function main(): Integer {
+                mut text: String = "abc";
+                return if (len_plus_one(text) == 4) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .must("borrow mut parameter reads should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .must("run compiled borrow mut read binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_borrow_mut_parameter_assignment_runtime() {
+    let temp_root = make_temp_project_root("borrow-mut-parameter-assignment-runtime");
+    let source_path = temp_root.join("borrow_mut_parameter_assignment_runtime.arden");
+    let output_path = temp_root.join("borrow_mut_parameter_assignment_runtime");
+    let source = r#"
+            function edit(borrow mut value: Integer): Integer {
+                value += 1;
+                return value;
+            }
+
+            function main(): Integer {
+                mut n: Integer = 1;
+                return if (edit(n) == 2) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .must("borrow mut parameter assignments should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .must("run compiled borrow mut assignment binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_mutable_async_parameter_assignment_runtime() {
     let temp_root = make_temp_project_root("mutable-async-parameter-assignment-runtime");
     let source_path = temp_root.join("mutable_async_parameter_assignment_runtime.arden");

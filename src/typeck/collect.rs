@@ -74,6 +74,7 @@ impl TypeChecker {
                     .unwrap_or_else(|| en.name.clone());
                 self.enums.entry(key).or_insert_with(|| EnumInfo {
                     variants: HashMap::new(),
+                    generic_type_vars: Vec::new(),
                 });
             }
             Decl::Interface(interface) => {
@@ -348,18 +349,33 @@ impl TypeChecker {
     }
 
     pub(crate) fn insert_enum_info(&mut self, en: &EnumDecl, key: &str) {
+        let enum_generic_bindings = self.make_generic_type_bindings(&en.generic_params);
+        let enum_generic_type_vars: Vec<usize> = en
+            .generic_params
+            .iter()
+            .filter_map(|p| match enum_generic_bindings.get(&p.name) {
+                Some(ResolvedType::TypeVar(id)) => Some(*id),
+                _ => None,
+            })
+            .collect();
         let mut variants = HashMap::new();
         for variant in &en.variants {
             let fields = variant
                 .fields
                 .iter()
-                .map(|f| self.resolve_type(&f.ty))
+                .map(|f| self.resolve_type_with_bindings(&f.ty, &enum_generic_bindings))
                 .collect::<Vec<_>>();
             variants.insert(variant.name.clone(), fields);
             self.enum_variant_to_enum
                 .insert(variant.name.clone(), key.to_string());
         }
-        self.enums.insert(key.to_string(), EnumInfo { variants });
+        self.enums.insert(
+            key.to_string(),
+            EnumInfo {
+                variants,
+                generic_type_vars: enum_generic_type_vars,
+            },
+        );
     }
 
     pub(crate) fn collect_module_declarations(

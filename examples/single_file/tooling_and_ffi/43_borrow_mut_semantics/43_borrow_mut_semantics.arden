@@ -1,0 +1,67 @@
+// Test 43: borrow mut semantics vs explicit &mut
+// Demonstrates current behavior with scalar, list, and class values.
+
+import std.io.*;
+
+class Counter {
+    mut value: Integer;
+
+    constructor(value: Integer) {
+        this.value = value;
+    }
+}
+
+function borrow_mut_scalar(borrow mut x: Integer): None {
+    x += 1;
+    println("in borrow_mut_scalar: {x}");
+    return None;
+}
+
+function borrow_mut_list(borrow mut xs: List<Integer>): None {
+    xs.push(9);
+    println("in borrow_mut_list len: {xs.length()}");
+    return None;
+}
+
+function borrow_mut_class(borrow mut c: Counter): None {
+    c.value += 1;
+    println("in borrow_mut_class: {c.value}");
+    return None;
+}
+
+function ref_mut_scalar(x: &mut Integer): None {
+    *x += 1;
+    return None;
+}
+
+function ref_mut_list(xs: &mut List<Integer>): None {
+    xs.push(9);
+    return None;
+}
+
+function main(): None {
+    println("=== borrow mut semantics ===");
+
+    mut n: Integer = 5;
+    borrow_mut_scalar(n);
+    println("after borrow_mut_scalar: {n}");
+
+    mut xs: List<Integer> = List<Integer>();
+    xs.push(1);
+    borrow_mut_list(xs);
+    println("after borrow_mut_list len: {xs.length()}");
+
+    mut c: Counter = Counter(5);
+    borrow_mut_class(c);
+    println("after borrow_mut_class: {c.value}");
+
+    println("\n=== explicit &mut semantics ===");
+
+    ref_mut_scalar(&mut n);
+    println("after ref_mut_scalar: {n}");
+
+    ref_mut_list(&mut xs);
+    println("after ref_mut_list len: {xs.length()}");
+
+    return None;
+}

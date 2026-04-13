@@ -36,7 +36,7 @@ class Counter {
 }
 
 function main(): None {
-    c: Counter = Counter(10);
+    mut c: Counter = Counter(10);
     c.increment();
     println("counter={c.current()}");
     return None;
@@ -88,6 +88,13 @@ Practical rules:
 
 Constructors are where you enforce invariants early.
 If a value must never be negative/empty/invalid, validate before storing.
+
+Compiler constraints for class lifecycle declarations:
+
+- at most one `constructor` per class
+- at most one `destructor` per class
+- visibility modifiers are not allowed on constructors/destructors
+- attributes are not allowed on constructors/destructors
 
 ## API Boundary Rule
 

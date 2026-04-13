@@ -9,6 +9,7 @@ Recommended order:
 3. `14_async`
 4. `16_pattern_matching`
 5. `40_borrow_scope_recovery`
+6. `41_async_boundary_rules`
 
 Fast validation:
 

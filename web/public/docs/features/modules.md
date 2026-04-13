@@ -8,13 +8,19 @@ For beginners: module is a named container for related functions/types.
 ## Minimal Module Example
 
 ```arden
+import std.io.*;
+
 module MathUtil {
     function twice(x: Integer): Integer {
         return x * 2;
     }
 }
 
-value: Integer = MathUtil.twice(10);
+function main(): None {
+    value: Integer = MathUtil.twice(10);
+    println("value={value}");
+    return None;
+}
 ```
 
 ## Runnable Example With Output

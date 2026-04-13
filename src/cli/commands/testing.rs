@@ -40,17 +40,15 @@ pub(crate) fn run_tests(
 
     for test_file in &test_files {
         let source = fs::read_to_string(test_file)
-            .map_err(|e| format!("Failed to read test file: {}", e))?;
+            .map_err(|e| format!("Failed to read test file '{}': {}", test_file.display(), e))?;
 
-        let tokens = lexer::tokenize(&source).map_err(|e| format!("Lexer error: {}", e))?;
-        let filename = test_file
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("input.arden");
+        let tokens = lexer::tokenize(&source)
+            .map_err(|e| format!("Lexer error in '{}': {}", test_file.display(), e))?;
+        let filename = test_file.to_string_lossy().into_owned();
         let mut parser = Parser::new(tokens);
         let program = parser
             .parse_program()
-            .map_err(|e| format_parse_error(&e, &source, filename))?;
+            .map_err(|e| format_parse_error(&e, &source, &filename))?;
         validate_test_runner_attributes(&program)?;
 
         let discovery = discover_tests(&program);
@@ -131,8 +129,13 @@ pub(crate) fn run_tests(
                 result?;
             } else {
                 let (temp_dir, runner_path, exe_path) = create_test_runner_workspace(test_file)?;
-                fs::write(&runner_path, &runner_code)
-                    .map_err(|e| format!("Failed to write test runner: {}", e))?;
+                fs::write(&runner_path, &runner_code).map_err(|e| {
+                    format!(
+                        "Failed to write test runner '{}': {}",
+                        runner_path.display(),
+                        e
+                    )
+                })?;
 
                 let result = compile_and_run_test(&runner_path, &exe_path, filtered_out_tests);
                 if let Err(err) = fs::remove_dir_all(&temp_dir) {

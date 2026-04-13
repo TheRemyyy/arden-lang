@@ -3385,7 +3385,7 @@ impl<'ctx> Codegen<'ctx> {
                             module_prefix,
                             class_templates,
                         ),
-                        mutable: param.mutable,
+                        mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                         mode: param.mode,
                     })
                     .collect(),
@@ -5475,7 +5475,7 @@ impl<'ctx> Codegen<'ctx> {
                     .map(|param| Parameter {
                         name: param.name.clone(),
                         ty: Self::rewrite_specialized_class_type(&param.ty, emitted_classes),
-                        mutable: param.mutable,
+                        mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                         mode: param.mode,
                     })
                     .collect(),
@@ -5913,7 +5913,7 @@ impl<'ctx> Codegen<'ctx> {
                                 module_prefix,
                                 class_templates,
                             ),
-                            mutable: param.mutable,
+                            mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                             mode: param.mode,
                         })
                         .collect();
@@ -5943,7 +5943,7 @@ impl<'ctx> Codegen<'ctx> {
                     .map(|param| Parameter {
                         name: param.name.clone(),
                         ty: Self::rewrite_specialized_class_type(&param.ty, emitted_classes),
-                        mutable: param.mutable,
+                        mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                         mode: param.mode,
                     })
                     .collect();
@@ -5999,7 +5999,8 @@ impl<'ctx> Codegen<'ctx> {
                                     module_prefix,
                                     class_templates,
                                 ),
-                                mutable: param.mutable,
+                                mutable: param.mutable
+                                    || matches!(param.mode, ParamMode::BorrowMut),
                                 mode: param.mode,
                             })
                             .collect();
@@ -6034,7 +6035,8 @@ impl<'ctx> Codegen<'ctx> {
                                         module_prefix,
                                         class_templates,
                                     ),
-                                    mutable: param.mutable,
+                                    mutable: param.mutable
+                                        || matches!(param.mode, ParamMode::BorrowMut),
                                     mode: param.mode,
                                 })
                                 .collect();
@@ -6087,7 +6089,7 @@ impl<'ctx> Codegen<'ctx> {
                         .map(|param| Parameter {
                             name: param.name.clone(),
                             ty: Self::rewrite_specialized_class_type(&param.ty, emitted_classes),
-                            mutable: param.mutable,
+                            mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                             mode: param.mode,
                         })
                         .collect();
@@ -6117,7 +6119,8 @@ impl<'ctx> Codegen<'ctx> {
                                     &param.ty,
                                     emitted_classes,
                                 ),
-                                mutable: param.mutable,
+                                mutable: param.mutable
+                                    || matches!(param.mode, ParamMode::BorrowMut),
                                 mode: param.mode,
                             })
                             .collect();
@@ -6245,7 +6248,7 @@ impl<'ctx> Codegen<'ctx> {
                         .map(|param| Parameter {
                             name: param.name.clone(),
                             ty: Self::substitute_type(&param.ty, &bindings),
-                            mutable: param.mutable,
+                            mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                             mode: param.mode,
                         })
                         .collect();
@@ -6272,7 +6275,8 @@ impl<'ctx> Codegen<'ctx> {
                             .map(|param| Parameter {
                                 name: param.name.clone(),
                                 ty: Self::substitute_type(&param.ty, &bindings),
-                                mutable: param.mutable,
+                                mutable: param.mutable
+                                    || matches!(param.mode, ParamMode::BorrowMut),
                                 mode: param.mode,
                             })
                             .collect();
@@ -6638,6 +6642,40 @@ impl<'ctx> Codegen<'ctx> {
             .any(|decl| Self::decl_has_generic_classes(&decl.node))
     }
 
+    fn first_user_generic_enum_name(
+        declarations: &[Spanned<Decl>],
+        module_prefix: Option<&str>,
+    ) -> Option<String> {
+        for decl in declarations {
+            match &decl.node {
+                Decl::Enum(en) if !en.generic_params.is_empty() => {
+                    let enum_name = if let Some(prefix) = module_prefix {
+                        format!("{prefix}__{}", en.name)
+                    } else {
+                        en.name.clone()
+                    };
+                    return Some(enum_name);
+                }
+                Decl::Module(module) => {
+                    let nested_prefix = if let Some(prefix) = module_prefix {
+                        format!("{prefix}__{}", module.name)
+                    } else {
+                        module.name.clone()
+                    };
+                    if let Some(found) = Self::first_user_generic_enum_name(
+                        &module.declarations,
+                        Some(&nested_prefix),
+                    ) {
+                        return Some(found);
+                    }
+                }
+                Decl::Function(_) | Decl::Class(_) | Decl::Interface(_) | Decl::Import(_) => {}
+                Decl::Enum(_) => {}
+            }
+        }
+        None
+    }
+
     fn collect_specialized_class_names_from_decl(decl: &Spanned<Decl>, out: &mut HashSet<String>) {
         match &decl.node {
             Decl::Class(class) => {
@@ -6940,6 +6978,12 @@ impl<'ctx> Codegen<'ctx> {
         declaration_symbols: Option<&HashSet<String>>,
     ) -> Result<()> {
         self.current_package = program.package.clone().unwrap_or_default();
+        if let Some(enum_name) = Self::first_user_generic_enum_name(&program.declarations, None) {
+            return Err(CodegenError::new(format!(
+                "Enum '{}' uses generic parameters, but user-defined generic enums are not supported yet",
+                enum_name
+            )));
+        }
         fn collect_generated_spec_symbols(program: &Program) -> HashMap<String, HashSet<String>> {
             fn collect_decl_symbols(
                 decl: &Spanned<Decl>,
@@ -8649,6 +8693,19 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn declare_enum(&mut self, en: &EnumDecl) -> Result<()> {
+        if !en.generic_params.is_empty() {
+            let params = en
+                .generic_params
+                .iter()
+                .map(|param| param.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(CodegenError::new(format!(
+                "Enum '{}' uses generic parameters ({params}), but user-defined generic enums are not supported yet",
+                en.name
+            )));
+        }
+
         let payload_slots = en
             .variants
             .iter()
@@ -9402,7 +9459,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: normalized_param_ty,
-                    mutable: param.mutable,
+                    mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                 },
             );
         }
@@ -9529,7 +9586,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: normalized_param_ty,
-                    mutable: param.mutable,
+                    mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                 },
             );
         }
@@ -10254,7 +10311,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: normalized_param_ty,
-                    mutable: param.mutable,
+                    mutable: param.mutable || matches!(param.mode, ParamMode::BorrowMut),
                 },
             );
         }
@@ -10773,23 +10830,76 @@ impl<'ctx> Codegen<'ctx> {
         let i64_type = self.context.i64_type();
         let normalized_ty = self.normalize_codegen_type(ty);
         let encoded = match &normalized_ty {
-            Type::Integer => value.into_int_value(),
+            Type::Integer => match value {
+                BasicValueEnum::IntValue(v) => v,
+                _ => {
+                    return Err(CodegenError::new(format!(
+                        "enum payload type mismatch: expected Integer-compatible value for {:?}",
+                        normalized_ty
+                    )));
+                }
+            },
             Type::Boolean => self
                 .builder
-                .build_int_z_extend(value.into_int_value(), i64_type, "bool_to_i64")
+                .build_int_z_extend(
+                    match value {
+                        BasicValueEnum::IntValue(v) => v,
+                        _ => {
+                            return Err(CodegenError::new(
+                                "enum payload type mismatch: expected Boolean-compatible value",
+                            ));
+                        }
+                    },
+                    i64_type,
+                    "bool_to_i64",
+                )
                 .map_err(|_| CodegenError::new("failed to encode boolean enum payload"))?,
             Type::Char => self
                 .builder
-                .build_int_z_extend(value.into_int_value(), i64_type, "char_to_i64")
+                .build_int_z_extend(
+                    match value {
+                        BasicValueEnum::IntValue(v) => v,
+                        _ => {
+                            return Err(CodegenError::new(
+                                "enum payload type mismatch: expected Char-compatible value",
+                            ));
+                        }
+                    },
+                    i64_type,
+                    "char_to_i64",
+                )
                 .map_err(|_| CodegenError::new("failed to encode char enum payload"))?,
             Type::Float => self
                 .builder
-                .build_bit_cast(value.into_float_value(), i64_type, "float_bits")
+                .build_bit_cast(
+                    match value {
+                        BasicValueEnum::FloatValue(v) => v,
+                        _ => {
+                            return Err(CodegenError::new(
+                                "enum payload type mismatch: expected Float-compatible value",
+                            ));
+                        }
+                    },
+                    i64_type,
+                    "float_bits",
+                )
                 .map_err(|_| CodegenError::new("failed to encode float enum payload"))?
                 .into_int_value(),
             Type::String | Type::Named(_) | Type::Ref(_) | Type::MutRef(_) | Type::Ptr(_) => self
                 .builder
-                .build_ptr_to_int(value.into_pointer_value(), i64_type, "ptr_to_i64")
+                .build_ptr_to_int(
+                    match value {
+                        BasicValueEnum::PointerValue(v) => v,
+                        _ => {
+                            return Err(CodegenError::new(format!(
+                                "enum payload type mismatch: expected pointer-compatible value for {:?}",
+                                normalized_ty
+                            )));
+                        }
+                    },
+                    i64_type,
+                    "ptr_to_i64",
+                )
                 .map_err(|_| CodegenError::new("failed to encode pointer enum payload"))?,
             Type::Generic(name, _)
                 if self
@@ -10797,7 +10907,18 @@ impl<'ctx> Codegen<'ctx> {
                     .is_some_and(|canonical| self.classes.contains_key(&canonical)) =>
             {
                 self.builder
-                    .build_ptr_to_int(value.into_pointer_value(), i64_type, "ptr_to_i64")
+                    .build_ptr_to_int(
+                        match value {
+                            BasicValueEnum::PointerValue(v) => v,
+                            _ => {
+                                return Err(CodegenError::new(
+                                    "enum payload type mismatch: expected pointer-compatible generic payload",
+                                ));
+                            }
+                        },
+                        i64_type,
+                        "ptr_to_i64",
+                    )
                     .map_err(|_| CodegenError::new("failed to encode generic enum payload"))?
             }
             _ => {

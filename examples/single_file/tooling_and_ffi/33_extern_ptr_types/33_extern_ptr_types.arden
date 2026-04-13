@@ -3,15 +3,17 @@ import std.io.*;
 
 extern(c) function malloc(size: Integer): Ptr<None>;
 extern(c) function free(ptr: Ptr<None>): None;
+extern(c) function memset(dst: Ptr<None>, value: Integer, len: Integer): Ptr<None>;
 
-function alloc_and_free(bytes: Integer): None {
-    memory: Ptr<None> = malloc(bytes);
-    free(memory);
-    return None;
+function alloc_zeroed(bytes: Integer): Ptr<None> {
+    mut memory: Ptr<None> = malloc(bytes);
+    memory = memset(memory, 0, bytes);
+    return memory;
 }
 
 function main(): None {
-    alloc_and_free(128);
-    println("Ptr<T> extern interop works");
+    memory: Ptr<None> = alloc_zeroed(128);
+    free(memory);
+    println("Ptr<T> extern interop works (malloc/free/memset)");
     return None;
 }

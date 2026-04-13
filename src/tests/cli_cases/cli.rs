@@ -673,23 +673,23 @@ fn cli_bench_single_file_preserves_existing_neighbor_bench_artifact() {
 }
 
 #[test]
-fn cli_profile_single_file_preserves_existing_neighbor_bench_artifact() {
+fn cli_profile_single_file_preserves_existing_neighbor_profile_artifact() {
     let temp_root = make_temp_project_root("cli-profile-neighbor-artifact");
     let source_file = temp_root.join("smoke.arden");
     fs::write(&source_file, "function main(): None { return None; }\n").must("write source file");
 
     #[cfg(windows)]
-    let neighbor_artifact = source_file.with_extension("bench.exe");
+    let neighbor_artifact = source_file.with_extension("profile.exe");
     #[cfg(not(windows))]
-    let neighbor_artifact = source_file.with_extension("bench");
+    let neighbor_artifact = source_file.with_extension("profile");
 
-    fs::write(&neighbor_artifact, "KEEP_ME").must("write neighboring bench artifact");
+    fs::write(&neighbor_artifact, "KEEP_ME").must("write neighboring profile artifact");
 
     crate::cli::commands::profile_target(Some(&source_file))
         .must("single-file profile should succeed");
 
     assert_eq!(
-        fs::read_to_string(&neighbor_artifact).must("read neighboring bench artifact"),
+        fs::read_to_string(&neighbor_artifact).must("read neighboring profile artifact"),
         "KEEP_ME"
     );
 
@@ -711,7 +711,8 @@ fn cli_run_tests_reports_exit_status_for_failing_tests() {
 
     let err = run_tests(Some(&test_file), false, Some("failingCase"))
         .must_err("failing tests should report process exit details");
-    assert!(err.contains("test run failed: exited with code"), "{err}");
+    assert!(err.contains("test run failed for '"), "{err}");
+    assert!(err.contains("exited with code"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -1184,7 +1185,7 @@ fn cli_format_targets_rejects_project_files_outside_root() {
 
 #[cfg(unix)]
 #[test]
-fn collect_arden_files_skips_symlinked_directories() {
+fn collect_arden_files_rejects_symlinked_directories() {
     use std::os::unix::fs::symlink;
 
     let temp_root = make_temp_project_root("collect-arden-symlink-dir");
@@ -1206,16 +1207,9 @@ fn collect_arden_files_skips_symlinked_directories() {
         .must("write outside file");
     symlink(&outside_dir, temp_root.join("linked-outside")).must("create dir symlink");
 
-    let files =
-        collect_arden_files(&temp_root).must("collect_arden_files should skip symlink dirs");
-    assert!(
-        files.contains(&inside_file),
-        "expected real arden file to be discovered: {files:?}"
-    );
-    assert!(
-        !files.contains(&outside_file),
-        "symlinked outside directory should not be traversed: {files:?}"
-    );
+    let err = collect_arden_files(&temp_root)
+        .must_err("collect_arden_files should reject trees containing symlink dirs");
+    assert!(err.contains("must not contain symlink entries"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
     let _ = fs::remove_dir_all(outside_dir);

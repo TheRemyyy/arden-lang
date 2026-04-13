@@ -179,19 +179,23 @@ impl TypeChecker {
     }
 
     pub(crate) fn resolve_enum_name(&self, name: &str) -> Option<String> {
+        let base_name = name.split('<').next().unwrap_or(name);
+        if base_name != name && self.enums.contains_key(base_name) {
+            return Some(base_name.to_string());
+        }
         if self.enums.contains_key(name) {
             return Some(name.to_string());
         }
-        if let Some(leaf) = name.rsplit("__").next() {
-            if leaf != name && self.enums.contains_key(leaf) {
+        if let Some(leaf) = base_name.rsplit("__").next() {
+            if leaf != base_name && self.enums.contains_key(leaf) {
                 return Some(leaf.to_string());
             }
         }
-        let suffix = format!("__{}", name);
+        let suffix = format!("__{}", base_name);
         let mut matches = self
             .enums
             .keys()
-            .filter(|candidate| *candidate == name || candidate.ends_with(&suffix))
+            .filter(|candidate| *candidate == base_name || candidate.ends_with(&suffix))
             .cloned()
             .collect::<Vec<_>>();
         matches.sort_unstable();

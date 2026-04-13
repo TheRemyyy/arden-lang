@@ -52,7 +52,14 @@ function main(): None {
 - `mut` binding: value can be reassigned
 - `&T`: read-only borrow
 - `&mut T`: exclusive mutable borrow
-- `borrow mut` parameter: callee can mutate caller-owned value through a checked path
+- `borrow mut` parameter: explicit borrow-mut mode in function signature
+
+Current compiler behavior:
+
+- `borrow mut` requires mutable caller binding
+- inside callee, `borrow mut` parameters can be read and reassigned
+- caller-visible mutation propagation is type-dependent
+- prefer `&mut T` for explicit/predictable caller-visible in-place mutation APIs
 
 If you are new to ownership, start with:
 
@@ -64,13 +71,13 @@ If you are new to ownership, start with:
 
 - code to ownership semantics, not guessed stack/heap internals
 - keep borrow scopes small when values need to be moved later
-- make mutability explicit at API boundaries (`borrow mut` where intended)
+- make mutability explicit at API boundaries (`&mut T` for in-place mutation)
 
 ## Common Compile Errors and Fix Direction
 
 - "value moved" -> clone before move or change function to borrow
 - "cannot borrow as mutable because it is also borrowed as immutable" -> end immutable borrow scope first
-- "cannot assign through immutable reference" -> switch to mutable path (`mut` + `&mut` / `borrow mut`)
+- "cannot assign through immutable reference" -> switch to mutable path (`mut` + `&mut`)
 
 ## Cleanup Model
 

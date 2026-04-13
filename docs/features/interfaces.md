@@ -51,7 +51,13 @@ function main(): None {
 Compiler surface includes:
 
 - interface inheritance (`interface A extends B`)
-- default method implementations inside interfaces
+- interface methods with inline bodies
+
+Current behavior:
+
+- `extends` contracts work and are enforced
+- classes still must explicitly implement required interface methods
+  even when interface method has an inline body
 
 Use this to share default behavior while still enforcing capability contracts.
 

@@ -1,4 +1,4 @@
-import { GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
+import { GITHUB_REPO_URL, SITE_NAME, UI_LOGO_SRC } from '../lib/site';
 
 export function Footer() {
     return (
@@ -8,14 +8,14 @@ export function Footer() {
                     <a href="/" className="mb-4 inline-flex items-center gap-3 text-lg font-semibold text-white">
                         <img
                             src={UI_LOGO_SRC}
-                            alt="Arden logo"
+                            alt={`${SITE_NAME} logo`}
                             width="36"
                             height="36"
                             decoding="async"
                             loading="lazy"
                             className="h-9 w-9 rounded-xl border border-white/10"
                         />
-                        <span>Arden</span>
+                        <span>{SITE_NAME}</span>
                     </a>
                     <p className="max-w-md text-sm leading-relaxed text-[#d8cdc1]">
                         Native systems programming with an opinionated toolchain, practical documentation, and a workflow that already includes projects, tests, formatting, linting, and benchmarks.
@@ -51,7 +51,7 @@ export function Footer() {
                 </div>
             </div>
             <div className="mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-3 border-t border-white/10 px-6 pt-8 text-center text-xs md:flex-row md:text-left">
-                <p>&copy; {new Date().getFullYear()} Arden. Open source under Apache 2.0.</p>
+                <p>&copy; {new Date().getFullYear()} {SITE_NAME}. Open source under Apache 2.0.</p>
                 <a
                     href="https://www.theremyyy.dev/"
                     target="_blank"

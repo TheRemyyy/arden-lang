@@ -1123,7 +1123,7 @@ pub(crate) fn env_usize_override(name: &str, default: usize) -> usize {
         }
         Err(error) => {
             eprintln!(
-                "{}: ignoring {}='{}'; failed to parse positive integer ({}) , using {}",
+                "{}: ignoring {}='{}'; failed to parse positive integer ({}), using {}",
                 cli_tertiary("warning"),
                 cli_accent(name),
                 cli_soft(&raw_value),

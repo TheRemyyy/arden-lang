@@ -281,8 +281,13 @@ fn main() {
         Commands::Lex { file } => lex_file(&file),
         Commands::Parse { file } => parse_file(&file),
         Commands::Lsp => {
-            let runtime = tokio::runtime::Runtime::new()
-                .map_err(|e| format!("{}: Failed to start runtime: {}", "error".red().bold(), e));
+            let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+                format!(
+                    "{}: Failed to start runtime for LSP server: {}",
+                    "error".red().bold(),
+                    e
+                )
+            });
             match runtime {
                 Ok(rt) => {
                     rt.block_on(lsp::run_lsp_server());
@@ -1031,9 +1036,13 @@ pub(crate) fn build_project(
     reset_cache_io_timing_totals(&REWRITE_CACHE_TIMING_TOTALS);
     reset_cache_io_timing_totals(&OBJECT_CACHE_META_TIMING_TOTALS);
     let cwd = current_dir_checked()?;
-    let project_root = find_project_root(&cwd)
-        .ok_or_else(|| format!("{}: No arden.toml found. Are you in a project directory?\nRun `arden new <name>` to create a new project.",
-            "error".red().bold()))?;
+    let project_root = find_project_root(&cwd).ok_or_else(|| {
+        format!(
+            "{}: No arden.toml found from current directory '{}'. Are you in a project directory?\nRun `arden new <name>` to create a new project.",
+            "error".red().bold(),
+            cwd.display()
+        )
+    })?;
 
     let config_path = project_root.join("arden.toml");
     let mut config = ProjectConfig::load(&config_path)?;
@@ -1477,8 +1486,14 @@ pub(crate) fn compile_file(
         }
     }
 
-    let source = fs::read_to_string(file)
-        .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
+    let source = fs::read_to_string(file).map_err(|e| {
+        format!(
+            "{}: Failed to read file '{}': {}",
+            "error".red().bold(),
+            file.display(),
+            e
+        )
+    })?;
 
     let output_path = output.map(PathBuf::from).unwrap_or_else(|| {
         #[cfg(windows)]

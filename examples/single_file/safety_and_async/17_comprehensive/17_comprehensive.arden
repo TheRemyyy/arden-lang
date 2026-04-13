@@ -93,7 +93,7 @@ enum Status {
 function processData(owned x: Integer, borrow y: Integer, borrow mut z: Integer): Integer {
     // x is owned (moved in)
     // y is borrowed (read-only)
-    // z is mutably borrowed (can modify)
+    // z is borrow-mut mode parameter (kept for signature coverage in this suite)
     return x + y;
 }
 

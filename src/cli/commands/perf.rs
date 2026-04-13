@@ -35,26 +35,32 @@ this indicates a runtime crash; rerun with `arden compile --emit-llvm ...` and r
 }
 
 fn run_binary(exe_path: &Path, args: &[String]) -> Result<(), String> {
-    let status = Command::new(exe_path)
-        .args(args)
-        .status()
-        .map_err(|e| format!("{}: Failed to run: {}", "error".red().bold(), e))?;
+    let status = Command::new(exe_path).args(args).status().map_err(|e| {
+        format!(
+            "{}: Failed to run '{}': {}",
+            "error".red().bold(),
+            exe_path.display(),
+            e
+        )
+    })?;
     if !status.success() {
         return Err(format!(
-            "{}: process {}",
+            "{}: process '{}' {}",
             "error".red().bold(),
+            exe_path.display(),
             format_exit_failure(status)
         ));
     }
     Ok(())
 }
 
-fn prepare_bench_binary(
+fn prepare_perf_binary(
     file: Option<&Path>,
     release: bool,
+    temp_tag: &str,
 ) -> Result<(PathBuf, Option<PathBuf>, Vec<String>), String> {
     if let Some(file) = file {
-        let output = unique_temp_binary_path("arden-bench", file)?;
+        let output = unique_temp_binary_path(temp_tag, file)?;
         compile_file(
             file,
             Some(&output),
@@ -67,8 +73,13 @@ fn prepare_bench_binary(
     }
 
     let cwd = current_dir_checked()?;
-    let project_root = find_project_root(&cwd)
-        .ok_or_else(|| format!("{}: No arden.toml found", "error".red().bold()))?;
+    let project_root = find_project_root(&cwd).ok_or_else(|| {
+        format!(
+            "{}: No arden.toml found from current directory '{}'",
+            "error".red().bold(),
+            cwd.display()
+        )
+    })?;
     let config_path = project_root.join("arden.toml");
     let config = ProjectConfig::load(&config_path)?;
     config.validate(&project_root)?;
@@ -86,7 +97,7 @@ pub(crate) fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(),
         return Err("Iterations must be greater than zero.".to_string());
     }
 
-    let (exe_path, cleanup_path, args) = prepare_bench_binary(file, false)?;
+    let (exe_path, cleanup_path, args) = prepare_perf_binary(file, false, "arden-bench")?;
     let run_result = (|| -> Result<Vec<f64>, String> {
         let mut samples_ms = Vec::with_capacity(iterations);
         for _ in 0..iterations {
@@ -146,7 +157,7 @@ pub(crate) fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(),
 
 pub(crate) fn profile_target(file: Option<&Path>) -> Result<(), String> {
     let build_started = Instant::now();
-    let (exe_path, cleanup_path, args) = prepare_bench_binary(file, false)?;
+    let (exe_path, cleanup_path, args) = prepare_perf_binary(file, false, "arden-profile")?;
     let build_elapsed = build_started.elapsed();
     let run_result = (|| -> Result<std::time::Duration, String> {
         let run_started = Instant::now();
@@ -189,6 +200,7 @@ pub(crate) fn profile_target(file: Option<&Path>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -207,24 +219,52 @@ mod tests {
             .expect("failed to write failing source");
     }
 
+    fn temp_binary_prefix(tag: &str, source_path: &Path) -> String {
+        let stem = source_path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("input");
+        format!("{tag}-{stem}-{}-", std::process::id())
+    }
+
+    fn temp_binary_set_with_prefix(prefix: &str) -> HashSet<PathBuf> {
+        let mut paths = HashSet::new();
+        let temp_dir = std::env::temp_dir();
+        let Ok(entries) = fs::read_dir(&temp_dir) else {
+            return paths;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if name.starts_with(prefix) {
+                paths.insert(path);
+            }
+        }
+        paths
+    }
+
     #[test]
     fn bench_single_file_cleans_up_temp_binary_on_runtime_failure() {
         let temp_dir = make_temp_dir("bench-cleanup");
         let source_path = temp_dir.join("failing_bench.arden");
         write_failing_program(&source_path);
-
-        #[cfg(windows)]
-        let output_path = source_path.with_extension("bench.exe");
-        #[cfg(not(windows))]
-        let output_path = source_path.with_extension("bench");
+        let prefix = temp_binary_prefix("arden-bench", &source_path);
+        let before = temp_binary_set_with_prefix(&prefix);
 
         let err = bench_target(Some(&source_path), 1)
             .expect_err("bench should return an error for non-zero exit");
         assert!(err.contains("exited with code 7"), "{err}");
+        let after = temp_binary_set_with_prefix(&prefix);
+        let leaked: Vec<PathBuf> = after.difference(&before).cloned().collect();
         assert!(
-            !output_path.exists(),
-            "bench output should be removed after runtime failure: {}",
-            output_path.display()
+            leaked.is_empty(),
+            "bench leaked temporary binaries: {leaked:?}"
         );
 
         let _ = fs::remove_file(source_path);
@@ -236,19 +276,17 @@ mod tests {
         let temp_dir = make_temp_dir("profile-cleanup");
         let source_path = temp_dir.join("failing_profile.arden");
         write_failing_program(&source_path);
-
-        #[cfg(windows)]
-        let output_path = source_path.with_extension("bench.exe");
-        #[cfg(not(windows))]
-        let output_path = source_path.with_extension("bench");
+        let prefix = temp_binary_prefix("arden-profile", &source_path);
+        let before = temp_binary_set_with_prefix(&prefix);
 
         let err = profile_target(Some(&source_path))
             .expect_err("profile should return an error for non-zero exit");
         assert!(err.contains("exited with code 7"), "{err}");
+        let after = temp_binary_set_with_prefix(&prefix);
+        let leaked: Vec<PathBuf> = after.difference(&before).cloned().collect();
         assert!(
-            !output_path.exists(),
-            "profile output should be removed after runtime failure: {}",
-            output_path.display()
+            leaked.is_empty(),
+            "profile leaked temporary binaries: {leaked:?}"
         );
 
         let _ = fs::remove_file(source_path);

@@ -157,6 +157,23 @@ Important:
 - they affect build cache/codegen behavior, not language semantics
 - treat them as implementation-level controls, not stable language guarantees
 
+### Platform Linker Overrides (Advanced Troubleshooting)
+
+Use only when diagnosing platform linker/toolchain setup issues.
+
+- `ARDEN_LLVM_REAL_PREFIX`
+  - override LLVM prefix lookup used by linker/toolchain discovery
+  - mainly relevant on custom/local LLVM installs
+- `ARDEN_WINDOWS_BUILTINS_LIB` (Windows)
+  - explicit path to `clang_rt.builtins-x86_64.lib` when auto-detection fails
+
+Example (Windows PowerShell):
+
+```powershell
+$env:ARDEN_WINDOWS_BUILTINS_LIB = "C:\\llvm\\lib\\clang\\22\\lib\\windows\\clang_rt.builtins-x86_64.lib"
+arden build --release
+```
+
 ### `arden test`
 
 ```bash

@@ -1420,6 +1420,11 @@ impl TypeChecker {
                                         arg.span.clone(),
                                         Some(param_type),
                                     );
+                                    self.enforce_function_argument_effect_contract(
+                                        param_type,
+                                        &arg.node,
+                                        arg.span.clone(),
+                                    );
                                     if !self.types_compatible(param_type, &arg_type) {
                                         self.error(
                                             format!(
@@ -1490,6 +1495,11 @@ impl TypeChecker {
                                         arg.span.clone(),
                                         Some(param_type),
                                     );
+                                    self.enforce_function_argument_effect_contract(
+                                        param_type,
+                                        &arg.node,
+                                        arg.span.clone(),
+                                    );
                                     if !self.types_compatible(param_type, &arg_type) {
                                         self.error(
                                             format!(
@@ -1552,6 +1562,11 @@ impl TypeChecker {
                                     &arg.node,
                                     arg.span.clone(),
                                     Some(param_type),
+                                );
+                                self.enforce_function_argument_effect_contract(
+                                    param_type,
+                                    &arg.node,
+                                    arg.span.clone(),
                                 );
                                 if !self.types_compatible(param_type, &arg_type) {
                                     self.error(
@@ -1813,6 +1828,11 @@ impl TypeChecker {
                                 arg.span.clone(),
                                 Some(param_type),
                             );
+                            self.enforce_function_argument_effect_contract(
+                                param_type,
+                                &arg.node,
+                                arg.span.clone(),
+                            );
                             if !self.types_compatible(param_type, &arg_type) {
                                 self.error(
                                     format!(
@@ -1865,6 +1885,11 @@ impl TypeChecker {
                                     &arg.node,
                                     arg.span.clone(),
                                     Some(param_type),
+                                );
+                                self.enforce_function_argument_effect_contract(
+                                    param_type,
+                                    &arg.node,
+                                    arg.span.clone(),
                                 );
                                 if !self.types_compatible(param_type, &arg_type) {
                                     self.error(
@@ -1922,6 +1947,11 @@ impl TypeChecker {
                             arg.span.clone(),
                             Some(param_type),
                         );
+                        self.enforce_function_argument_effect_contract(
+                            param_type,
+                            &arg.node,
+                            arg.span.clone(),
+                        );
                         if !self.types_compatible(param_type, &arg_type) {
                             self.error(
                                 format!(
@@ -1949,13 +1979,12 @@ impl TypeChecker {
         }
         let callee_type = self.check_expr(callee, span.clone());
         if let ResolvedType::Function(param_types, return_type) = callee_type {
-            if let Expr::Ident(name) = callee {
-                let contract = self
-                    .lookup_variable(name)
-                    .and_then(|var| var.callable_effects.clone());
-                if let Some(contract) = contract {
-                    self.enforce_function_value_effect_contract(&contract, span.clone(), name);
-                }
+            if let Some(contract) = self.infer_function_value_effect_contract_from_expr(callee) {
+                let callee_label = match callee {
+                    Expr::Ident(name) => name.clone(),
+                    _ => "function value".to_string(),
+                };
+                self.enforce_function_value_effect_contract(&contract, span.clone(), &callee_label);
             }
             if args.len() != param_types.len() {
                 self.error(
@@ -1972,6 +2001,11 @@ impl TypeChecker {
                         &arg.node,
                         arg.span.clone(),
                         Some(param_type),
+                    );
+                    self.enforce_function_argument_effect_contract(
+                        param_type,
+                        &arg.node,
+                        arg.span.clone(),
                     );
                     if !self.types_compatible(param_type, &arg_type) {
                         self.error(
@@ -2931,6 +2965,11 @@ impl TypeChecker {
                                     arg.span.clone(),
                                     Some(param_type),
                                 );
+                                self.enforce_function_argument_effect_contract(
+                                    param_type,
+                                    &arg.node,
+                                    arg.span.clone(),
+                                );
                                 if !self.types_compatible(param_type, &arg_type) {
                                     self.error(
                                         format!(
@@ -3009,6 +3048,11 @@ impl TypeChecker {
                                 &arg.node,
                                 arg.span.clone(),
                                 Some(param_type),
+                            );
+                            self.enforce_function_argument_effect_contract(
+                                param_type,
+                                &arg.node,
+                                arg.span.clone(),
                             );
                             if !self.types_compatible(param_type, &arg_type) {
                                 self.error(
@@ -3122,6 +3166,11 @@ impl TypeChecker {
                                 &arg.node,
                                 arg.span.clone(),
                                 Some(param_type),
+                            );
+                            self.enforce_function_argument_effect_contract(
+                                param_type,
+                                &arg.node,
+                                arg.span.clone(),
                             );
                             if !self.types_compatible(param_type, &arg_type) {
                                 self.error(

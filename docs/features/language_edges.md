@@ -15,6 +15,14 @@ Supported visibilities:
 
 Use visibility to enforce boundaries at compile time.
 
+Current parser restrictions:
+
+- visibility modifiers are supported on class members
+- visibility modifiers are rejected on `module` declarations
+- visibility modifiers are rejected on `import` declarations
+- visibility modifiers are rejected on `package` declarations
+- visibility modifiers are rejected on constructors
+
 Example: [`35_visibility_enforcement`](../../examples/single_file/language_edges/35_visibility_enforcement/35_visibility_enforcement.arden)
 
 ## Inheritance (`extends`)
@@ -33,6 +41,20 @@ import std.string as str;
 ```
 
 Example: [`38_import_aliases`](../../examples/single_file/language_edges/38_import_aliases/38_import_aliases.arden)
+
+## Exact Import Members
+
+Arden also supports importing specific members (including values) with alias:
+
+```arden
+import std.args.count as ArgCount;
+import std.system.cwd as CurrentDir;
+import Option.None as Empty;
+```
+
+This is useful when you want explicit dependency wiring without pulling full namespaces.
+
+Example: [`44_exact_import_values`](../../examples/single_file/language_edges/44_exact_import_values/44_exact_import_values.arden)
 
 ## Package Namespaces
 
@@ -57,6 +79,7 @@ A class can define at most one destructor.
 - deep inheritance where composition would be simpler
 - broad wildcard imports that hide symbol origin
 - relying on implicit package assumptions after file moves
+- expecting `public module ...` / `private import ...` style declarations to compile
 
 ## Related
 

@@ -117,6 +117,11 @@ Important distinction:
 
 Today, the first exists (effect checking), the second is placeholder-only.
 
+Roadmap note:
+
+- runtime `std.net` APIs are planned but not exposed yet
+- track rollout through the changelog and GitHub issues before relying on network stdlib calls in production docs
+
 ## `@Any` Usage Rule
 
 `@Any` is useful for boundary/orchestrator functions that intentionally mix effect categories.

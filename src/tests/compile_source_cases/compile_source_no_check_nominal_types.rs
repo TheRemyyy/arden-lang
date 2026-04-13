@@ -28,6 +28,34 @@ fn compile_source_no_check_rejects_extern_function_values_even_with_adapter_sign
 }
 
 #[test]
+fn compile_source_no_check_rejects_user_defined_generic_enum_without_panicking() {
+    let temp_root = make_temp_project_root("no-check-generic-enum-no-panic");
+    let source_path = temp_root.join("no_check_generic_enum_no_panic.arden");
+    let output_path = temp_root.join("no_check_generic_enum_no_panic");
+    let source = r#"
+            enum Boxed<T> {
+                Item(value: T)
+            }
+
+            function main(): Integer {
+                value: Boxed<Integer> = Boxed.Item(7);
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).must("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .must_err("generic enum in no-check mode should fail with a diagnostic, not panic");
+    assert!(
+        err.contains("user-defined generic enums are not supported yet"),
+        "{err}"
+    );
+    assert!(!err.contains("panicked at"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_function_value_adapter_between_unrelated_nominal_returns() {
     let temp_root = make_temp_project_root("no-check-fn-adapter-unrelated-nominal-return");
     let source_path = temp_root.join("no_check_fn_adapter_unrelated_nominal_return.arden");

@@ -7,6 +7,9 @@ What this demonstrates:
 - interface implementation and usage
 - simple polymorphic flow
 
+Current behavior note:
+- keep interface methods explicitly implemented on classes even if interface method body exists inline
+
 Run:
 
 ```bash

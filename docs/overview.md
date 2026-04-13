@@ -15,6 +15,8 @@ Arden is a native systems language with three core priorities:
 Arden is not just a parser demo. The repository already includes:
 
 - language core: types, functions, control flow, modules, classes, enums, interfaces, generics
+- generic support: functions/classes/interfaces + built-in generic types (`Option`, `Result`, ...)
+  (user-defined generic enums are not supported yet)
 - object model extras: visibility (`public/private/protected`), inheritance (`extends`), destructors
 - safety model: ownership, borrowing, checked mutation, lifetime validation
 - effect model: `@Pure`, `@Io`, `@Thread`, `@Any` (+ `@Net/@Alloc/@Unsafe` support)

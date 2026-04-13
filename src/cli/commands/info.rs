@@ -5,10 +5,12 @@ use crate::project::{find_project_root, ProjectConfig};
 use colored::Colorize;
 
 pub(crate) fn show_project_info() -> Result<(), String> {
-    let project_root = find_project_root(&current_dir_checked()?).ok_or_else(|| {
+    let cwd = current_dir_checked()?;
+    let project_root = find_project_root(&cwd).ok_or_else(|| {
         format!(
-            "{}: No arden.toml found in current directory or parents.",
-            "error".red().bold()
+            "{}: No arden.toml found in current directory '{}' or its parents.",
+            "error".red().bold(),
+            cwd.display()
         )
     })?;
 
