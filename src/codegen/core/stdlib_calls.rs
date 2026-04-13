@@ -1588,7 +1588,8 @@ impl<'ctx> Codegen<'ctx> {
                 self.builder.position_at_end(success_block);
                 // fseek(f, 0, SEEK_END)
                 let seek_end = self.context.i32_type().const_int(2, false); // SEEK_END = 2
-                let zero = self.context.i64_type().const_int(0, false);
+                let libc_long = self.libc_long_type();
+                let zero = libc_long.const_zero();
                 let seek_result = self
                     .builder
                     .build_call(fseek, &[file_ptr.into(), zero.into(), seek_end.into()], "")
@@ -1626,7 +1627,7 @@ impl<'ctx> Codegen<'ctx> {
                     .build_int_compare(
                         IntPredicate::SGE,
                         size,
-                        self.context.i64_type().const_zero(),
+                        libc_long.const_zero(),
                         "file_read_size_non_negative",
                     )
                     .map_err(|_| {
@@ -1652,10 +1653,15 @@ impl<'ctx> Codegen<'ctx> {
                     .map_err(|_| CodegenError::new("failed to emit rewind for File.read"))?;
 
                 // buffer = malloc(size + 1)
-                let one = self.context.i64_type().const_int(1, false);
+                let size_t = self.libc_size_type();
+                let one = size_t.const_int(1, false);
+                let size_size_t = self
+                    .builder
+                    .build_int_cast(size, size_t, "file_read_size_size_t")
+                    .map_err(|_| CodegenError::new("failed to cast File.read size to size_t"))?;
                 let alloc_size = self
                     .builder
-                    .build_int_add(size, one, "alloc_size")
+                    .build_int_add(size_size_t, one, "alloc_size")
                     .map_err(|_| {
                         CodegenError::new("failed to compute File.read allocation size")
                     })?;
@@ -1666,7 +1672,6 @@ impl<'ctx> Codegen<'ctx> {
                 let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
 
                 // fread(buffer, 1, size, f)
-                let size_size_t = size; // Assuming size_t is i64
                 self.builder
                     .build_call(
                         fread,
@@ -2102,14 +2107,12 @@ impl<'ctx> Codegen<'ctx> {
                     .build_call(time_fn, &[null.into()], "t")
                     .map_err(|_| CodegenError::new("failed to emit time() for Time.now"))?;
                 let t_raw = self.extract_call_value(t_val)?;
+                let time_ty = self.libc_time_type();
 
-                // 2. Alloca for time_t (i64)
-                let t_ptr = self
-                    .builder
-                    .build_alloca(self.context.i64_type(), "t_ptr")
-                    .map_err(|_| {
-                        CodegenError::new("failed to allocate time_t slot for Time.now")
-                    })?;
+                // 2. Alloca for time_t
+                let t_ptr = self.builder.build_alloca(time_ty, "t_ptr").map_err(|_| {
+                    CodegenError::new("failed to allocate time_t slot for Time.now")
+                })?;
                 self.builder
                     .build_store(t_ptr, t_raw)
                     .map_err(|_| CodegenError::new("failed to store time_t value for Time.now"))?;
@@ -2262,7 +2265,12 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(time_fn, &[null.into()], "time")
                     .map_err(|_| CodegenError::new("failed to emit time() for Time.unix"))?;
-                Ok(Some(self.extract_call_value(res)?))
+                let unix_time_raw = self.extract_call_value(res)?.into_int_value();
+                let unix_time_i64 = self
+                    .builder
+                    .build_int_cast(unix_time_raw, self.context.i64_type(), "time_unix_i64")
+                    .map_err(|_| CodegenError::new("failed to cast time_t to Integer"))?;
+                Ok(Some(unix_time_i64.into()))
             }
 
             "Time__sleep" => {

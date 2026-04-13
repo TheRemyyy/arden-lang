@@ -861,8 +861,19 @@ impl<'ctx> Codegen<'ctx> {
                 #[cfg(not(windows))]
                 {
                     let pthread_cancel = self.get_or_declare_pthread_cancel();
+                    let pthread_t_ty = self.libc_ulong_type();
+                    let pthread_thread_id = self
+                        .builder
+                        .build_int_cast(
+                            thread_id.into_int_value(),
+                            pthread_t_ty,
+                            "task_cancel_pthread_t",
+                        )
+                        .map_err(|_| {
+                            CodegenError::new("failed to cast task thread id to pthread_t")
+                        })?;
                     self.builder
-                        .build_call(pthread_cancel, &[thread_id.into()], "task_cancel")
+                        .build_call(pthread_cancel, &[pthread_thread_id.into()], "task_cancel")
                         .map_err(|_| CodegenError::new("failed to emit pthread_cancel for task"))?;
                 }
 
@@ -1243,10 +1254,21 @@ impl<'ctx> Codegen<'ctx> {
                 #[cfg(not(windows))]
                 let joined_ptr = {
                     let pthread_join = self.get_or_declare_pthread_join();
+                    let pthread_t_ty = self.libc_ulong_type();
+                    let pthread_thread_id = self
+                        .builder
+                        .build_int_cast(
+                            thread_id.into_int_value(),
+                            pthread_t_ty,
+                            "timed_join_pthread_t",
+                        )
+                        .map_err(|_| {
+                            CodegenError::new("failed to cast timed join thread id to pthread_t")
+                        })?;
                     self.builder
                         .build_call(
                             pthread_join,
-                            &[thread_id.into(), join_result_ptr.into()],
+                            &[pthread_thread_id.into(), join_result_ptr.into()],
                             "timed_join_finalize",
                         )
                         .map_err(|_| CodegenError::new("failed to emit pthread_join for task"))?;

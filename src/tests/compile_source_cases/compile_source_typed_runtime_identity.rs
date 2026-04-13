@@ -155,6 +155,7 @@ fn compile_source_runs_await_timeout_zero_pending_runtime() {
     let output_path = temp_root.join("await_timeout_zero_pending_runtime");
     let source = r#"
             import std.time.*;
+            import std.fs.*;
 
             function work(): Task<Integer> {
                 return async {
@@ -258,6 +259,98 @@ fn compile_source_runs_class_identity_equality() {
         .status()
         .must("run compiled class equality binary");
     assert_eq!(status.code(), Some(36));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_emits_platform_correct_libc_signatures() {
+    let temp_root = make_temp_project_root("libc-signatures-ir");
+    let source_path = temp_root.join("libc_signatures_ir.arden");
+    let output_path = temp_root.join("libc_signatures_ir");
+    let source = r#"
+            import std.time.*;
+            import std.fs.*;
+
+            function main(): None {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                xs.push(2);
+                xs.push(3);
+                xs.push(4);
+                xs.push(5);
+
+                _s: String = "{xs.length()}";
+                _now: String = Time.now("%Y-%m-%d %H:%M:%S");
+                _file: String = File.read("does_not_exist.txt");
+                _maybe: Option<Integer> = (async { return 2; }).await_timeout(0);
+
+                return None;
+            }
+        "#;
+
+    fs::write(&source_path, source).must("write source");
+    compile_source(source, &source_path, &output_path, true, true, None, None)
+        .must("libc signature probe source should codegen");
+
+    let ir_path = output_path.with_extension("ll");
+    let ir = fs::read_to_string(&ir_path).must("read generated llvm ir");
+
+    #[cfg(target_pointer_width = "32")]
+    let size_t_ty = "i32";
+    #[cfg(not(target_pointer_width = "32"))]
+    let size_t_ty = "i64";
+
+    #[cfg(windows)]
+    let long_ty = "i32";
+    #[cfg(not(windows))]
+    let long_ty = size_t_ty;
+
+    #[cfg(windows)]
+    let time_ty = "i64";
+    #[cfg(not(windows))]
+    let time_ty = long_ty;
+
+    let malloc_sig = format!("declare ptr @malloc({size_t_ty})");
+    assert!(
+        ir.contains(&malloc_sig),
+        "expected platform-correct malloc signature `{malloc_sig}` in {}",
+        ir_path.display()
+    );
+    let snprintf_sig = format!("declare i32 @snprintf(ptr, {size_t_ty}, ptr, ...)");
+    assert!(
+        ir.contains(&snprintf_sig),
+        "expected platform-correct snprintf signature `{snprintf_sig}` in {}",
+        ir_path.display()
+    );
+    let fseek_sig = format!("declare i32 @fseek(ptr, {long_ty}, i32)");
+    assert!(
+        ir.contains(&fseek_sig),
+        "expected platform-correct fseek signature `{fseek_sig}` in {}",
+        ir_path.display()
+    );
+    let ftell_sig = format!("declare {long_ty} @ftell(ptr)");
+    assert!(
+        ir.contains(&ftell_sig),
+        "expected platform-correct ftell signature `{ftell_sig}` in {}",
+        ir_path.display()
+    );
+    let time_sig = format!("declare {time_ty} @time(ptr)");
+    assert!(
+        ir.contains(&time_sig),
+        "expected platform-correct time signature `{time_sig}` in {}",
+        ir_path.display()
+    );
+
+    #[cfg(not(windows))]
+    {
+        let pthread_join_sig = format!("declare i32 @pthread_join({long_ty}, ptr)");
+        assert!(
+            ir.contains(&pthread_join_sig),
+            "expected platform-correct pthread_join signature `{pthread_join_sig}` in {}",
+            ir_path.display()
+        );
+    }
 
     let _ = fs::remove_dir_all(temp_root);
 }

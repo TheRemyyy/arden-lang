@@ -242,7 +242,7 @@ thread_local! {
 }
 
 impl<'ctx> Codegen<'ctx> {
-    fn libc_size_type(&self) -> inkwell::types::IntType<'ctx> {
+    pub(crate) fn libc_size_type(&self) -> inkwell::types::IntType<'ctx> {
         #[cfg(target_pointer_width = "32")]
         {
             self.context.i32_type()
@@ -250,6 +250,32 @@ impl<'ctx> Codegen<'ctx> {
         #[cfg(not(target_pointer_width = "32"))]
         {
             self.context.i64_type()
+        }
+    }
+
+    pub(crate) fn libc_long_type(&self) -> inkwell::types::IntType<'ctx> {
+        #[cfg(windows)]
+        {
+            self.context.i32_type()
+        }
+        #[cfg(not(windows))]
+        {
+            self.libc_size_type()
+        }
+    }
+
+    pub(crate) fn libc_ulong_type(&self) -> inkwell::types::IntType<'ctx> {
+        self.libc_long_type()
+    }
+
+    pub(crate) fn libc_time_type(&self) -> inkwell::types::IntType<'ctx> {
+        #[cfg(windows)]
+        {
+            self.context.i64_type()
+        }
+        #[cfg(not(windows))]
+        {
+            self.libc_long_type()
         }
     }
 
@@ -465,6 +491,23 @@ impl<'ctx> Codegen<'ctx> {
                             }),
                     );
                 }
+                Stmt::Return(Some(expr)) => {
+                    ret = Some(
+                        self.builtin_argument_type_hint(&expr.node)
+                            .unwrap_or_else(|| {
+                                self.infer_expr_type_with_expected(
+                                    &expr.node,
+                                    &scoped_params,
+                                    expected_ty,
+                                )
+                            }),
+                    );
+                    break;
+                }
+                Stmt::Return(None) => {
+                    ret = Some(Type::None);
+                    break;
+                }
                 _ => {}
             }
         }
@@ -568,7 +611,7 @@ impl<'ctx> Codegen<'ctx> {
         let fn_type = self.context.i32_type().fn_type(
             &[
                 ptr_type.into(),
-                self.context.i64_type().into(),
+                self.libc_long_type().into(),
                 self.context.i32_type().into(),
             ],
             false,
@@ -583,7 +626,7 @@ impl<'ctx> Codegen<'ctx> {
         }
         // long ftell(FILE* stream)
         let ptr_type = self.context.ptr_type(AddressSpace::default());
-        let fn_type = self.context.i64_type().fn_type(&[ptr_type.into()], false);
+        let fn_type = self.libc_long_type().fn_type(&[ptr_type.into()], false);
         self.module.add_function(name, fn_type, None)
     }
 
@@ -725,7 +768,7 @@ impl<'ctx> Codegen<'ctx> {
             return f;
         }
         let ptr = self.context.ptr_type(AddressSpace::default());
-        let fn_type = self.context.i64_type().fn_type(&[ptr.into()], false);
+        let fn_type = self.libc_time_type().fn_type(&[ptr.into()], false);
         self.module.add_function(name, fn_type, None)
     }
 
@@ -3953,7 +3996,7 @@ impl<'ctx> Codegen<'ctx> {
         let malloc_type = self
             .context
             .ptr_type(AddressSpace::default())
-            .fn_type(&[self.context.i64_type().into()], false);
+            .fn_type(&[self.libc_size_type().into()], false);
         self.module.add_function(name, malloc_type, None)
     }
 
@@ -3966,7 +4009,7 @@ impl<'ctx> Codegen<'ctx> {
         let realloc_type = self.context.ptr_type(AddressSpace::default()).fn_type(
             &[
                 self.context.ptr_type(AddressSpace::default()).into(),
-                self.context.i64_type().into(),
+                self.libc_size_type().into(),
             ],
             false,
         );
@@ -3999,7 +4042,7 @@ impl<'ctx> Codegen<'ctx> {
         let pthread_join_type = self
             .context
             .i32_type()
-            .fn_type(&[self.context.i64_type().into(), ptr.into()], false);
+            .fn_type(&[self.libc_ulong_type().into(), ptr.into()], false);
         self.module.add_function(name, pthread_join_type, None)
     }
 
@@ -4013,7 +4056,7 @@ impl<'ctx> Codegen<'ctx> {
         let pthread_cancel_type = self
             .context
             .i32_type()
-            .fn_type(&[self.context.i64_type().into()], false);
+            .fn_type(&[self.libc_ulong_type().into()], false);
         self.module.add_function(name, pthread_cancel_type, None)
     }
 
@@ -4025,7 +4068,7 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         let ptr = self.context.ptr_type(AddressSpace::default());
-        let usize_ty = self.context.i64_type();
+        let usize_ty = self.libc_size_type();
         let create_thread_type = ptr.fn_type(
             &[
                 ptr.into(),
@@ -4092,7 +4135,7 @@ impl<'ctx> Codegen<'ctx> {
         let snprintf_type = self.context.i32_type().fn_type(
             &[
                 self.context.ptr_type(AddressSpace::default()).into(),
-                self.context.i64_type().into(),
+                self.libc_size_type().into(),
                 self.context.ptr_type(AddressSpace::default()).into(),
             ],
             true,

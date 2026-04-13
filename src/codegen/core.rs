@@ -10151,14 +10151,15 @@ impl<'ctx> Codegen<'ctx> {
             #[cfg(not(windows))]
             {
                 let pthread_create = self.get_or_declare_pthread_create();
+                let pthread_t_ty = self.libc_ulong_type();
                 let thread_tmp = self
                     .builder
-                    .build_alloca(self.context.i64_type(), "task_thread_tmp")
+                    .build_alloca(pthread_t_ty, "task_thread_tmp")
                     .map_err(|e| {
                         CodegenError::new(format!("failed to allocate task thread temp: {e}"))
                     })?;
                 self.builder
-                    .build_store(thread_tmp, self.context.i64_type().const_int(0, false))
+                    .build_store(thread_tmp, pthread_t_ty.const_zero())
                     .map_err(|e| {
                         CodegenError::new(format!("failed to initialize task thread temp: {e}"))
                     })?;
@@ -10176,12 +10177,20 @@ impl<'ctx> Codegen<'ctx> {
                     )
                     .map_err(|e| CodegenError::new(format!("failed to spawn pthread task: {e}")))?;
 
-                self.builder
-                    .build_load(self.context.i64_type(), thread_tmp, "task_thread")
+                let pthread_id = self
+                    .builder
+                    .build_load(pthread_t_ty, thread_tmp, "task_thread")
                     .map_err(|e| {
                         CodegenError::new(format!("failed to load pthread task handle: {e}"))
                     })?
-                    .into_int_value()
+                    .into_int_value();
+                self.builder
+                    .build_int_cast(pthread_id, self.context.i64_type(), "task_thread_i64")
+                    .map_err(|e| {
+                        CodegenError::new(format!(
+                            "failed to cast pthread task handle for task storage: {e}"
+                        ))
+                    })?
             }
         };
         self.builder
@@ -10307,6 +10316,11 @@ impl<'ctx> Codegen<'ctx> {
         #[cfg(not(windows))]
         let new_result = {
             let pthread_join = self.get_or_declare_pthread_join();
+            let pthread_t_ty = self.libc_ulong_type();
+            let pthread_thread_id = self
+                .builder
+                .build_int_cast(thread_id, pthread_t_ty, "task_thread_pthread_t")
+                .map_err(|_| CodegenError::new("failed to cast task thread id to pthread_t"))?;
             let join_result_ptr = self
                 .builder
                 .build_alloca(ptr_ty, "task_join_result")
@@ -10317,7 +10331,7 @@ impl<'ctx> Codegen<'ctx> {
             self.builder
                 .build_call(
                     pthread_join,
-                    &[thread_id.into(), join_result_ptr.into()],
+                    &[pthread_thread_id.into(), join_result_ptr.into()],
                     "task_join_call",
                 )
                 .map_err(|_| CodegenError::new("failed to emit pthread_join call"))?;
