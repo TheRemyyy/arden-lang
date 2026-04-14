@@ -10,15 +10,81 @@ use crate::stdlib::stdlib_registry;
 use crate::typeck;
 use crate::typeck::TypeChecker;
 use colored::Colorize;
+use std::fmt;
 use std::sync::Arc;
 
+#[derive(Debug)]
+enum ParseFrontendError {
+    Lexer(String),
+    Parser(String),
+}
+
+impl fmt::Display for ParseFrontendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Lexer(message) | Self::Parser(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<String> for ParseFrontendError {
+    fn from(value: String) -> Self {
+        Self::Parser(value)
+    }
+}
+
+impl From<ParseFrontendError> for String {
+    fn from(value: ParseFrontendError) -> Self {
+        value.to_string()
+    }
+}
+
+#[derive(Debug)]
+enum SemanticFrontendError {
+    ImportCheck(String),
+    Typecheck(String),
+    BorrowCheck(String),
+    MainSignature(String),
+}
+
+impl fmt::Display for SemanticFrontendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ImportCheck(message)
+            | Self::Typecheck(message)
+            | Self::BorrowCheck(message)
+            | Self::MainSignature(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<String> for SemanticFrontendError {
+    fn from(value: String) -> Self {
+        Self::Typecheck(value)
+    }
+}
+
+impl From<SemanticFrontendError> for String {
+    fn from(value: SemanticFrontendError) -> Self {
+        value.to_string()
+    }
+}
+
 pub(crate) fn parse_program_from_source(source: &str, filename: &str) -> Result<Program, String> {
-    let tokens = lexer::tokenize(source)
-        .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
+    parse_program_from_source_impl(source, filename).map_err(Into::into)
+}
+
+fn parse_program_from_source_impl(
+    source: &str,
+    filename: &str,
+) -> Result<Program, ParseFrontendError> {
+    let tokens = lexer::tokenize(source).map_err(|e| {
+        ParseFrontendError::Lexer(format!("{}: Lexer error: {}", "error".red().bold(), e))
+    })?;
     let mut parser = Parser::new(tokens);
     parser
         .parse_program()
-        .map_err(|e| format_parse_error(&e, source, filename))
+        .map_err(|e| ParseFrontendError::Parser(format_parse_error(&e, source, filename)))
 }
 
 pub(crate) fn run_single_file_semantic_checks(
@@ -26,6 +92,14 @@ pub(crate) fn run_single_file_semantic_checks(
     filename: &str,
     program: &Program,
 ) -> Result<(), String> {
+    run_single_file_semantic_checks_impl(source, filename, program).map_err(Into::into)
+}
+
+fn run_single_file_semantic_checks_impl(
+    source: &str,
+    filename: &str,
+    program: &Program,
+) -> Result<(), SemanticFrontendError> {
     let namespace = extract_namespace(program);
     let imports = extract_top_level_imports(program);
     let function_namespaces = import_check::extract_function_namespaces(program, &namespace);
@@ -43,17 +117,23 @@ pub(crate) fn run_single_file_semantic_checks(
             rendered.push_str(&err.format_with_source(source, filename));
             rendered.push('\n');
         }
-        return Err(rendered.trim_end().to_string());
+        return Err(SemanticFrontendError::ImportCheck(
+            rendered.trim_end().to_string(),
+        ));
     }
 
     let mut type_checker = TypeChecker::new();
     if let Err(errors) = type_checker.check(program) {
-        return Err(typeck::format_errors(&errors, source, filename));
+        return Err(SemanticFrontendError::Typecheck(typeck::format_errors(
+            &errors, source, filename,
+        )));
     }
 
     let mut borrow_checker = BorrowChecker::new();
     if let Err(errors) = borrow_checker.check(program) {
-        return Err(borrowck::format_borrow_errors(&errors, source, filename));
+        return Err(SemanticFrontendError::BorrowCheck(
+            borrowck::format_borrow_errors(&errors, source, filename),
+        ));
     }
 
     Ok(())
@@ -71,6 +151,14 @@ pub(crate) fn validate_entry_main_signature(
     source: &str,
     filename: &str,
 ) -> Result<(), String> {
+    validate_entry_main_signature_impl(program, source, filename).map_err(Into::into)
+}
+
+fn validate_entry_main_signature_impl(
+    program: &Program,
+    source: &str,
+    filename: &str,
+) -> Result<(), SemanticFrontendError> {
     let mut errors = Vec::new();
     for decl in &program.declarations {
         let Decl::Function(func) = &decl.node else {
@@ -121,7 +209,9 @@ pub(crate) fn validate_entry_main_signature(
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(typeck::format_errors(&errors, source, filename))
+        Err(SemanticFrontendError::MainSignature(typeck::format_errors(
+            &errors, source, filename,
+        )))
     }
 }
 

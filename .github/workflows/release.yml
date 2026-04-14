@@ -195,15 +195,15 @@ jobs:
       - name: Coverage gate
         run: cargo llvm-cov --locked --workspace --all-features --fail-under-lines 55
 
+      - name: Install Rust nightly for fuzz + sanitizer
+        uses: dtolnay/rust-toolchain@nightly
+
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
 
       - name: Fuzz smoke gate
         run: cargo fuzz run lexer_parser --sanitizer address -- -max_total_time=90 -jobs=1 -workers=1
         working-directory: fuzz
-
-      - name: Install Rust nightly for sanitizer
-        uses: dtolnay/rust-toolchain@nightly
 
       - name: Sanitizer gate
         env:

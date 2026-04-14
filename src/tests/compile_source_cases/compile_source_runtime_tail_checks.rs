@@ -451,6 +451,21 @@ fn compile_source_rejects_invalid_opt_level() {
 }
 
 #[test]
+fn compile_source_surfaces_lexer_error_at_boundary() {
+    let temp_root = make_temp_project_root("compile-lexer-boundary-error");
+    let source_path = temp_root.join("lexer_boundary_error.arden");
+    let output_path = temp_root.join("lexer_boundary_error");
+    let source = "function main(): None { $ return None; }\n";
+
+    let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+        .must_err("invalid token should fail at compile_source boundary");
+
+    assert!(err.contains("Lexer error"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_fails_fast_on_out_of_bounds_string_index_operator() {
     let temp_root = make_temp_project_root("string-index-oob-runtime");
     let source_path = temp_root.join("string_index_oob_runtime.arden");

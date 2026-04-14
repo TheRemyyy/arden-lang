@@ -322,6 +322,37 @@ impl From<BuildProjectError> for String {
     }
 }
 
+#[derive(Debug)]
+enum CompilePipelineError {
+    Message(String),
+}
+
+impl fmt::Display for CompilePipelineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Message(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<String> for CompilePipelineError {
+    fn from(value: String) -> Self {
+        Self::Message(value)
+    }
+}
+
+impl From<CompilePipelineError> for String {
+    fn from(value: CompilePipelineError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<CompilePipelineError> for AppError {
+    fn from(value: CompilePipelineError) -> Self {
+        Self::Message(value.to_string())
+    }
+}
+
 fn main() {
     if let Err(e) = run_cli() {
         eprintln!("{}", e);
@@ -340,7 +371,8 @@ fn run_cli() -> Result<(), AppError> {
             emit_llvm,
             no_check,
             timings,
-        } => build_project_impl(release, emit_llvm, !no_check, false, timings).map_err(AppError::from),
+        } => build_project_impl(release, emit_llvm, !no_check, false, timings)
+            .map_err(AppError::from),
         Commands::Run {
             file,
             args,
@@ -376,7 +408,9 @@ fn run_cli() -> Result<(), AppError> {
         Commands::Info => show_project_info().map_err(AppError::from),
         Commands::Lint { path } => lint_target(path.as_deref()).map_err(AppError::from),
         Commands::Fix { path } => fix_target(path.as_deref()).map_err(AppError::from),
-        Commands::Fmt { path, check } => format_targets(path.as_deref(), check).map_err(AppError::from),
+        Commands::Fmt { path, check } => {
+            format_targets(path.as_deref(), check).map_err(AppError::from)
+        }
         Commands::Lex { file } => lex_file(&file).map_err(AppError::from),
         Commands::Parse { file } => parse_file(&file).map_err(AppError::from),
         Commands::Lsp => {
@@ -1451,6 +1485,16 @@ pub(crate) fn compile_program_ast(
     emit_llvm: bool,
     link: &LinkConfig<'_>,
 ) -> Result<(), String> {
+    compile_program_ast_impl(program, source_path, output_path, emit_llvm, link).map_err(Into::into)
+}
+
+fn compile_program_ast_impl(
+    program: &Program,
+    source_path: &Path,
+    output_path: &Path,
+    emit_llvm: bool,
+    link: &LinkConfig<'_>,
+) -> Result<(), CompilePipelineError> {
     ensure_output_parent_dir(output_path)?;
 
     let context = Context::create();
@@ -1511,6 +1555,27 @@ pub(crate) fn compile_program_ast_to_object_filtered(
     declaration_symbols: &HashSet<String>,
     timings: Option<&ObjectEmitTimingTotals>,
 ) -> Result<(), String> {
+    compile_program_ast_to_object_filtered_impl(
+        program,
+        source_path,
+        object_path,
+        link,
+        active_symbols,
+        declaration_symbols,
+        timings,
+    )
+    .map_err(Into::into)
+}
+
+fn compile_program_ast_to_object_filtered_impl(
+    program: &Program,
+    source_path: &Path,
+    object_path: &Path,
+    link: &LinkConfig<'_>,
+    active_symbols: &HashSet<String>,
+    declaration_symbols: &HashSet<String>,
+    timings: Option<&ObjectEmitTimingTotals>,
+) -> Result<(), CompilePipelineError> {
     let context_started_at = Instant::now();
     let context = Context::create();
     if let Some(timings) = timings {
@@ -1600,6 +1665,17 @@ pub(crate) fn compile_file(
     opt_level: Option<&str>,
     target: Option<&str>,
 ) -> Result<(), String> {
+    compile_file_impl(file, output, emit_llvm, do_check, opt_level, target).map_err(Into::into)
+}
+
+fn compile_file_impl(
+    file: &Path,
+    output: Option<&Path>,
+    emit_llvm: bool,
+    do_check: bool,
+    opt_level: Option<&str>,
+    target: Option<&str>,
+) -> Result<(), CompilePipelineError> {
     let compile_started = Instant::now();
     validate_source_file_path(file)?;
 
@@ -1670,6 +1746,27 @@ pub(crate) fn compile_source(
     opt_level: Option<&str>,
     target: Option<&str>,
 ) -> Result<(), String> {
+    compile_source_impl(
+        source,
+        source_path,
+        output_path,
+        emit_llvm,
+        do_check,
+        opt_level,
+        target,
+    )
+    .map_err(Into::into)
+}
+
+fn compile_source_impl(
+    source: &str,
+    source_path: &Path,
+    output_path: &Path,
+    emit_llvm: bool,
+    do_check: bool,
+    opt_level: Option<&str>,
+    target: Option<&str>,
+) -> Result<(), CompilePipelineError> {
     validate_opt_level(opt_level)?;
 
     let filename = format_cli_path(source_path);
