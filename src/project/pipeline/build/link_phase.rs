@@ -4,7 +4,34 @@ use crate::cache::{
 };
 use crate::cli::output::{print_cli_cache, print_cli_step};
 use crate::linker::{link_objects, LinkConfig};
+use std::fmt;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+enum FinalLinkPhaseError {
+    FinalLink(String),
+    ManifestSave(String),
+}
+
+impl fmt::Display for FinalLinkPhaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FinalLink(message) | Self::ManifestSave(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<FinalLinkPhaseError> for String {
+    fn from(value: FinalLinkPhaseError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for FinalLinkPhaseError {
+    fn from(value: String) -> Self {
+        Self::FinalLink(value)
+    }
+}
 
 pub(crate) struct FinalLinkInputs<'a, 'b> {
     pub(crate) previous_link_manifest: Option<&'a LinkManifestCache>,
@@ -19,6 +46,13 @@ pub(crate) fn run_final_link_phase(
     build_timings: &mut BuildTimings,
     inputs: FinalLinkInputs<'_, '_>,
 ) -> Result<(), String> {
+    run_final_link_phase_impl(build_timings, inputs).map_err(Into::into)
+}
+
+fn run_final_link_phase_impl(
+    build_timings: &mut BuildTimings,
+    inputs: FinalLinkInputs<'_, '_>,
+) -> Result<(), FinalLinkPhaseError> {
     let link_inputs = build_timings.measure_step("link input assembly", || {
         dedupe_link_inputs(inputs.object_paths.into_iter().flatten().collect())
     });
@@ -47,16 +81,20 @@ pub(crate) fn run_final_link_phase(
         );
     } else {
         print_cli_step("Linking final artifact");
-        build_timings.measure("final link", || {
-            link_objects(&link_inputs, inputs.output_path, inputs.link)
-        })?;
+        build_timings
+            .measure("final link", || {
+                link_objects(&link_inputs, inputs.output_path, inputs.link)
+            })
+            .map_err(FinalLinkPhaseError::FinalLink)?;
         build_timings.record_counts(
             "final link",
             &[("objects", link_inputs.len()), ("linked", 1), ("reused", 0)],
         );
-        build_timings.measure("link manifest save", || {
-            save_link_manifest_cache(inputs.project_root, &current_link_manifest)
-        })?;
+        build_timings
+            .measure("link manifest save", || {
+                save_link_manifest_cache(inputs.project_root, &current_link_manifest)
+            })
+            .map_err(FinalLinkPhaseError::ManifestSave)?;
     }
 
     Ok(())

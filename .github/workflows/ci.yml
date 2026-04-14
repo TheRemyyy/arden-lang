@@ -271,9 +271,12 @@ jobs:
   fuzz-smoke-linux:
     name: Fuzz Smoke (linux-x64)
     runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+      - uses: ./.github/actions/install-llvm
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
       - name: Run lexer/parser fuzz smoke
@@ -285,8 +288,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
-      RUSTFLAGS: -Z sanitizer=address -C panic=abort
-      RUSTDOCFLAGS: -Z sanitizer=address
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: -Z sanitizer=address -C panic=abort
       ASAN_OPTIONS: detect_leaks=1
       UBSAN_OPTIONS: print_stacktrace=1
     steps:
@@ -301,7 +303,7 @@ jobs:
             target
           key: ${{ runner.os }}-sanitizer-cargo-${{ hashFiles('**/Cargo.lock', '.cargo/config.toml') }}
       - name: Run test suite under ASan
-        run: cargo test --locked --all-targets --all-features
+        run: cargo test --locked --all-targets --all-features --target x86_64-unknown-linux-gnu
 
   smoke-linux:
     name: CLI Smoke (linux-x64)

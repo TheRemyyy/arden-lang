@@ -207,11 +207,10 @@ jobs:
 
       - name: Sanitizer gate
         env:
-          RUSTFLAGS: -Z sanitizer=address -C panic=abort
-          RUSTDOCFLAGS: -Z sanitizer=address
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: -Z sanitizer=address -C panic=abort
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1
-        run: cargo test --locked --all-targets --all-features
+        run: cargo test --locked --all-targets --all-features --target x86_64-unknown-linux-gnu
 
   release:
     name: Create Release

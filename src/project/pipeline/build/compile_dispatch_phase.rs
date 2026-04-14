@@ -6,7 +6,37 @@ use crate::cache::{BuildTimings, ParsedProjectUnit, ProjectSymbolLookup, Rewritt
 use crate::linker::LinkConfig;
 use crate::symbol_lookup::GlobalSymbolMaps;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+enum CompileDispatchPhaseError {
+    FullCodegen(String),
+    FullProgramFinalize(String),
+    ObjectPipeline(String),
+}
+
+impl fmt::Display for CompileDispatchPhaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FullCodegen(message)
+            | Self::FullProgramFinalize(message)
+            | Self::ObjectPipeline(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<CompileDispatchPhaseError> for String {
+    fn from(value: CompileDispatchPhaseError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for CompileDispatchPhaseError {
+    fn from(value: String) -> Self {
+        Self::FullCodegen(value)
+    }
+}
 
 pub(crate) enum CompileDispatchOutcome {
     ContinueFinalize,
@@ -33,6 +63,13 @@ pub(crate) fn run_compile_dispatch_phase(
     build_timings: &mut BuildTimings,
     inputs: CompileDispatchInputs<'_, '_>,
 ) -> Result<CompileDispatchOutcome, String> {
+    run_compile_dispatch_phase_impl(build_timings, inputs).map_err(Into::into)
+}
+
+fn run_compile_dispatch_phase_impl(
+    build_timings: &mut BuildTimings,
+    inputs: CompileDispatchInputs<'_, '_>,
+) -> Result<CompileDispatchOutcome, CompileDispatchPhaseError> {
     match run_full_codegen_phase(
         build_timings,
         FullCodegenInputs {
@@ -42,7 +79,9 @@ pub(crate) fn run_compile_dispatch_phase(
             emit_llvm: inputs.emit_llvm,
             link: inputs.link,
         },
-    )? {
+    )
+    .map_err(CompileDispatchPhaseError::FullCodegen)?
+    {
         FullCodegenRoute::EmitLlvmCompleted => Ok(CompileDispatchOutcome::ContinueFinalize),
         FullCodegenRoute::FullProgramCompleted => {
             finish_full_program_build(
@@ -53,7 +92,8 @@ pub(crate) fn run_compile_dispatch_phase(
                     output_path: inputs.output_path,
                     fingerprint: inputs.fingerprint,
                 },
-            )?;
+            )
+            .map_err(CompileDispatchPhaseError::FullProgramFinalize)?;
             Ok(CompileDispatchOutcome::Completed)
         }
         FullCodegenRoute::ObjectsRequired => {
@@ -70,7 +110,8 @@ pub(crate) fn run_compile_dispatch_phase(
                     project_symbol_lookup: inputs.project_symbol_lookup,
                     global_maps: inputs.global_maps,
                 },
-            )?;
+            )
+            .map_err(CompileDispatchPhaseError::ObjectPipeline)?;
             Ok(CompileDispatchOutcome::ContinueFinalize)
         }
     }

@@ -1,6 +1,32 @@
 use super::{run_semantic_phase, SemanticPhaseInputs};
 use crate::cache::BuildTimings;
 use crate::cli::output::{cli_accent, cli_elapsed, cli_soft, cli_success};
+use std::fmt;
+
+#[derive(Debug)]
+enum PostcheckPhaseError {
+    Semantic(String),
+}
+
+impl fmt::Display for PostcheckPhaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Semantic(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<PostcheckPhaseError> for String {
+    fn from(value: PostcheckPhaseError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for PostcheckPhaseError {
+    fn from(value: String) -> Self {
+        Self::Semantic(value)
+    }
+}
 
 pub(crate) enum PostcheckOutcome {
     ContinueBuild,
@@ -18,8 +44,16 @@ pub(crate) fn run_postcheck_phase(
     build_timings: &mut BuildTimings,
     inputs: PostcheckInputs<'_>,
 ) -> Result<PostcheckOutcome, String> {
+    run_postcheck_phase_impl(build_timings, inputs).map_err(Into::into)
+}
+
+fn run_postcheck_phase_impl(
+    build_timings: &mut BuildTimings,
+    inputs: PostcheckInputs<'_>,
+) -> Result<PostcheckOutcome, PostcheckPhaseError> {
     if inputs.do_check {
-        run_semantic_phase(build_timings, inputs.semantic_inputs)?;
+        run_semantic_phase(build_timings, inputs.semantic_inputs)
+            .map_err(PostcheckPhaseError::Semantic)?;
     }
 
     if inputs.check_only {

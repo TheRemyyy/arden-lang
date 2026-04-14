@@ -11,7 +11,39 @@ use crate::cli::output::{print_cli_cache, print_cli_step};
 use crate::linker::LinkConfig;
 use crate::symbol_lookup::GlobalSymbolMaps;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+enum ObjectPipelineError {
+    LinkManifestLoad(String),
+    CacheProbe(String),
+    Codegen(String),
+    FinalLink(String),
+}
+
+impl fmt::Display for ObjectPipelineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::LinkManifestLoad(message)
+            | Self::CacheProbe(message)
+            | Self::Codegen(message)
+            | Self::FinalLink(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<ObjectPipelineError> for String {
+    fn from(value: ObjectPipelineError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for ObjectPipelineError {
+    fn from(value: String) -> Self {
+        Self::Codegen(value)
+    }
+}
 
 pub(crate) struct ObjectPipelineInputs<'a, 'b> {
     pub(crate) project_root: &'a Path,
@@ -29,11 +61,20 @@ pub(crate) fn run_object_pipeline(
     build_timings: &mut BuildTimings,
     inputs: ObjectPipelineInputs<'_, '_>,
 ) -> Result<(), String> {
+    run_object_pipeline_impl(build_timings, inputs).map_err(Into::into)
+}
+
+fn run_object_pipeline_impl(
+    build_timings: &mut BuildTimings,
+    inputs: ObjectPipelineInputs<'_, '_>,
+) -> Result<(), ObjectPipelineError> {
     print_cli_step("Compiling objects");
     let object_build_fingerprint = compute_object_build_fingerprint(inputs.link);
-    let previous_link_manifest = build_timings.measure("link manifest load", || {
-        load_link_manifest_cache(inputs.project_root)
-    })?;
+    let previous_link_manifest = build_timings
+        .measure("link manifest load", || {
+            load_link_manifest_cache(inputs.project_root)
+        })
+        .map_err(ObjectPipelineError::LinkManifestLoad)?;
 
     let ObjectPrepOutputs {
         rewritten_file_indices,
@@ -70,7 +111,8 @@ pub(crate) fn run_object_pipeline(
             object_shard_size,
             object_shard_threshold,
         },
-    )?;
+    )
+    .map_err(ObjectPipelineError::CacheProbe)?;
 
     let compiled_results: Vec<(usize, PathBuf)> = run_object_codegen_phase(
         build_timings,
@@ -91,7 +133,8 @@ pub(crate) fn run_object_pipeline(
             object_shard_size,
             object_shard_threshold,
         },
-    )?;
+    )
+    .map_err(ObjectPipelineError::Codegen)?;
 
     for (index, obj_path) in compiled_results {
         object_paths[index] = Some(obj_path);
@@ -114,7 +157,8 @@ pub(crate) fn run_object_pipeline(
             object_paths,
             cache_miss_count: cache_misses.len(),
         },
-    )?;
+    )
+    .map_err(ObjectPipelineError::FinalLink)?;
 
     Ok(())
 }

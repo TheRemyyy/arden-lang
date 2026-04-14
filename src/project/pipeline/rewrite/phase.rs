@@ -14,10 +14,37 @@ use crate::specialization::{
 };
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
+
+#[derive(Debug)]
+enum RewritePhaseError {
+    Rewrite(String),
+    RewriteResult(String),
+}
+
+impl fmt::Display for RewritePhaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Rewrite(message) | Self::RewriteResult(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<RewritePhaseError> for String {
+    fn from(value: RewritePhaseError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for RewritePhaseError {
+    fn from(value: String) -> Self {
+        Self::Rewrite(value)
+    }
+}
 
 pub(crate) struct RewritePhaseInputs<'a> {
     pub(crate) project_root: &'a Path,
@@ -41,11 +68,18 @@ pub(crate) fn run_rewrite_phase(
     build_timings: &mut BuildTimings,
     inputs: RewritePhaseInputs<'_>,
 ) -> Result<Vec<RewrittenProjectUnit>, String> {
+    run_rewrite_phase_impl(build_timings, inputs).map_err(Into::into)
+}
+
+fn run_rewrite_phase_impl(
+    build_timings: &mut BuildTimings,
+    inputs: RewritePhaseInputs<'_>,
+) -> Result<Vec<RewrittenProjectUnit>, RewritePhaseError> {
     project_rewrite::reset_rewrite_timings();
     let rewrite_timing_totals = Arc::new(PipelineRewriteTimingTotals::default());
     let rewrite_fingerprint_timing_totals = Arc::new(RewriteFingerprintTimingTotals::default());
-    let rewritten_results: Vec<Result<RewrittenProjectUnit, String>> =
-        build_timings.measure("rewrite", || {
+    let rewritten_results: Vec<Result<RewrittenProjectUnit, String>> = build_timings
+        .measure("rewrite", || {
             Ok::<_, String>(
                 inputs
                     .parsed_files
@@ -221,11 +255,12 @@ pub(crate) fn run_rewrite_phase(
                     })
                     .collect(),
             )
-        })?;
+        })
+        .map_err(RewritePhaseError::Rewrite)?;
 
     let mut rewritten_files: Vec<RewrittenProjectUnit> = Vec::new();
     for result in rewritten_results {
-        rewritten_files.push(result?);
+        rewritten_files.push(result.map_err(RewritePhaseError::RewriteResult)?);
     }
     rewritten_files.sort_by(|a, b| a.file.cmp(&b.file));
 

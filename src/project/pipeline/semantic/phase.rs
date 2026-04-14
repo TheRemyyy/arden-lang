@@ -14,8 +14,42 @@ use crate::diagnostics::{render_borrow_errors, render_type_errors};
 use crate::typeck::{ClassMethodEffectsSummary, FunctionEffectsSummary, TypeChecker};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+enum SemanticPhaseError {
+    CacheReuseGuard(String),
+    SemanticCheck(String),
+    Diagnostic(String),
+    SemanticCacheSave(String),
+    TypecheckCacheSave(String),
+}
+
+impl fmt::Display for SemanticPhaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CacheReuseGuard(message)
+            | Self::SemanticCheck(message)
+            | Self::Diagnostic(message)
+            | Self::SemanticCacheSave(message)
+            | Self::TypecheckCacheSave(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<SemanticPhaseError> for String {
+    fn from(value: SemanticPhaseError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for SemanticPhaseError {
+    fn from(value: String) -> Self {
+        Self::SemanticCheck(value)
+    }
+}
 
 pub(crate) struct SemanticPhaseInputs<'a> {
     pub(crate) project_root: &'a Path,
@@ -34,6 +68,13 @@ pub(crate) fn run_semantic_phase(
     build_timings: &mut BuildTimings,
     inputs: SemanticPhaseInputs<'_>,
 ) -> Result<(), String> {
+    run_semantic_phase_impl(build_timings, inputs).map_err(Into::into)
+}
+
+fn run_semantic_phase_impl(
+    build_timings: &mut BuildTimings,
+    inputs: SemanticPhaseInputs<'_>,
+) -> Result<(), SemanticPhaseError> {
     print_cli_step("Running semantic checks");
 
     let mut semantic_full_files: HashSet<PathBuf> = inputs
@@ -74,8 +115,10 @@ pub(crate) fn run_semantic_phase(
     let reusable_typecheck_cache = reusable_component_fps.len() == semantic_components.len()
         && typecheck_summary_cache_matches(
             inputs.previous_typecheck_summary.ok_or_else(|| {
-                "error: semantic cache reuse was attempted without a previous typecheck summary"
-                    .to_string()
+                SemanticPhaseError::CacheReuseGuard(
+                    "error: semantic cache reuse was attempted without a previous typecheck summary"
+                        .to_string(),
+                )
             })?,
             &current_semantic_fingerprints,
             &semantic_components,
@@ -216,7 +259,8 @@ pub(crate) fn run_semantic_phase(
                     })
                     .collect(),
             )
-        })?;
+        })
+        .map_err(SemanticPhaseError::SemanticCheck)?;
 
     build_timings.record_counts(
         "semantic",
@@ -260,7 +304,7 @@ pub(crate) fn run_semantic_phase(
     }
 
     if !rendered_errors.is_empty() {
-        return Err(rendered_errors);
+        return Err(SemanticPhaseError::Diagnostic(rendered_errors));
     }
 
     save_semantic_summary_cache(
@@ -272,11 +316,13 @@ pub(crate) fn run_semantic_phase(
             class_method_effects,
             class_mutating_methods,
         ),
-    )?;
+    )
+    .map_err(SemanticPhaseError::SemanticCacheSave)?;
     save_typecheck_summary_cache(
         inputs.project_root,
         &typecheck_summary_cache_from_state(&current_semantic_fingerprints, &semantic_components),
-    )?;
+    )
+    .map_err(SemanticPhaseError::TypecheckCacheSave)?;
 
     Ok(())
 }

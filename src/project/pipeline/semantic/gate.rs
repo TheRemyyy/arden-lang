@@ -6,7 +6,33 @@ use crate::cli::output::print_cli_cache;
 use crate::dependency::transitive_dependents;
 use crate::project::ProjectConfig;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+enum SemanticGateError {
+    GateEvaluation(String),
+}
+
+impl fmt::Display for SemanticGateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GateEvaluation(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<SemanticGateError> for String {
+    fn from(value: SemanticGateError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for SemanticGateError {
+    fn from(value: String) -> Self {
+        Self::GateEvaluation(value)
+    }
+}
 
 pub(crate) struct ProjectChangeImpact {
     pub(crate) body_only_changed: HashSet<PathBuf>,
@@ -84,8 +110,15 @@ pub(crate) fn evaluate_semantic_cache_gate(
     build_timings: &mut BuildTimings,
     inputs: SemanticGateInputs<'_>,
 ) -> Result<(String, bool), String> {
-    let (semantic_fingerprint, semantic_cache_hit) =
-        build_timings.measure("semantic cache gate", || {
+    evaluate_semantic_cache_gate_impl(build_timings, inputs).map_err(Into::into)
+}
+
+fn evaluate_semantic_cache_gate_impl(
+    build_timings: &mut BuildTimings,
+    inputs: SemanticGateInputs<'_>,
+) -> Result<(String, bool), SemanticGateError> {
+    let (semantic_fingerprint, semantic_cache_hit) = build_timings
+        .measure("semantic cache gate", || {
             let semantic_fingerprint = compute_semantic_project_fingerprint(
                 inputs.config,
                 inputs.parsed_files,
@@ -101,7 +134,8 @@ pub(crate) fn evaluate_semantic_cache_gate(
                 false
             };
             Ok::<_, String>((semantic_fingerprint, semantic_cache_hit))
-        })?;
+        })
+        .map_err(SemanticGateError::GateEvaluation)?;
 
     build_timings.record_counts(
         "semantic cache gate",

@@ -7,58 +7,33 @@ use crate::cache::{
 use crate::dependency::{register_global_symbol, GlobalSymbolRegistrationContext};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-struct SymbolBatchContext<'a> {
-    namespace_map: Option<&'a mut HashMap<String, HashSet<String>>>,
-    global_map: &'a mut HashMap<String, String>,
-    global_file_map: &'a mut HashMap<String, PathBuf>,
-    collisions: &'a mut Vec<(String, String, String)>,
-    exact_lookup: &'a mut ExactSymbolLookup,
-    wildcard_lookup: &'a mut WildcardMemberLookup,
-    build_symbol_lookup: bool,
+#[derive(Debug)]
+enum ParseIndexPhaseError {
+    ParseAndScan(String),
 }
 
-fn register_symbol_batch(
-    names: &[String],
-    namespace: &str,
-    file: &Path,
-    ctx: SymbolBatchContext<'_>,
-) -> u64 {
-    if names.is_empty() {
-        return 0;
-    }
-
-    if let Some(namespace_map) = ctx.namespace_map {
-        let entry = namespace_map
-            .entry(namespace.to_string())
-            .or_insert_with(|| HashSet::with_capacity(names.len()));
-        for name in names {
-            entry.insert(name.clone());
+impl fmt::Display for ParseIndexPhaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ParseAndScan(message) => write!(f, "{message}"),
         }
     }
+}
 
-    let mut register_ns = 0_u64;
-    for name in names {
-        let started_at = Instant::now();
-        register_global_symbol(
-            name,
-            namespace,
-            file,
-            &mut GlobalSymbolRegistrationContext {
-                global_map: ctx.global_map,
-                global_file_map: ctx.global_file_map,
-                collisions: ctx.collisions,
-                exact_lookup: ctx.exact_lookup,
-                wildcard_lookup: ctx.wildcard_lookup,
-                build_symbol_lookup: ctx.build_symbol_lookup,
-            },
-        );
-        register_ns += elapsed_nanos_u64(started_at);
+impl From<ParseIndexPhaseError> for String {
+    fn from(value: ParseIndexPhaseError) -> Self {
+        value.to_string()
     }
+}
 
-    register_ns
+impl From<String> for ParseIndexPhaseError {
+    fn from(value: String) -> Self {
+        Self::ParseAndScan(value)
+    }
 }
 
 pub(crate) fn run_parse_index_phase(
@@ -66,6 +41,14 @@ pub(crate) fn run_parse_index_phase(
     project_root: &Path,
     files: &[PathBuf],
 ) -> Result<ParseIndexOutputs, String> {
+    run_parse_index_phase_impl(build_timings, project_root, files).map_err(Into::into)
+}
+
+fn run_parse_index_phase_impl(
+    build_timings: &mut BuildTimings,
+    project_root: &Path,
+    files: &[PathBuf],
+) -> Result<ParseIndexOutputs, ParseIndexPhaseError> {
     let mut parsed_files: Vec<ParsedProjectUnit> = Vec::new();
     let mut global_function_map: HashMap<String, String> = HashMap::new();
     let mut global_function_file_map: HashMap<String, PathBuf> = HashMap::new();
@@ -90,13 +73,14 @@ pub(crate) fn run_parse_index_phase(
     let mut module_collisions: Vec<(String, String, String)> = Vec::new();
     let mut parse_cache_hits = 0_usize;
 
-    let mut parsed_units: Vec<ParsedProjectUnit> =
-        build_timings.measure("parse + symbol scan", || {
+    let mut parsed_units: Vec<ParsedProjectUnit> = build_timings
+        .measure("parse + symbol scan", || {
             files
                 .par_iter()
                 .map(|file| crate::parse_project_unit(project_root, file))
                 .collect::<Result<Vec<_>, String>>()
-        })?;
+        })
+        .map_err(ParseIndexPhaseError::ParseAndScan)?;
     parsed_units.sort_by(|a, b| a.file.cmp(&b.file));
 
     let total_function_names: usize = parsed_units
@@ -284,4 +268,55 @@ pub(crate) fn run_parse_index_phase(
         },
         total_module_names,
     })
+}
+
+struct SymbolBatchContext<'a> {
+    namespace_map: Option<&'a mut HashMap<String, HashSet<String>>>,
+    global_map: &'a mut HashMap<String, String>,
+    global_file_map: &'a mut HashMap<String, PathBuf>,
+    collisions: &'a mut Vec<(String, String, String)>,
+    exact_lookup: &'a mut ExactSymbolLookup,
+    wildcard_lookup: &'a mut WildcardMemberLookup,
+    build_symbol_lookup: bool,
+}
+
+fn register_symbol_batch(
+    names: &[String],
+    namespace: &str,
+    file: &Path,
+    ctx: SymbolBatchContext<'_>,
+) -> u64 {
+    if names.is_empty() {
+        return 0;
+    }
+
+    if let Some(namespace_map) = ctx.namespace_map {
+        let entry = namespace_map
+            .entry(namespace.to_string())
+            .or_insert_with(|| HashSet::with_capacity(names.len()));
+        for name in names {
+            entry.insert(name.clone());
+        }
+    }
+
+    let mut register_ns = 0_u64;
+    for name in names {
+        let started_at = Instant::now();
+        register_global_symbol(
+            name,
+            namespace,
+            file,
+            &mut GlobalSymbolRegistrationContext {
+                global_map: ctx.global_map,
+                global_file_map: ctx.global_file_map,
+                collisions: ctx.collisions,
+                exact_lookup: ctx.exact_lookup,
+                wildcard_lookup: ctx.wildcard_lookup,
+                build_symbol_lookup: ctx.build_symbol_lookup,
+            },
+        );
+        register_ns += elapsed_nanos_u64(started_at);
+    }
+
+    register_ns
 }

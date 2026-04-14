@@ -5,8 +5,35 @@ use crate::cache::{
 use crate::cli::output::{cli_error, format_cli_path};
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
+
+#[derive(Debug)]
+enum ObjectCacheProbeError {
+    CacheProbe(String),
+    ProbeResult(String),
+}
+
+impl fmt::Display for ObjectCacheProbeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CacheProbe(message) | Self::ProbeResult(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<ObjectCacheProbeError> for String {
+    fn from(value: ObjectCacheProbeError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for ObjectCacheProbeError {
+    fn from(value: String) -> Self {
+        Self::CacheProbe(value)
+    }
+}
 
 pub(crate) struct ObjectCacheProbeInputs<'a> {
     pub(crate) object_build_fingerprint: &'a str,
@@ -30,8 +57,15 @@ pub(crate) fn run_object_cache_probe(
     build_timings: &mut BuildTimings,
     inputs: ObjectCacheProbeInputs<'_>,
 ) -> Result<ObjectCacheProbeOutputs, String> {
-    let cache_probe_results: Vec<ProbeResult> =
-        build_timings.measure("object cache probe", || {
+    run_object_cache_probe_impl(build_timings, inputs).map_err(Into::into)
+}
+
+fn run_object_cache_probe_impl(
+    build_timings: &mut BuildTimings,
+    inputs: ObjectCacheProbeInputs<'_>,
+) -> Result<ObjectCacheProbeOutputs, ObjectCacheProbeError> {
+    let cache_probe_results: Vec<ProbeResult> = build_timings
+        .measure("object cache probe", || {
             Ok::<_, String>(
                 inputs
                     .object_shards
@@ -67,13 +101,14 @@ pub(crate) fn run_object_cache_probe(
                     })
                     .collect(),
             )
-        })?;
+        })
+        .map_err(ObjectCacheProbeError::CacheProbe)?;
 
     let mut object_paths: Vec<Option<PathBuf>> = vec![None; inputs.rewritten_files.len()];
     let mut object_cache_hits: usize = 0;
     let mut cache_misses: Vec<crate::ObjectCodegenShard> = Vec::new();
     for (shard, result) in inputs.object_shards.iter().zip(cache_probe_results) {
-        let (member_indices, cached_obj) = result?;
+        let (member_indices, cached_obj) = result.map_err(ObjectCacheProbeError::ProbeResult)?;
         if let Some(cached_obj) = cached_obj {
             for index in member_indices {
                 object_paths[index] = Some(cached_obj.clone());
