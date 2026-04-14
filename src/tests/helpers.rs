@@ -397,6 +397,18 @@ pub(crate) fn normalize_nested_cargo_linker_env(command: &mut Command) {
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for (key, value) in std::env::vars_os() {
         let key_text = key.to_string_lossy();
+        if key_text == "RUSTFLAGS"
+            || key_text == "RUSTDOCFLAGS"
+            || key_text == "CARGO_ENCODED_RUSTFLAGS"
+            || (key_text.starts_with("CARGO_TARGET_") && key_text.ends_with("_RUSTFLAGS"))
+            || (key_text.starts_with("CARGO_TARGET_") && key_text.ends_with("_RUSTDOCFLAGS"))
+        {
+            // Nested cargo invocations in CLI tests should not inherit outer sanitizer or
+            // toolchain-specific rustflags from CI jobs, otherwise initial project builds can
+            // fail before the actual CLI behavior is exercised.
+            command.env_remove(&key);
+            continue;
+        }
         if !key_text.starts_with("CARGO_TARGET_") || !key_text.ends_with("_LINKER") {
             continue;
         }
