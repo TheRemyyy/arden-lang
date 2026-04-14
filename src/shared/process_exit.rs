@@ -2,6 +2,7 @@ use std::process::ExitStatus;
 
 const PROCESS_ERROR_OUTPUT_LIMIT: usize = 8192;
 
+#[cfg(unix)]
 fn unix_signal_name(signal: i32) -> &'static str {
     match signal {
         1 => "SIGHUP",
@@ -24,6 +25,7 @@ fn unix_signal_name(signal: i32) -> &'static str {
     }
 }
 
+#[cfg(unix)]
 fn is_unix_crash_signal(signal: i32) -> bool {
     matches!(signal, 4 | 5 | 6 | 7 | 8 | 11 | 24 | 25 | 31)
 }

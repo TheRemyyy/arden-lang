@@ -336,6 +336,7 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    #[cfg(not(windows))]
     pub(crate) fn libc_ulong_type(&self) -> inkwell::types::IntType<'ctx> {
         self.libc_long_type()
     }

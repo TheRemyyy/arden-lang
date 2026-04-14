@@ -34,6 +34,15 @@ fi
 PASS_COUNT=0
 FAIL_COUNT=0
 
+emit_failure_dump() {
+  local source_path="${1:-}"
+  "${REPO_ROOT}/scripts/ci/emit_codegen_artifacts.sh" \
+    "${COMPILER}" \
+    "${source_path}" \
+    "examples-smoke-linux" \
+    "${REPO_ROOT}/artifacts/ci-failure" || true
+}
+
 echo
 echo "[2/5] Running single-file examples..."
 echo
@@ -59,6 +68,7 @@ for file in "${SINGLE_FILE_EXAMPLES[@]}"; do
     PASS_COUNT=$((PASS_COUNT + 1))
   else
     echo "[FAIL] $(basename "${file}")"
+    emit_failure_dump "${file}"
     FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 done
@@ -78,6 +88,7 @@ run_project_test() {
       PASS_COUNT=$((PASS_COUNT + 1))
     else
       echo "[FAIL] ${project_name}"
+      emit_failure_dump ""
       FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
   else

@@ -54,6 +54,7 @@ for /R "%REPO_ROOT%\examples\single_file" %%f in (*.arden) do (
         set /a PASS_COUNT+=1
     ) else (
         echo [FAIL] %%~nxf
+        pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\ci\windows_emit_codegen_artifacts.ps1" -CompilerPath "%COMPILER%" -Source "%%f" -Context "examples-smoke-single-file" -OutputRoot "%REPO_ROOT%\artifacts\windows-failure"
         set /a FAIL_COUNT+=1
     )
 )
@@ -69,6 +70,7 @@ for /R "%REPO_ROOT%\examples\demos" %%f in (*.arden) do (
         set /a PASS_COUNT+=1
     ) else (
         echo [FAIL] %%~nxf
+        pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\ci\windows_emit_codegen_artifacts.ps1" -CompilerPath "%COMPILER%" -Source "%%f" -Context "examples-smoke-demos" -OutputRoot "%REPO_ROOT%\artifacts\windows-failure"
         set /a FAIL_COUNT+=1
     )
 )
@@ -89,6 +91,7 @@ if exist "%REPO_ROOT%\examples\starter_project\arden.toml" (
         set /a PASS_COUNT+=1
     ) else (
         echo [FAIL] starter_project
+        pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\ci\windows_emit_codegen_artifacts.ps1" -CompilerPath "%COMPILER%" -Context "examples-smoke-starter-project" -OutputRoot "%REPO_ROOT%\artifacts\windows-failure"
         set /a FAIL_COUNT+=1
     )
 ) else (
@@ -111,6 +114,7 @@ if exist "%REPO_ROOT%\examples\nested_package_project\arden.toml" (
         set /a PASS_COUNT+=1
     ) else (
         echo [FAIL] nested_package_project
+        pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\ci\windows_emit_codegen_artifacts.ps1" -CompilerPath "%COMPILER%" -Context "examples-smoke-nested-project" -OutputRoot "%REPO_ROOT%\artifacts\windows-failure"
         set /a FAIL_COUNT+=1
     )
 ) else (
@@ -133,6 +137,7 @@ if exist "%REPO_ROOT%\examples\minimal_project\arden.toml" (
         set /a PASS_COUNT+=1
     ) else (
         echo [FAIL] minimal_project
+        pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%REPO_ROOT%\scripts\ci\windows_emit_codegen_artifacts.ps1" -CompilerPath "%COMPILER%" -Context "examples-smoke-minimal-project" -OutputRoot "%REPO_ROOT%\artifacts\windows-failure"
         set /a FAIL_COUNT+=1
     )
 ) else (

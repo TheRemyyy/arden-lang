@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Map compound-assignment codegen hardening: materialized evaluated map keys into temporaries before `get`/`set` in `op=` map index lowering (including `%=`), avoiding backend instability from reusing complex aggregate SSA keys across both helper expansions.
 - Perf cleanup tests: accepted explicit macOS SDK resolver (`xcrun`) launch failures as valid error outcomes in cleanup assertions, so tests stay stable in environments without a configured Apple SDK toolchain.
 - Windows backend stability in `std.fs`: refactored `File.read` lowering to use explicit `fread` byte-count checks + `memchr` NUL detection (instead of a large per-byte IR scan loop), which keeps existing runtime diagnostics (`NUL`/invalid UTF-8) but avoids backend-regalloc crash patterns seen in Windows smoke examples.
+- CI failure forensics on Linux/macOS/Windows: `checks/smoke/examples` now auto-dump LLVM IR (`.ll`) and best-effort object files (`.obj`) on failures, and upload them as run artifacts for immediate crash triage.
 
 - Stack-safety hardening for deep expressions: removed hard parser depth caps and replaced recursive hot paths with iterative handling across parser, import-check, type-check, and borrow-check flows so deeply nested unary/parenthesized inputs no longer abort with stack overflow in `check`.
 - Added regression coverage for deep unary and deep parenthesized parsing to prevent stack-overflow regressions in future parser refactors.

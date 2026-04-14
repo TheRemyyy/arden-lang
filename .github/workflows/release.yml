@@ -170,12 +170,55 @@ jobs:
           .\scripts\release\smoke_portable_windows.ps1 `
             -ArchivePath "dist/${{ matrix.asset_name }}.zip"
 
+  quality-gates:
+    name: Release Quality Gates
+    runs-on: ubuntu-22.04
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: ./.github/actions/install-llvm
+
+      - name: Rust checks
+        run: |
+          cargo check --locked --all-targets --all-features --verbose
+          cargo test --locked --release --all-targets --verbose -- --no-capture
+          cargo fmt -- --check
+          cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Coverage gate
+        run: cargo llvm-cov --locked --workspace --all-features --fail-under-lines 55
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fuzz smoke gate
+        run: cargo fuzz run lexer_parser --sanitizer address -- -max_total_time=90 -jobs=1 -workers=1
+        working-directory: fuzz
+
+      - name: Install Rust nightly for sanitizer
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Sanitizer gate
+        env:
+          RUSTFLAGS: -Z sanitizer=address -C panic=abort
+          RUSTDOCFLAGS: -Z sanitizer=address
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: cargo test --locked --all-targets --all-features
+
   release:
     name: Create Release
-    needs: smoke
+    needs: [smoke, quality-gates]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

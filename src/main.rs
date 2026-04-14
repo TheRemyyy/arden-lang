@@ -32,6 +32,7 @@ use colored::*;
 use inkwell::context::Context;
 use std::collections::HashSet;
 use std::env;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -233,18 +234,113 @@ enum Commands {
     },
 }
 
+#[derive(Debug)]
+enum AppError {
+    Message(String),
+    LspRuntimeInit(std::io::Error),
+}
+
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Message(message) => write!(f, "{message}"),
+            Self::LspRuntimeInit(err) => write!(
+                f,
+                "{}: Failed to start runtime for LSP server: {}",
+                "error".red().bold(),
+                err
+            ),
+        }
+    }
+}
+
+impl From<String> for AppError {
+    fn from(value: String) -> Self {
+        Self::Message(value)
+    }
+}
+
+impl From<BuildProjectError> for AppError {
+    fn from(value: BuildProjectError) -> Self {
+        Self::Message(value.to_string())
+    }
+}
+
+impl From<ParseProjectError> for AppError {
+    fn from(value: ParseProjectError) -> Self {
+        Self::Message(value.to_string())
+    }
+}
+
+#[derive(Debug)]
+enum ParseProjectError {
+    Message(String),
+}
+
+impl fmt::Display for ParseProjectError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Message(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<String> for ParseProjectError {
+    fn from(value: String) -> Self {
+        Self::Message(value)
+    }
+}
+
+#[derive(Debug)]
+enum BuildProjectError {
+    Message(String),
+}
+
+impl fmt::Display for BuildProjectError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Message(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<String> for BuildProjectError {
+    fn from(value: String) -> Self {
+        Self::Message(value)
+    }
+}
+
+impl From<ParseProjectError> for String {
+    fn from(value: ParseProjectError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<BuildProjectError> for String {
+    fn from(value: BuildProjectError) -> Self {
+        value.to_string()
+    }
+}
+
 fn main() {
+    if let Err(e) = run_cli() {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
+}
+
+fn run_cli() -> Result<(), AppError> {
     configure_cli_colors();
     let cli = Cli::parse();
 
-    let result = match cli.command {
-        Commands::New { name, path } => new_project(&name, path.as_deref()),
+    match cli.command {
+        Commands::New { name, path } => new_project(&name, path.as_deref()).map_err(AppError::from),
         Commands::Build {
             release,
             emit_llvm,
             no_check,
             timings,
-        } => build_project(release, emit_llvm, !no_check, false, timings),
+        } => build_project_impl(release, emit_llvm, !no_check, false, timings).map_err(AppError::from),
         Commands::Run {
             file,
             args,
@@ -253,9 +349,9 @@ fn main() {
             timings,
         } => {
             if let Some(f) = file {
-                run_single_file(&f, &args, release, !no_check)
+                run_single_file(&f, &args, release, !no_check).map_err(AppError::from)
             } else {
-                run_project(&args, release, !no_check, timings)
+                run_project(&args, release, !no_check, timings).map_err(AppError::from)
             }
         }
         Commands::Compile {
@@ -272,41 +368,32 @@ fn main() {
             !no_check,
             opt_level.as_deref(),
             target.as_deref(),
-        ),
-        Commands::Check { file, timings } => check_command(file.as_deref(), timings),
-        Commands::Info => show_project_info(),
-        Commands::Lint { path } => lint_target(path.as_deref()),
-        Commands::Fix { path } => fix_target(path.as_deref()),
-        Commands::Fmt { path, check } => format_targets(path.as_deref(), check),
-        Commands::Lex { file } => lex_file(&file),
-        Commands::Parse { file } => parse_file(&file),
+        )
+        .map_err(AppError::from),
+        Commands::Check { file, timings } => {
+            check_command(file.as_deref(), timings).map_err(AppError::from)
+        }
+        Commands::Info => show_project_info().map_err(AppError::from),
+        Commands::Lint { path } => lint_target(path.as_deref()).map_err(AppError::from),
+        Commands::Fix { path } => fix_target(path.as_deref()).map_err(AppError::from),
+        Commands::Fmt { path, check } => format_targets(path.as_deref(), check).map_err(AppError::from),
+        Commands::Lex { file } => lex_file(&file).map_err(AppError::from),
+        Commands::Parse { file } => parse_file(&file).map_err(AppError::from),
         Commands::Lsp => {
-            let runtime = tokio::runtime::Runtime::new().map_err(|e| {
-                format!(
-                    "{}: Failed to start runtime for LSP server: {}",
-                    "error".red().bold(),
-                    e
-                )
-            });
-            match runtime {
-                Ok(rt) => {
-                    rt.block_on(lsp::run_lsp_server());
-                    Ok(())
-                }
-                Err(e) => Err(e),
-            }
+            let runtime = tokio::runtime::Runtime::new().map_err(AppError::LspRuntimeInit)?;
+            runtime.block_on(lsp::run_lsp_server());
+            Ok(())
         }
         Commands::Test { path, list, filter } => {
-            run_tests(path.as_deref(), list, filter.as_deref())
+            run_tests(path.as_deref(), list, filter.as_deref()).map_err(AppError::from)
         }
-        Commands::Bindgen { header, output } => bindgen_header(&header, output.as_deref()),
-        Commands::Bench { file, iterations } => bench_target(file.as_deref(), iterations),
-        Commands::Profile { file } => profile_target(file.as_deref()),
-    };
-
-    if let Err(e) = result {
-        eprintln!("{}", e);
-        std::process::exit(1);
+        Commands::Bindgen { header, output } => {
+            bindgen_header(&header, output.as_deref()).map_err(AppError::from)
+        }
+        Commands::Bench { file, iterations } => {
+            bench_target(file.as_deref(), iterations).map_err(AppError::from)
+        }
+        Commands::Profile { file } => profile_target(file.as_deref()).map_err(AppError::from),
     }
 }
 
@@ -327,7 +414,7 @@ fn parse_source_text(
     source: &str,
     source_fp: String,
     filename: &str,
-) -> Result<SourceParseResult, String> {
+) -> Result<SourceParseResult, ParseProjectError> {
     let tokens = lexer::tokenize(source).map_err(|e| {
         format!(
             "{}: Lexer error in {}: {}",
@@ -376,6 +463,13 @@ pub(crate) fn parse_project_unit(
     project_root: &Path,
     file: &Path,
 ) -> Result<ParsedProjectUnit, String> {
+    parse_project_unit_impl(project_root, file).map_err(Into::into)
+}
+
+fn parse_project_unit_impl(
+    project_root: &Path,
+    file: &Path,
+) -> Result<ParsedProjectUnit, ParseProjectError> {
     let filename = format_project_file_label(project_root, file);
     let file_metadata = current_file_metadata_stamp(file)?;
     let cached_entry = load_parsed_file_cache_entry(project_root, file)?;
@@ -1042,6 +1136,16 @@ pub(crate) fn build_project(
     check_only: bool,
     show_timings: bool,
 ) -> Result<(), String> {
+    build_project_impl(release, emit_llvm, do_check, check_only, show_timings).map_err(Into::into)
+}
+
+fn build_project_impl(
+    release: bool,
+    emit_llvm: bool,
+    do_check: bool,
+    check_only: bool,
+    show_timings: bool,
+) -> Result<(), BuildProjectError> {
     let mut build_timings = BuildTimings::new(show_timings);
     reset_cache_io_timing_totals(&PARSE_CACHE_TIMING_TOTALS);
     reset_cache_io_timing_totals(&REWRITE_CACHE_TIMING_TOTALS);
