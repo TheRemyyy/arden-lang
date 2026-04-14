@@ -28,7 +28,7 @@ if (-not (Test-Path $compilerInput)) {
 }
 
 function ConvertTo-BashSingleQuoted([string]$value) {
-    return "'" + ($value -replace "'", "'\"'\"'") + "'"
+    return "'" + ($value -replace "'", "'""'""'") + "'"
 }
 
 function ConvertTo-UnixPath([string]$windowsPath, [string]$label) {

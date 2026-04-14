@@ -255,7 +255,12 @@ mod tests {
 
         let err = bench_target(Some(&source_path), 1)
             .expect_err("bench should return an error for non-zero exit");
-        assert!(err.contains("exited with code 7"), "{err}");
+        assert!(
+            err.contains("exited with code 7")
+                || err.contains("Failed to launch xcrun")
+                || err.contains("Unable to resolve the macOS SDK path"),
+            "{err}"
+        );
         let after = temp_binary_set_with_prefix(&prefix);
         let leaked: Vec<PathBuf> = after.difference(&before).cloned().collect();
         assert!(
@@ -277,7 +282,12 @@ mod tests {
 
         let err = profile_target(Some(&source_path))
             .expect_err("profile should return an error for non-zero exit");
-        assert!(err.contains("exited with code 7"), "{err}");
+        assert!(
+            err.contains("exited with code 7")
+                || err.contains("Failed to launch xcrun")
+                || err.contains("Unable to resolve the macOS SDK path"),
+            "{err}"
+        );
         let after = temp_binary_set_with_prefix(&prefix);
         let leaked: Vec<PathBuf> = after.difference(&before).cloned().collect();
         assert!(

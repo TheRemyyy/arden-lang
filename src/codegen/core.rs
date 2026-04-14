@@ -13489,7 +13489,8 @@ impl<'ctx> Codegen<'ctx> {
                     .build_int_signed_div(l, r, "div")
                     .map_err(|_| CodegenError::new("failed to emit integer division"))?,
                 BinOp::Mod => self
-                    .build_int_signed_remainder_via_division(l, r)
+                    .builder
+                    .build_int_signed_rem(l, r, "mod")
                     .map_err(|_| CodegenError::new("failed to emit integer remainder"))?,
                 BinOp::Eq => self
                     .builder
@@ -13866,16 +13867,6 @@ impl<'ctx> Codegen<'ctx> {
 
         self.builder.position_at_end(ok_block);
         Ok(())
-    }
-
-    fn build_int_signed_remainder_via_division(
-        &mut self,
-        lhs: IntValue<'ctx>,
-        rhs: IntValue<'ctx>,
-    ) -> std::result::Result<IntValue<'ctx>, inkwell::builder::BuilderError> {
-        let quotient = self.builder.build_int_signed_div(lhs, rhs, "mod_q")?;
-        let product = self.builder.build_int_mul(quotient, rhs, "mod_q_mul_rhs")?;
-        self.builder.build_int_sub(lhs, product, "mod")
     }
 
     pub fn compile_unary(&mut self, op: UnaryOp, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {

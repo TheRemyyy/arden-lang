@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Windows CI smoke wrapper: fixed PowerShell single-quote escaping in `scripts/cli_smoke_windows.ps1` so the script parses correctly and can invoke bash smoke runs.
+- Integer modulo codegen: switched guarded signed `%` lowering back to LLVM signed remainder emission (`srem`) after zero/overflow guards, avoiding backend register-copy crashes seen on Windows LLVM pipelines.
+- Perf cleanup tests: accepted explicit macOS SDK resolver (`xcrun`) launch failures as valid error outcomes in cleanup assertions, so tests stay stable in environments without a configured Apple SDK toolchain.
+
 - Stack-safety hardening for deep expressions: removed hard parser depth caps and replaced recursive hot paths with iterative handling across parser, import-check, type-check, and borrow-check flows so deeply nested unary/parenthesized inputs no longer abort with stack overflow in `check`.
 - Added regression coverage for deep unary and deep parenthesized parsing to prevent stack-overflow regressions in future parser refactors.
 
