@@ -744,6 +744,24 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, fn_type, None)
     }
 
+    pub fn get_or_declare_memchr(&self) -> FunctionValue<'ctx> {
+        let name = "memchr";
+        if let Some(f) = self.module.get_function(name) {
+            return f;
+        }
+        // void* memchr(const void* s, int c, size_t n)
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let fn_type = ptr_type.fn_type(
+            &[
+                ptr_type.into(),
+                self.context.i32_type().into(),
+                self.libc_size_type().into(),
+            ],
+            false,
+        );
+        self.module.add_function(name, fn_type, None)
+    }
+
     pub fn get_or_declare_remove(&self) -> FunctionValue<'ctx> {
         let name = "remove";
         if let Some(f) = self.module.get_function(name) {

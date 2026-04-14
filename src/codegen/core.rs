@@ -10654,15 +10654,46 @@ impl<'ctx> Codegen<'ctx> {
                             };
                             let (key_ty, val_ty) = ((*key_ty.clone()), (*val_ty.clone()));
                             let key = self.compile_expr_with_expected_type(&index.node, &key_ty)?;
+                            // Materialize the evaluated key once and reload it for get/set.
+                            // This keeps side-effect semantics intact and avoids reusing a
+                            // complex aggregate SSA value across two large map helper expansions.
+                            let key_slot = self
+                                .build_entry_alloca(self.llvm_type(&key_ty), "map_compound_key")?;
+                            self.builder.build_store(key_slot, key).map_err(|_| {
+                                CodegenError::new(
+                                    "failed to store map compound-assignment key temporary",
+                                )
+                            })?;
+                            let key_for_get = self
+                                .builder
+                                .build_load(self.llvm_type(&key_ty), key_slot, "map_key_get")
+                                .map_err(|_| {
+                                    CodegenError::new(
+                                        "failed to reload map compound-assignment key for get",
+                                    )
+                                })?;
                             let current = self.compile_map_get_on_value_with_compiled_key(
-                                map_value, &map_ty, key,
+                                map_value,
+                                &map_ty,
+                                key_for_get,
                             )?;
                             let rhs_value =
                                 self.compile_expr_with_expected_type(&rhs.node, &val_ty)?;
                             let result = self
                                 .compile_binary_values(op, current, rhs_value, &val_ty, &val_ty)?;
+                            let key_for_set = self
+                                .builder
+                                .build_load(self.llvm_type(&key_ty), key_slot, "map_key_set")
+                                .map_err(|_| {
+                                    CodegenError::new(
+                                        "failed to reload map compound-assignment key for set",
+                                    )
+                                })?;
                             self.compile_map_set_on_value_with_compiled_key_value(
-                                map_value, &map_ty, key, result,
+                                map_value,
+                                &map_ty,
+                                key_for_set,
+                                result,
                             )?;
                             CODEGEN_PHASE_TIMING_TOTALS
                                 .body_stmt_assign_ns

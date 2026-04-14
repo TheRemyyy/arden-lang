@@ -167,8 +167,8 @@ jobs:
             target
           key: ${{ runner.os }}-checks-cargo-${{ hashFiles('**/Cargo.lock', '.cargo/config.toml') }}
       - run: cargo check --locked --all-targets --all-features --verbose
-      - run: cargo test --locked --verbose
-      - run: cargo test --locked --release --all-targets --verbose
+      - run: cargo test --locked --verbose -- --no-capture
+      - run: cargo test --locked --release --all-targets --verbose -- --no-capture
       - run: cargo fmt -- --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
@@ -193,8 +193,8 @@ jobs:
             target
           key: ${{ runner.os }}-checks-cargo-${{ hashFiles('**/Cargo.lock', '.cargo/config.toml') }}
       - run: cargo check --locked --all-targets --all-features --verbose
-      - run: cargo test --locked --verbose
-      - run: cargo test --locked --release --all-targets --verbose
+      - run: cargo test --locked --verbose -- --no-capture
+      - run: cargo test --locked --release --all-targets --verbose -- --no-capture
       - run: cargo fmt -- --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
@@ -229,10 +229,10 @@ jobs:
       - run: cargo check --locked --all-targets --all-features --verbose
         env:
           RUSTFLAGS: ${{ format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) }}
-      - run: cargo test --locked --verbose
+      - run: cargo test --locked --verbose -- --no-capture
         env:
           RUSTFLAGS: ${{ format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) }}
-      - run: cargo test --locked --release --all-targets --verbose
+      - run: cargo test --locked --release --all-targets --verbose -- --no-capture
         env:
           RUSTFLAGS: ${{ format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) }}
       - run: cargo fmt -- --check

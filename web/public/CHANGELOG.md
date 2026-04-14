@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Windows CI smoke wrapper: fixed PowerShell single-quote escaping in `scripts/cli_smoke_windows.ps1` so the script parses correctly and can invoke bash smoke runs.
+- Integer modulo codegen: switched guarded signed `%` lowering back to LLVM signed remainder emission (`srem`) after zero/overflow guards, avoiding backend register-copy crashes seen on Windows LLVM pipelines.
+- Map compound-assignment codegen hardening: materialized evaluated map keys into temporaries before `get`/`set` in `op=` map index lowering (including `%=`), avoiding backend instability from reusing complex aggregate SSA keys across both helper expansions.
+- Perf cleanup tests: accepted explicit macOS SDK resolver (`xcrun`) launch failures as valid error outcomes in cleanup assertions, so tests stay stable in environments without a configured Apple SDK toolchain.
+- Windows backend stability in `std.fs`: refactored `File.read` lowering to use explicit `fread` byte-count checks + `memchr` NUL detection (instead of a large per-byte IR scan loop), which keeps existing runtime diagnostics (`NUL`/invalid UTF-8) but avoids backend-regalloc crash patterns seen in Windows smoke examples.
+
+- Stack-safety hardening for deep expressions: removed hard parser depth caps and replaced recursive hot paths with iterative handling across parser, import-check, type-check, and borrow-check flows so deeply nested unary/parenthesized inputs no longer abort with stack overflow in `check`.
+- Added regression coverage for deep unary and deep parenthesized parsing to prevent stack-overflow regressions in future parser refactors.
+
 - CI hardening for LLVM 22 builds: default Cargo target CPU is now baseline (`x86-64`/`generic`) instead of `native`, codegen target-machine defaults now use stable baseline CPU/features unless explicitly opted into native tuning (`ARDEN_CODEGEN_NATIVE_CPU=1`), and Cargo cache keys now include `.cargo/config.toml` to prevent stale CPU-incompatible artifact reuse between runners.
 - CI/smoke hardening: cache keys now include runner architecture plus a cache-schema suffix to avoid cross-runner/toolchain cache poisoning, smoke scripts now fail fast when no example files are discovered, and Windows bash-wrapper quoting now safely handles apostrophes in paths.
 - Runtime crash diagnostics hardening: `run/bench/profile/test` and linker/xcrun/ar subprocess failures now share richer exit decoding (Unix signal names + Windows NTSTATUS like `0xC0000409`) so backend/runtime crashes no longer show opaque negative codes.

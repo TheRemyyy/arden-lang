@@ -1668,8 +1668,9 @@ impl<'ctx> Codegen<'ctx> {
                 )?;
                 let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
 
-                // fread(buffer, 1, size, f)
-                self.builder
+                // read_count = fread(buffer, 1, size, f)
+                let read_call = self
+                    .builder
                     .build_call(
                         fread,
                         &[
@@ -1678,124 +1679,77 @@ impl<'ctx> Codegen<'ctx> {
                             size_size_t.into(),
                             file_ptr.into(),
                         ],
-                        "",
+                        "file_read_count",
                     )
                     .map_err(|_| CodegenError::new("failed to emit fread for File.read"))?;
+                let read_count = self.extract_call_value(read_call)?.into_int_value();
 
-                let scan_index_slot = self
-                    .builder
-                    .build_alloca(self.context.i64_type(), "file_read_scan_index")
-                    .map_err(|_| {
-                        CodegenError::new("failed to allocate File.read scan index slot")
-                    })?;
+                // fclose(f) as soon as raw bytes are read.
                 self.builder
-                    .build_store(scan_index_slot, self.context.i64_type().const_zero())
-                    .map_err(|_| {
-                        CodegenError::new("failed to initialize File.read scan index slot")
-                    })?;
+                    .build_call(fclose, &[file_ptr.into()], "")
+                    .map_err(|_| CodegenError::new("failed to emit fclose for File.read"))?;
 
-                let scan_cond_block = self
-                    .context
-                    .append_basic_block(current_fn, "file_read_scan_cond");
-                let scan_body_block = self
-                    .context
-                    .append_basic_block(current_fn, "file_read_scan_body");
-                let scan_next_block = self
-                    .context
-                    .append_basic_block(current_fn, "file_read_scan_next");
-                let scan_done_block = self
-                    .context
-                    .append_basic_block(current_fn, "file_read_scan_done");
-                let scan_fail_block = self
-                    .context
-                    .append_basic_block(current_fn, "file_read_scan_fail");
-
-                self.builder
-                    .build_unconditional_branch(scan_cond_block)
-                    .map_err(|_| CodegenError::new("failed to branch into File.read scan loop"))?;
-
-                self.builder.position_at_end(scan_cond_block);
-                let scan_index = self
-                    .builder
-                    .build_load(
-                        self.context.i64_type(),
-                        scan_index_slot,
-                        "file_read_scan_index_value",
-                    )
-                    .map_err(|_| CodegenError::new("failed to load File.read scan index"))?
-                    .into_int_value();
-                let scan_has_more = self
-                    .builder
-                    .build_int_compare(
-                        IntPredicate::ULT,
-                        scan_index,
-                        size,
-                        "file_read_scan_has_more",
-                    )
-                    .map_err(|_| CodegenError::new("failed to compare File.read scan bounds"))?;
-                self.builder
-                    .build_conditional_branch(scan_has_more, scan_body_block, scan_done_block)
-                    .map_err(|_| CodegenError::new("failed to branch in File.read scan loop"))?;
-
-                self.builder.position_at_end(scan_body_block);
-                let scan_byte_ptr = unsafe {
-                    self.builder
-                        .build_gep(
-                            self.context.i8_type(),
-                            buffer,
-                            &[scan_index],
-                            "file_read_scan_byte_ptr",
-                        )
-                        .map_err(|_| {
-                            CodegenError::new("failed to access File.read scan byte pointer")
-                        })?
-                };
-                let scan_byte = self
-                    .builder
-                    .build_load(self.context.i8_type(), scan_byte_ptr, "file_read_scan_byte")
-                    .map_err(|_| CodegenError::new("failed to load File.read scan byte"))?
-                    .into_int_value();
-                let scan_is_zero = self
+                let read_complete = self
                     .builder
                     .build_int_compare(
                         IntPredicate::EQ,
-                        scan_byte,
-                        self.context.i8_type().const_zero(),
-                        "file_read_scan_is_zero",
+                        read_count,
+                        size_size_t,
+                        "file_read_complete",
                     )
-                    .map_err(|_| {
-                        CodegenError::new("failed to compare File.read scan byte against zero")
-                    })?;
+                    .map_err(|_| CodegenError::new("failed to compare File.read byte count"))?;
+                let read_ok_block = self.context.append_basic_block(current_fn, "read.read_ok");
+                let read_fail_block = self
+                    .context
+                    .append_basic_block(current_fn, "read.read_fail");
                 self.builder
-                    .build_conditional_branch(scan_is_zero, scan_fail_block, scan_next_block)
+                    .build_conditional_branch(read_complete, read_ok_block, read_fail_block)
                     .map_err(|_| {
-                        CodegenError::new("failed to branch on File.read NUL byte scan")
+                        CodegenError::new("failed to branch on File.read byte count result")
                     })?;
 
-                self.builder.position_at_end(scan_fail_block);
+                self.builder.position_at_end(read_fail_block);
+                self.emit_runtime_error(
+                    "File.read() failed to read entire file",
+                    "file_read_incomplete",
+                )?;
+
+                self.builder.position_at_end(read_ok_block);
+                // Reject embedded NUL bytes to preserve null-terminated String invariants.
+                let memchr = self.get_or_declare_memchr();
+                let nul_scan_call = self
+                    .builder
+                    .build_call(
+                        memchr,
+                        &[
+                            buffer.into(),
+                            self.context.i32_type().const_zero().into(),
+                            read_count.into(),
+                        ],
+                        "file_read_nul_scan",
+                    )
+                    .map_err(|_| CodegenError::new("failed to emit memchr for File.read"))?;
+                let nul_ptr = self.extract_call_value(nul_scan_call)?.into_pointer_value();
+                let has_nul = self
+                    .builder
+                    .build_is_not_null(nul_ptr, "file_read_has_nul")
+                    .map_err(|_| CodegenError::new("failed to test File.read memchr result"))?;
+                let nul_fail_block = self.context.append_basic_block(current_fn, "read.nul_fail");
+                let nul_ok_block = self.context.append_basic_block(current_fn, "read.nul_ok");
+                self.builder
+                    .build_conditional_branch(has_nul, nul_fail_block, nul_ok_block)
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on File.read NUL-byte detection")
+                    })?;
+
+                self.builder.position_at_end(nul_fail_block);
                 self.emit_runtime_error("File.read() cannot load NUL bytes", "file_read_nul_byte")?;
 
-                self.builder.position_at_end(scan_next_block);
-                let next_scan_index = self
-                    .builder
-                    .build_int_add(
-                        scan_index,
-                        self.context.i64_type().const_int(1, false),
-                        "file_read_next_scan_index",
-                    )
-                    .map_err(|_| CodegenError::new("failed to increment File.read scan index"))?;
-                self.builder
-                    .build_store(scan_index_slot, next_scan_index)
-                    .map_err(|_| CodegenError::new("failed to store File.read scan index"))?;
-                self.builder
-                    .build_unconditional_branch(scan_cond_block)
-                    .map_err(|_| CodegenError::new("failed to loop File.read scan"))?;
-
-                self.builder.position_at_end(scan_done_block);
-                // buffer[size] = 0 (null terminate)
+                self.builder.position_at_end(nul_ok_block);
+                // buffer[read_count] = 0 (null terminate)
                 let term_ptr = unsafe {
                     self.builder
-                        .build_gep(self.context.i8_type(), buffer, &[size], "term_ptr")
+                        .build_gep(self.context.i8_type(), buffer, &[read_count], "term_ptr")
                         .map_err(|_| {
                             CodegenError::new("failed to access File.read terminator slot")
                         })?
@@ -1805,11 +1759,6 @@ impl<'ctx> Codegen<'ctx> {
                     .map_err(|_| CodegenError::new("failed to null-terminate File.read buffer"))?;
 
                 self.compile_utf8_string_length_runtime(buffer)?;
-
-                // fclose(f)
-                self.builder
-                    .build_call(fclose, &[file_ptr.into()], "")
-                    .map_err(|_| CodegenError::new("failed to emit fclose for File.read"))?;
 
                 Ok(Some(buffer.into()))
             }
