@@ -174,7 +174,7 @@ jobs:
     name: Release Quality Gates
     runs-on: ubuntu-22.04
     env:
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ github.workspace }}/.cargo/linkers/linux-x86_64-mold.sh
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -207,7 +207,7 @@ jobs:
 
       - name: Sanitizer gate
         env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: -Z sanitizer=address -C panic=abort
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: -Z sanitizer=address
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1
         run: cargo test --locked --all-targets --all-features --target x86_64-unknown-linux-gnu

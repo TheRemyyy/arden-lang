@@ -272,7 +272,7 @@ jobs:
     name: Fuzz Smoke (linux-x64)
     runs-on: ubuntu-latest
     env:
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ github.workspace }}/.cargo/linkers/linux-x86_64-mold.sh
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
@@ -287,8 +287,8 @@ jobs:
     name: Sanitizer (linux-x64)
     runs-on: ubuntu-latest
     env:
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: -Z sanitizer=address -C panic=abort
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ github.workspace }}/.cargo/linkers/linux-x86_64-mold.sh
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: -Z sanitizer=address
       ASAN_OPTIONS: detect_leaks=1
       UBSAN_OPTIONS: print_stacktrace=1
     steps:
