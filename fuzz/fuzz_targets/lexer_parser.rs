@@ -2,14 +2,14 @@
 
 use libfuzzer_sys::fuzz_target;
 
-#[path = "../../src/ast.rs"]
+#[path = "../../src/ast/mod.rs"]
 mod ast;
 #[cfg(test)]
-#[path = "../../src/formatter.rs"]
+#[path = "../../src/formatter/mod.rs"]
 mod formatter;
-#[path = "../../src/lexer.rs"]
+#[path = "../../src/lexer/mod.rs"]
 mod lexer;
-#[path = "../../src/parser.rs"]
+#[path = "../../src/parser/mod.rs"]
 mod parser;
 
 fuzz_target!(|data: &[u8]| {
