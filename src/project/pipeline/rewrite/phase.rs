@@ -22,14 +22,13 @@ use std::time::Instant;
 
 #[derive(Debug)]
 enum RewritePhaseError {
-    PhaseRun(String),
     UnitCollection(String),
 }
 
 impl fmt::Display for RewritePhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PhaseRun(message) | Self::UnitCollection(message) => write!(f, "{message}"),
+            Self::UnitCollection(message) => write!(f, "{message}"),
         }
     }
 }
@@ -80,7 +79,7 @@ fn run_rewrite_phase_impl(
     let rewrite_fingerprint_timing_totals = Arc::new(RewriteFingerprintTimingTotals::default());
     let rewritten_results: Vec<Result<RewrittenProjectUnit, RewritePhaseError>> = build_timings
         .measure("rewrite", || {
-            Ok::<_, String>(
+            Ok::<_, RewritePhaseError>(
                 inputs
                     .parsed_files
                     .par_iter()
@@ -255,16 +254,12 @@ fn run_rewrite_phase_impl(
                     })
                     .collect(),
             )
-        })
-        .map_err(RewritePhaseError::PhaseRun)?;
+        })?;
 
     let mut rewritten_files: Vec<RewrittenProjectUnit> = Vec::new();
     for result in rewritten_results {
         match result {
             Ok(unit) => rewritten_files.push(unit),
-            Err(RewritePhaseError::UnitCollection(message)) => {
-                return Err(RewritePhaseError::UnitCollection(message));
-            }
             Err(error) => return Err(error),
         }
     }

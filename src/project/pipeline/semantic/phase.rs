@@ -207,67 +207,67 @@ fn run_semantic_phase_impl(
     }
 
     let semantic_results: Vec<Result<ComponentSemanticCheckResult, SemanticPhaseError>> =
-        build_timings
-            .measure("semantic", || {
-                Ok::<_, String>(
-                    checked_components
-                        .par_iter()
-                        .map(|component| {
-                            let component_files: HashSet<PathBuf> = component.iter().cloned().collect();
-                            let component_sources = component
-                                .iter()
-                                .map(|file| {
-                                    fs::read_to_string(file)
-                                        .map(|source| (file.clone(), source))
-                                        .map_err(|error| {
-                                            SemanticPhaseError::ComponentCheck(format!(
-                                                "error: Failed to read '{}' during semantic checks: {}",
-                                                format_cli_path(file),
-                                                error
-                                            ))
-                                        })
-                                })
-                                .collect::<Result<Vec<_>, SemanticPhaseError>>()?;
-                            let semantic_program = semantic_program_for_component(
-                                inputs.rewritten_files,
-                                &component_files,
-                                &semantic_full_files,
-                            );
-
-                            let mut type_checker = TypeChecker::new();
-                            if let Err(errors) = type_checker.check_with_effect_seeds(
-                                &semantic_program,
-                                &seeded_function_effects,
-                                &seeded_class_method_effects,
-                            ) {
-                                return Err(SemanticPhaseError::ComponentCheck(
-                                    render_type_errors(errors, &component_sources),
-                                ));
-                            }
-
-                            let mut borrow_checker = BorrowChecker::new();
-                            if let Err(errors) = borrow_checker.check_with_mutating_method_seeds(
-                                &semantic_program,
-                                &seeded_class_mutating_methods,
-                            ) {
-                                return Err(SemanticPhaseError::ComponentCheck(
-                                    render_borrow_errors(errors, &component_sources),
-                                ));
-                            }
-
-                            let (function_effects, class_method_effects) =
-                                type_checker.export_effect_summary();
-                            Ok(ComponentSemanticCheckResult {
-                                function_effects,
-                                class_method_effects,
-                                class_mutating_methods: borrow_checker
-                                    .export_class_mutating_method_summary(),
+        build_timings.measure("semantic", || {
+            Ok::<_, SemanticPhaseError>(
+                checked_components
+                    .par_iter()
+                    .map(|component| {
+                        let component_files: HashSet<PathBuf> = component.iter().cloned().collect();
+                        let component_sources = component
+                            .iter()
+                            .map(|file| {
+                                fs::read_to_string(file)
+                                    .map(|source| (file.clone(), source))
+                                    .map_err(|error| {
+                                        SemanticPhaseError::ComponentCheck(format!(
+                                            "error: Failed to read '{}' during semantic checks: {}",
+                                            format_cli_path(file),
+                                            error
+                                        ))
+                                    })
                             })
+                            .collect::<Result<Vec<_>, SemanticPhaseError>>()?;
+                        let semantic_program = semantic_program_for_component(
+                            inputs.rewritten_files,
+                            &component_files,
+                            &semantic_full_files,
+                        );
+
+                        let mut type_checker = TypeChecker::new();
+                        if let Err(errors) = type_checker.check_with_effect_seeds(
+                            &semantic_program,
+                            &seeded_function_effects,
+                            &seeded_class_method_effects,
+                        ) {
+                            return Err(SemanticPhaseError::ComponentCheck(render_type_errors(
+                                errors,
+                                &component_sources,
+                            )));
+                        }
+
+                        let mut borrow_checker = BorrowChecker::new();
+                        if let Err(errors) = borrow_checker.check_with_mutating_method_seeds(
+                            &semantic_program,
+                            &seeded_class_mutating_methods,
+                        ) {
+                            return Err(SemanticPhaseError::ComponentCheck(render_borrow_errors(
+                                errors,
+                                &component_sources,
+                            )));
+                        }
+
+                        let (function_effects, class_method_effects) =
+                            type_checker.export_effect_summary();
+                        Ok(ComponentSemanticCheckResult {
+                            function_effects,
+                            class_method_effects,
+                            class_mutating_methods: borrow_checker
+                                .export_class_mutating_method_summary(),
                         })
-                        .collect(),
-                )
-            })
-            .map_err(SemanticPhaseError::SemanticCheck)?;
+                    })
+                    .collect(),
+            )
+        })?;
 
     build_timings.record_counts(
         "semantic",

@@ -117,8 +117,8 @@ fn evaluate_semantic_cache_gate_impl(
     build_timings: &mut BuildTimings,
     inputs: SemanticGateInputs<'_>,
 ) -> Result<(String, bool), SemanticGateError> {
-    let (semantic_fingerprint, semantic_cache_hit) = build_timings
-        .measure("semantic cache gate", || {
+    let (semantic_fingerprint, semantic_cache_hit) =
+        build_timings.measure("semantic cache gate", || {
             let semantic_fingerprint = compute_semantic_project_fingerprint(
                 inputs.config,
                 inputs.parsed_files,
@@ -133,9 +133,8 @@ fn evaluate_semantic_cache_gate_impl(
             } else {
                 false
             };
-            Ok::<_, String>((semantic_fingerprint, semantic_cache_hit))
-        })
-        .map_err(SemanticGateError::GateEvaluation)?;
+            Ok::<_, SemanticGateError>((semantic_fingerprint, semantic_cache_hit))
+        })?;
 
     build_timings.record_counts(
         "semantic cache gate",

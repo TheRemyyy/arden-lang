@@ -172,9 +172,7 @@ jobs:
 
   quality-gates:
     name: Release Quality Gates
-    runs-on: ubuntu-22.04
-    env:
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ github.workspace }}/.cargo/linkers/linux-x86_64-mold.sh
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -186,9 +184,12 @@ jobs:
       - uses: ./.github/actions/install-llvm
 
       - name: Rust checks
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
         run: |
           cargo check --locked --all-targets --all-features --verbose
-          cargo test --locked --release --all-targets --verbose -- --no-capture --test-threads=1
+          cargo test --locked --verbose -- --no-capture
+          cargo test --locked --release --all-targets --verbose -- --no-capture
           cargo fmt -- --check
           cargo clippy --locked --all-targets --all-features -- -D warnings
 
@@ -202,11 +203,14 @@ jobs:
         run: cargo install cargo-fuzz --locked
 
       - name: Fuzz smoke gate
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ github.workspace }}/.cargo/linkers/linux-x86_64-mold.sh
         run: cargo fuzz run lexer_parser --sanitizer address -- -max_total_time=90 -jobs=1 -workers=1
         working-directory: fuzz
 
       - name: Sanitizer gate
         env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: -Z sanitizer=address
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1

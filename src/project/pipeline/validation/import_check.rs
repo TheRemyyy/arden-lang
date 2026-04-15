@@ -19,7 +19,6 @@ use std::time::Instant;
 
 #[derive(Debug)]
 enum ImportCheckPhaseError {
-    CheckRun(String),
     UnitCheck(String),
     ResultCollect(String),
 }
@@ -27,7 +26,7 @@ enum ImportCheckPhaseError {
 impl fmt::Display for ImportCheckPhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::CheckRun(message) | Self::UnitCheck(message) | Self::ResultCollect(message) => {
+            Self::UnitCheck(message) | Self::ResultCollect(message) => {
                 write!(f, "{message}")
             }
         }
@@ -73,7 +72,7 @@ fn run_import_check_phase_impl(
 
     let import_results: Vec<Result<(), ImportCheckPhaseError>> = build_timings
         .measure("import check", || {
-            Ok::<_, String>(
+            Ok::<_, ImportCheckPhaseError>(
                 inputs
                     .parsed_files
                     .par_iter()
@@ -173,8 +172,7 @@ fn run_import_check_phase_impl(
                     })
                     .collect(),
             )
-        })
-        .map_err(ImportCheckPhaseError::CheckRun)?;
+        })?;
 
     for result in import_results {
         if let Err(rendered) = result {

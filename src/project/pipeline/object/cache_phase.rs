@@ -11,14 +11,13 @@ use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
 enum ObjectCacheProbeError {
-    CacheProbe(String),
     ProbeResult(String),
 }
 
 impl fmt::Display for ObjectCacheProbeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::CacheProbe(message) | Self::ProbeResult(message) => write!(f, "{message}"),
+            Self::ProbeResult(message) => write!(f, "{message}"),
         }
     }
 }
@@ -64,9 +63,9 @@ fn run_object_cache_probe_impl(
     build_timings: &mut BuildTimings,
     inputs: ObjectCacheProbeInputs<'_>,
 ) -> Result<ObjectCacheProbeOutputs, ObjectCacheProbeError> {
-    let cache_probe_results: Vec<ProbeResult> = build_timings
-        .measure("object cache probe", || {
-            Ok::<_, String>(
+    let cache_probe_results: Vec<ProbeResult> =
+        build_timings.measure("object cache probe", || {
+            Ok::<_, ObjectCacheProbeError>(
                 inputs
                     .object_shards
                     .par_iter()
@@ -103,8 +102,7 @@ fn run_object_cache_probe_impl(
                     })
                     .collect(),
             )
-        })
-        .map_err(ObjectCacheProbeError::CacheProbe)?;
+        })?;
 
     let mut object_paths: Vec<Option<PathBuf>> = vec![None; inputs.rewritten_files.len()];
     let mut object_cache_hits: usize = 0;
