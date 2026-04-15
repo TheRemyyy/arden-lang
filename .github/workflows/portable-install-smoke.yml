@@ -22,12 +22,12 @@ jobs:
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
       - uses: ./.github/actions/install-llvm
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -49,7 +49,7 @@ jobs:
             --bundle-root dist \
             --llvm-prefix "${LLVM_SYS_221_PREFIX}" \
             --extra-bin "$(command -v mold)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-linux-x64-portable
           path: dist/arden-linux-x64-portable.tar.gz
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-package-linux
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           name: arden-linux-x64-portable
@@ -74,12 +74,12 @@ jobs:
     env:
       CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER: .cargo/linkers/macos-aarch64-lld.sh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
       - uses: ./.github/actions/install-llvm
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -99,7 +99,7 @@ jobs:
             --bundle-root dist \
             --llvm-prefix "${LLVM_SYS_221_PREFIX}" \
             --extra-prefix "$(brew --prefix lld)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-macos-arm64-portable
           path: dist/arden-macos-arm64-portable.tar.gz
@@ -110,7 +110,7 @@ jobs:
     runs-on: macos-latest
     needs: build-package-macos
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           name: arden-macos-arm64-portable
@@ -124,17 +124,17 @@ jobs:
     env:
       CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: lld-link
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: C:\arden-toolchains\llvm-22.1.3
           key: ${{ runner.os }}-llvm-22.1.3-x64
       - uses: ./.github/actions/install-llvm
       - uses: lukka/get-cmake@latest
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -171,7 +171,7 @@ jobs:
             --extra-lib-dir "vc=${ARDEN_WINDOWS_VC_LIB_DIR}" \
             --extra-lib-dir "ucrt=${ARDEN_WINDOWS_UCRT_LIB_DIR}" \
             --extra-lib-dir "um=${ARDEN_WINDOWS_UM_LIB_DIR}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-windows-x64-portable
           path: dist/arden-windows-x64-portable.zip
@@ -182,7 +182,7 @@ jobs:
     runs-on: windows-latest
     needs: build-package-windows
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           name: arden-windows-x64-portable
