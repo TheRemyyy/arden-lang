@@ -1,9 +1,43 @@
 use colored::Colorize;
 use std::cell::Cell;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
+
+#[derive(Debug)]
+enum CliPathError {
+    CurrentDirRead(String),
+    AncestorInspect(String),
+    ParentResolve(String),
+    PathResolve(String),
+    TempBinaryName(String),
+}
+
+impl fmt::Display for CliPathError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CurrentDirRead(message)
+            | Self::AncestorInspect(message)
+            | Self::ParentResolve(message)
+            | Self::PathResolve(message)
+            | Self::TempBinaryName(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<CliPathError> for String {
+    fn from(value: CliPathError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for CliPathError {
+    fn from(value: String) -> Self {
+        Self::PathResolve(value)
+    }
+}
 
 use crate::cli::output::format_cli_path;
 use crate::project::find_project_root;
@@ -19,7 +53,11 @@ fn fallback_working_dir() -> PathBuf {
 }
 
 pub(crate) fn capture_working_dir() -> Result<PathBuf, String> {
-    current_dir_checked()
+    capture_working_dir_impl().map_err(Into::into)
+}
+
+fn capture_working_dir_impl() -> Result<PathBuf, CliPathError> {
+    current_dir_checked_impl()
 }
 
 pub(crate) fn process_current_dir_lock() -> &'static Mutex<()> {
@@ -89,6 +127,10 @@ fn with_process_current_dir_locked<T>(
 }
 
 pub(crate) fn current_dir_checked() -> Result<PathBuf, String> {
+    current_dir_checked_impl().map_err(Into::into)
+}
+
+fn current_dir_checked_impl() -> Result<PathBuf, CliPathError> {
     std::env::current_dir()
         .or_else(|_| {
             let fallback = std::env::temp_dir();
@@ -99,11 +141,11 @@ pub(crate) fn current_dir_checked() -> Result<PathBuf, String> {
             }
         })
         .map_err(|e| {
-            format!(
+            CliPathError::CurrentDirRead(format!(
                 "{}: Failed to read current directory: {}",
                 "error".red().bold(),
                 e
-            )
+            ))
         })
 }
 
@@ -118,6 +160,10 @@ pub(crate) fn format_target_label(path: Option<&Path>, current_dir: &Path) -> St
 }
 
 pub(crate) fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, String> {
+    path_traverses_symlinked_directories_impl(path).map_err(Into::into)
+}
+
+fn path_traverses_symlinked_directories_impl(path: &Path) -> Result<bool, CliPathError> {
     let mut current = if path.is_dir() {
         Some(path)
     } else {
@@ -128,12 +174,12 @@ pub(crate) fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, 
             break;
         }
         let metadata = fs::symlink_metadata(dir).map_err(|e| {
-            format!(
+            CliPathError::AncestorInspect(format!(
                 "{}: Failed to inspect path ancestor '{}': {}",
                 "error".red().bold(),
                 format_cli_path(dir),
                 e
-            )
+            ))
         })?;
         if metadata.file_type().is_symlink() {
             #[cfg(target_os = "macos")]
@@ -173,17 +219,27 @@ pub(crate) fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, 
 }
 
 pub(crate) fn validate_source_file_path(path: &Path) -> Result<(), String> {
+    validate_source_file_path_impl(path).map_err(Into::into)
+}
+
+fn validate_source_file_path_impl(path: &Path) -> Result<(), CliPathError> {
     if !path.exists() {
-        return Err(format!("Path '{}' does not exist", format_cli_path(path)));
+        return Err(CliPathError::PathResolve(format!(
+            "Path '{}' does not exist",
+            format_cli_path(path)
+        )));
     }
     if !path.is_file() {
-        return Err(format!("Path '{}' is not a file", format_cli_path(path)));
+        return Err(CliPathError::PathResolve(format!(
+            "Path '{}' is not a file",
+            format_cli_path(path)
+        )));
     }
     if path.extension().and_then(|ext| ext.to_str()) != Some("arden") {
-        return Err(format!(
+        return Err(CliPathError::PathResolve(format!(
             "Path '{}' is not an .arden file",
             format_cli_path(path)
-        ));
+        )));
     }
 
     let parent_dir = path.parent().unwrap_or(Path::new("."));
@@ -193,50 +249,57 @@ pub(crate) fn validate_source_file_path(path: &Path) -> Result<(), String> {
         parent_dir
     };
     let canonical_parent = normalized_parent.canonicalize().map_err(|e| {
-        format!(
+        CliPathError::ParentResolve(format!(
             "{}: Failed to resolve parent directory for '{}': {}",
             "error".red().bold(),
             format_cli_path(path),
             e
-        )
+        ))
     })?;
     let canonical_path = path.canonicalize().map_err(|e| {
-        format!(
+        CliPathError::PathResolve(format!(
             "{}: Failed to resolve path '{}': {}",
             "error".red().bold(),
             format_cli_path(path),
             e
-        )
+        ))
     })?;
     if !canonical_path.starts_with(&canonical_parent) {
-        return Err(format!(
+        return Err(CliPathError::PathResolve(format!(
             "Path '{}' resolves outside the requested directory tree",
             format_cli_path(path)
-        ));
+        )));
     }
-    if path_traverses_symlinked_directories(path)? {
-        return Err(format!(
+    if path_traverses_symlinked_directories_impl(path)? {
+        return Err(CliPathError::PathResolve(format!(
             "Path '{}' must not traverse symlinked directories",
             format_cli_path(path)
-        ));
+        )));
     }
     Ok(())
 }
 
 pub(crate) fn collect_arden_files(path: &Path) -> Result<Vec<PathBuf>, String> {
+    collect_arden_files_impl(path).map_err(Into::into)
+}
+
+fn collect_arden_files_impl(path: &Path) -> Result<Vec<PathBuf>, CliPathError> {
     if path.is_file() {
-        validate_source_file_path(path)?;
+        validate_source_file_path_impl(path)?;
         return Ok(vec![path.to_path_buf()]);
     }
 
     if !path.is_dir() {
-        return Err(format!("Path '{}' does not exist", format_cli_path(path)));
+        return Err(CliPathError::PathResolve(format!(
+            "Path '{}' does not exist",
+            format_cli_path(path)
+        )));
     }
-    if path_traverses_symlinked_directories(path)? {
-        return Err(format!(
+    if path_traverses_symlinked_directories_impl(path)? {
+        return Err(CliPathError::PathResolve(format!(
             "Path '{}' must not traverse symlinked directories",
             format_cli_path(path)
-        ));
+        )));
     }
 
     let mut files = Vec::new();
@@ -246,15 +309,19 @@ pub(crate) fn collect_arden_files(path: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 pub(crate) fn unique_temp_binary_path(tag: &str, source: &Path) -> Result<PathBuf, String> {
+    unique_temp_binary_path_impl(tag, source).map_err(Into::into)
+}
+
+fn unique_temp_binary_path_impl(tag: &str, source: &Path) -> Result<PathBuf, CliPathError> {
     let now = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| {
-            format!(
+            CliPathError::TempBinaryName(format!(
                 "{}: Failed to create unique temporary binary name for '{}': {}",
                 "error".red().bold(),
                 format_cli_path(source),
                 e
-            )
+            ))
         })?
         .as_nanos();
     let stem = source

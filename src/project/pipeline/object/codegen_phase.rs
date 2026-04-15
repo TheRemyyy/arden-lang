@@ -13,10 +13,37 @@ use crate::symbol_lookup::{
 };
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
+
+#[derive(Debug)]
+enum ObjectCodegenPhaseError {
+    PhaseRun(String),
+    ShardCompile(String),
+}
+
+impl fmt::Display for ObjectCodegenPhaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PhaseRun(message) | Self::ShardCompile(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<ObjectCodegenPhaseError> for String {
+    fn from(value: ObjectCodegenPhaseError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for ObjectCodegenPhaseError {
+    fn from(value: String) -> Self {
+        Self::PhaseRun(value)
+    }
+}
 
 pub(crate) struct ObjectCodegenPhaseInputs<'a, 'b> {
     pub(crate) cache_misses: &'a [crate::ObjectCodegenShard],
@@ -41,6 +68,13 @@ pub(crate) fn run_object_codegen_phase(
     build_timings: &mut BuildTimings,
     inputs: ObjectCodegenPhaseInputs<'_, '_>,
 ) -> Result<Vec<(usize, PathBuf)>, String> {
+    run_object_codegen_phase_impl(build_timings, inputs).map_err(Into::into)
+}
+
+fn run_object_codegen_phase_impl(
+    build_timings: &mut BuildTimings,
+    inputs: ObjectCodegenPhaseInputs<'_, '_>,
+) -> Result<Vec<(usize, PathBuf)>, ObjectCodegenPhaseError> {
     let object_codegen_timing_totals = Arc::new(ObjectCodegenTimingTotals::default());
     let declaration_closure_timing_totals = Arc::new(DeclarationClosureTimingTotals::default());
     let object_emit_timing_totals = Arc::new(ObjectEmitTimingTotals::default());
@@ -194,6 +228,7 @@ pub(crate) fn run_object_codegen_phase(
                     )
                 })
                 .collect::<Result<Vec<_>, String>>()
+                .map_err(ObjectCodegenPhaseError::ShardCompile)
                 .map(|results| results.into_iter().flatten().collect())
         })?;
 

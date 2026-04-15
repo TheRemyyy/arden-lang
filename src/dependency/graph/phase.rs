@@ -8,8 +8,34 @@ use crate::dependency::{
     build_reverse_dependency_graph, dependency_graph_cache_from_state, DependencyResolutionContext,
 };
 use crate::symbol_lookup::GlobalSymbolMaps;
+use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
+
+#[derive(Debug)]
+enum DependencyGraphPhaseError {
+    CacheLoad(String),
+}
+
+impl fmt::Display for DependencyGraphPhaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CacheLoad(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<DependencyGraphPhaseError> for String {
+    fn from(value: DependencyGraphPhaseError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for DependencyGraphPhaseError {
+    fn from(value: String) -> Self {
+        Self::CacheLoad(value)
+    }
+}
 
 pub(crate) struct DependencyGraphInputs<'a> {
     pub(crate) project_root: &'a Path,
@@ -24,9 +50,18 @@ pub(crate) fn run_dependency_graph_phase(
     build_timings: &mut BuildTimings,
     inputs: DependencyGraphInputs<'_>,
 ) -> Result<DependencyGraphOutputs, String> {
-    let previous_dependency_graph = build_timings.measure("dependency cache load", || {
-        crate::load_dependency_graph_cache(inputs.project_root)
-    })?;
+    run_dependency_graph_phase_impl(build_timings, inputs).map_err(Into::into)
+}
+
+fn run_dependency_graph_phase_impl(
+    build_timings: &mut BuildTimings,
+    inputs: DependencyGraphInputs<'_>,
+) -> Result<DependencyGraphOutputs, DependencyGraphPhaseError> {
+    let previous_dependency_graph = build_timings
+        .measure("dependency cache load", || {
+            crate::load_dependency_graph_cache(inputs.project_root)
+        })
+        .map_err(DependencyGraphPhaseError::CacheLoad)?;
     let namespace_files_map = build_namespace_files_lookup(
         build_timings,
         inputs.parsed_files,
