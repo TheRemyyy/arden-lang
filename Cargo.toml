@@ -17,7 +17,7 @@ clap = { version = "4", features = ["derive"] }
 
 # Colored output
 colored = "2"
-enable-ansi-support = "0.2"
+enable-ansi-support = "0.3"
 
 # Project configuration
 toml = "0.8"
