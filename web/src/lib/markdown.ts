@@ -1,4 +1,6 @@
 import { marked } from 'marked';
+import createDOMPurify from 'dompurify';
+import { JSDOM } from 'jsdom';
 
 function slugifyHeading(text: string): string {
     const slug = text
@@ -30,14 +32,38 @@ export async function renderMarkdown(markdown: string): Promise<string> {
     return sanitizeMarkdownHtml(renderedHtml);
 }
 
+function createSanitizer() {
+    const htmlWindow =
+        typeof window !== 'undefined'
+            ? window
+            : new JSDOM('<!doctype html><html><body></body></html>').window;
+    const sanitizer = createDOMPurify(htmlWindow);
+
+    sanitizer.addHook('uponSanitizeAttribute', (_node, data) => {
+        const attributeName = data.attrName.toLowerCase();
+        const attributeValue = data.attrValue.trim();
+
+        if (attributeName.startsWith('on')) {
+            data.keepAttr = false;
+            return;
+        }
+
+        if (attributeName === 'href' && /^javascript:/i.test(attributeValue)) {
+            data.attrValue = '#';
+        }
+    });
+
+    return sanitizer;
+}
+
+const markdownSanitizer = createSanitizer();
+
 export function sanitizeMarkdownHtml(html: string): string {
-    return html
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-        .replace(/\son[a-z]+="[^"]*"/gi, '')
-        .replace(/\son[a-z]+='[^']*'/gi, '')
-        .replace(/href="javascript:[^"]*"/gi, 'href="#"')
-        .replace(/href='javascript:[^']*'/gi, "href='#'");
+    return markdownSanitizer.sanitize(html, {
+        USE_PROFILES: { html: true },
+        FORBID_TAGS: ['script', 'style'],
+        ALLOW_UNKNOWN_PROTOCOLS: false,
+    });
 }
 
 export function rewriteInternalDocLinks(html: string, currentPath: string): string {

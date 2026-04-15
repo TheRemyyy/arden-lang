@@ -1,11 +1,13 @@
-﻿import { defineConfig } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import vike from 'vike/plugin'
+import tailwindcss from '@tailwindcss/vite'
 import compression from 'vite-plugin-compression'
 import { webfontDl } from 'vite-plugin-webfont-dl'
 
 export default defineConfig({
   plugins: [
+    tailwindcss(),
     vike(),
     react(),
     compression({ algorithm: 'gzip', ext: '.gz' }),
