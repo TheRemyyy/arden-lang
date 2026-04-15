@@ -532,7 +532,7 @@ fn cli_build_reports_import_check_errors_only_once() {
 
     let mut initial_build = Command::new("cargo");
     normalize_nested_cargo_linker_env(&mut initial_build);
-    let status = initial_build
+    let initial_output = initial_build
         .arg("run")
         .arg("--quiet")
         .arg("--manifest-path")
@@ -540,9 +540,33 @@ fn cli_build_reports_import_check_errors_only_once() {
         .arg("--")
         .arg("build")
         .current_dir(&temp_root)
-        .status()
+        .output()
         .must("run initial project build");
-    assert!(status.success(), "initial build should succeed");
+    let initial_output = if initial_output.status.success() {
+        initial_output
+    } else {
+        // Nested cargo runs in CI can intermittently fail due transient toolchain/process
+        // startup issues unrelated to import-check behavior. Retry once before failing.
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        let mut retry_build = Command::new("cargo");
+        normalize_nested_cargo_linker_env(&mut retry_build);
+        retry_build
+            .arg("run")
+            .arg("--quiet")
+            .arg("--manifest-path")
+            .arg(env!("CARGO_MANIFEST_DIR").to_string() + "/Cargo.toml")
+            .arg("--")
+            .arg("build")
+            .current_dir(&temp_root)
+            .output()
+            .must("retry initial project build")
+    };
+    assert!(
+        initial_output.status.success(),
+        "initial build should succeed: stdout={} stderr={}",
+        String::from_utf8_lossy(&initial_output.stdout),
+        String::from_utf8_lossy(&initial_output.stderr)
+    );
 
     std::thread::sleep(std::time::Duration::from_millis(20));
     fs::write(

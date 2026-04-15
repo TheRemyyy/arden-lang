@@ -43,6 +43,18 @@ Use this when you changed CLI behavior, output shape, project generation, format
 
 Windows wrapper around `cli_smoke.sh`.
 
+### `scripts/ci/emit_codegen_artifacts.sh` and `windows_emit_codegen_artifacts.ps1`
+
+CI-only crash triage helpers that dump `.ll` and best-effort object artifacts.
+
+Environment variables:
+
+- `ARDEN_COMPILER_PATH` - compiler binary used for dump compilation
+- `ARDEN_FAILURE_SOURCE` - single source file to dump
+- `ARDEN_FAILURE_SOURCES` - semicolon-separated source list to dump
+- `ARDEN_FAILURE_CONTEXT` - context label used in artifact output folder
+- `ARDEN_FAILURE_OUTPUT_ROOT` - root output directory for dumped artifacts
+
 ## Example Sweeps
 
 - `examples_smoke_linux.sh`

@@ -13,11 +13,57 @@ use crate::test_runner::{
     validate_test_runner_attributes, TestDiscovery,
 };
 use execution::compile_and_run_test;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use workspace::{
     create_project_test_runner_workspace, create_test_runner_workspace, default_test_files,
 };
+
+#[derive(Debug)]
+enum TestingCommandError {
+    ResolveTestFiles(String),
+    SourceRead(String),
+    Lex(String),
+    Parse(String),
+    AttributeValidation(String),
+    ProjectConfigLoad(String),
+    ProjectConfigValidate(String),
+    WorkspaceCreate(String),
+    Build(String),
+    RunnerExecute(String),
+    RunnerWrite(String),
+}
+
+impl fmt::Display for TestingCommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ResolveTestFiles(message)
+            | Self::SourceRead(message)
+            | Self::Lex(message)
+            | Self::Parse(message)
+            | Self::AttributeValidation(message)
+            | Self::ProjectConfigLoad(message)
+            | Self::ProjectConfigValidate(message)
+            | Self::WorkspaceCreate(message)
+            | Self::Build(message)
+            | Self::RunnerExecute(message)
+            | Self::RunnerWrite(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<TestingCommandError> for String {
+    fn from(value: TestingCommandError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for TestingCommandError {
+    fn from(value: String) -> Self {
+        Self::Build(value)
+    }
+}
 
 /// Run tests for a file or project.
 pub(crate) fn run_tests(
@@ -25,7 +71,16 @@ pub(crate) fn run_tests(
     list_only: bool,
     filter: Option<&str>,
 ) -> Result<(), String> {
-    let test_files = resolve_test_files(test_path)?;
+    run_tests_impl(test_path, list_only, filter).map_err(Into::into)
+}
+
+fn run_tests_impl(
+    test_path: Option<&Path>,
+    list_only: bool,
+    filter: Option<&str>,
+) -> Result<(), TestingCommandError> {
+    let test_files =
+        resolve_test_files(test_path).map_err(TestingCommandError::ResolveTestFiles)?;
 
     if test_files.is_empty() {
         println!("{}", cli_warning("No test files found"));
@@ -40,21 +95,27 @@ pub(crate) fn run_tests(
 
     for test_file in &test_files {
         let source = fs::read_to_string(test_file).map_err(|e| {
-            format!(
+            TestingCommandError::SourceRead(format!(
                 "Failed to read test file '{}': {}",
                 format_cli_path(test_file),
                 e
-            )
+            ))
         })?;
 
-        let tokens = lexer::tokenize(&source)
-            .map_err(|e| format!("Lexer error in '{}': {}", format_cli_path(test_file), e))?;
+        let tokens = lexer::tokenize(&source).map_err(|e| {
+            TestingCommandError::Lex(format!(
+                "Lexer error in '{}': {}",
+                format_cli_path(test_file),
+                e
+            ))
+        })?;
         let filename = format_cli_path(test_file);
         let mut parser = Parser::new(tokens);
         let program = parser
             .parse_program()
-            .map_err(|e| format_parse_error(&e, &source, &filename))?;
-        validate_test_runner_attributes(&program)?;
+            .map_err(|e| TestingCommandError::Parse(format_parse_error(&e, &source, &filename)))?;
+        validate_test_runner_attributes(&program)
+            .map_err(TestingCommandError::AttributeValidation)?;
 
         let discovery = discover_tests(&program);
         if discovery.total_tests == 0 {
@@ -108,19 +169,27 @@ pub(crate) fn run_tests(
             let runner_code = generate_test_runner_with_source(&filtered_discovery, &source);
             if let Some(project_root) = test_file.parent().and_then(find_project_root) {
                 let config_path = project_root.join("arden.toml");
-                let config = ProjectConfig::load(&config_path)?;
-                config.validate(&project_root)?;
+                let config = ProjectConfig::load(&config_path)
+                    .map_err(TestingCommandError::ProjectConfigLoad)?;
+                config
+                    .validate(&project_root)
+                    .map_err(TestingCommandError::ProjectConfigValidate)?;
                 let (temp_dir, exe_path) = create_project_test_runner_workspace(
                     &project_root,
                     &config,
                     test_file,
                     &runner_code,
-                )?;
+                )
+                .map_err(TestingCommandError::WorkspaceCreate)?;
                 let build_result = with_process_current_dir(&temp_dir, || {
                     build_project(false, false, true, false, false)
                 });
                 let result = build_result
-                    .and_then(|_| execution::run_test_executable(&exe_path, filtered_out_tests));
+                    .map_err(TestingCommandError::Build)
+                    .and_then(|_| {
+                        execution::run_test_executable(&exe_path, filtered_out_tests)
+                            .map_err(TestingCommandError::RunnerExecute)
+                    });
                 if let Err(err) = fs::remove_dir_all(&temp_dir) {
                     if err.kind() != std::io::ErrorKind::NotFound {
                         eprintln!(
@@ -133,16 +202,18 @@ pub(crate) fn run_tests(
                 }
                 result?;
             } else {
-                let (temp_dir, runner_path, exe_path) = create_test_runner_workspace(test_file)?;
+                let (temp_dir, runner_path, exe_path) = create_test_runner_workspace(test_file)
+                    .map_err(TestingCommandError::WorkspaceCreate)?;
                 fs::write(&runner_path, &runner_code).map_err(|e| {
-                    format!(
+                    TestingCommandError::RunnerWrite(format!(
                         "Failed to write test runner '{}': {}",
                         format_cli_path(&runner_path),
                         e
-                    )
+                    ))
                 })?;
 
-                let result = compile_and_run_test(&runner_path, &exe_path, filtered_out_tests);
+                let result = compile_and_run_test(&runner_path, &exe_path, filtered_out_tests)
+                    .map_err(TestingCommandError::RunnerExecute);
                 if let Err(err) = fs::remove_dir_all(&temp_dir) {
                     if err.kind() != std::io::ErrorKind::NotFound {
                         eprintln!(

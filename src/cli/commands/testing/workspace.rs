@@ -2,50 +2,126 @@ use crate::cli::output::format_cli_path;
 use crate::cli::paths::current_dir_checked;
 use crate::cli::test_discovery::find_test_files as discover_test_files;
 use crate::project::{find_project_root, resolve_project_output_path, ProjectConfig};
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-fn normalized_relative_path_string(path: &Path, context: &str) -> Result<String, String> {
+#[derive(Debug)]
+enum TestWorkspaceError {
+    Discovery(String),
+    ProjectConfigLoad(String),
+    ProjectConfigValidate(String),
+    InvalidRelativePath(String),
+    UniquePathGeneration(String),
+    WorkspaceCreate(String),
+    CurrentDir(String),
+    CanonicalProjectRoot(String),
+    CanonicalTestFile(String),
+    CanonicalProjectEntry(String),
+    TestOutsideProject(String),
+    SourceCanonicalization(String),
+    SourceOutsideProject(String),
+    WorkspaceEscape(String),
+    SourceDirCreate(String),
+    RunnerWrite(String),
+    SourceCopy(String),
+    RunnerDestinationCreate(String),
+    ConfigSave(String),
+}
+
+impl fmt::Display for TestWorkspaceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Discovery(message)
+            | Self::ProjectConfigLoad(message)
+            | Self::ProjectConfigValidate(message)
+            | Self::InvalidRelativePath(message)
+            | Self::UniquePathGeneration(message)
+            | Self::WorkspaceCreate(message)
+            | Self::CurrentDir(message)
+            | Self::CanonicalProjectRoot(message)
+            | Self::CanonicalTestFile(message)
+            | Self::CanonicalProjectEntry(message)
+            | Self::TestOutsideProject(message)
+            | Self::SourceCanonicalization(message)
+            | Self::SourceOutsideProject(message)
+            | Self::WorkspaceEscape(message)
+            | Self::SourceDirCreate(message)
+            | Self::RunnerWrite(message)
+            | Self::SourceCopy(message)
+            | Self::RunnerDestinationCreate(message)
+            | Self::ConfigSave(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<TestWorkspaceError> for String {
+    fn from(value: TestWorkspaceError) -> Self {
+        value.to_string()
+    }
+}
+
+fn normalized_relative_path_string(
+    path: &Path,
+    context: &str,
+) -> Result<String, TestWorkspaceError> {
     let as_str = path.to_str().ok_or_else(|| {
-        format!(
+        TestWorkspaceError::InvalidRelativePath(format!(
             "Path '{}' for {} is not valid UTF-8",
             format_cli_path(path),
             context
-        )
+        ))
     })?;
     Ok(as_str.replace('\\', "/"))
 }
 
 pub(super) fn find_test_files(path: &Path) -> Result<Vec<PathBuf>, String> {
-    discover_test_files(path)
+    find_test_files_impl(path).map_err(Into::into)
+}
+
+fn find_test_files_impl(path: &Path) -> Result<Vec<PathBuf>, TestWorkspaceError> {
+    discover_test_files(path).map_err(TestWorkspaceError::Discovery)
 }
 
 pub(super) fn default_test_files(current_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    default_test_files_impl(current_dir).map_err(Into::into)
+}
+
+fn default_test_files_impl(current_dir: &Path) -> Result<Vec<PathBuf>, TestWorkspaceError> {
     if let Some(project_root) = find_project_root(current_dir) {
         let config_path = project_root.join("arden.toml");
-        let config = ProjectConfig::load(&config_path)?;
-        config.validate(&project_root)?;
+        let config =
+            ProjectConfig::load(&config_path).map_err(TestWorkspaceError::ProjectConfigLoad)?;
+        config
+            .validate(&project_root)
+            .map_err(TestWorkspaceError::ProjectConfigValidate)?;
 
         let mut files = config.get_source_files(&project_root);
         files.sort();
         return Ok(files);
     }
 
-    discover_test_files(current_dir)
+    discover_test_files(current_dir).map_err(TestWorkspaceError::Discovery)
 }
 
 pub(super) fn create_test_runner_workspace(
     test_file: &Path,
 ) -> Result<(PathBuf, PathBuf, PathBuf), String> {
+    create_test_runner_workspace_impl(test_file).map_err(Into::into)
+}
+
+fn create_test_runner_workspace_impl(
+    test_file: &Path,
+) -> Result<(PathBuf, PathBuf, PathBuf), TestWorkspaceError> {
     let unique = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| {
-            format!(
+            TestWorkspaceError::UniquePathGeneration(format!(
                 "Failed to create unique test runner path for '{}': {}",
                 format_cli_path(test_file),
                 e,
-            )
+            ))
         })?
         .as_nanos();
     let stem = test_file
@@ -59,11 +135,11 @@ pub(super) fn create_test_runner_workspace(
         unique
     ));
     fs::create_dir_all(&temp_dir).map_err(|e| {
-        format!(
+        TestWorkspaceError::WorkspaceCreate(format!(
             "Failed to create test runner workspace '{}': {}",
             format_cli_path(&temp_dir),
             e
-        )
+        ))
     })?;
 
     let runner_path = temp_dir.join("runner.arden");
@@ -80,14 +156,24 @@ pub(super) fn create_project_test_runner_workspace(
     test_file: &Path,
     runner_code: &str,
 ) -> Result<(PathBuf, PathBuf), String> {
+    create_project_test_runner_workspace_impl(project_root, config, test_file, runner_code)
+        .map_err(Into::into)
+}
+
+fn create_project_test_runner_workspace_impl(
+    project_root: &Path,
+    config: &ProjectConfig,
+    test_file: &Path,
+    runner_code: &str,
+) -> Result<(PathBuf, PathBuf), TestWorkspaceError> {
     let unique = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| {
-            format!(
+            TestWorkspaceError::UniquePathGeneration(format!(
                 "Failed to create unique test runner project path for '{}': {}",
                 format_cli_path(test_file),
                 e
-            )
+            ))
         })?
         .as_nanos();
     let temp_dir = std::env::temp_dir().join(format!(
@@ -96,62 +182,64 @@ pub(super) fn create_project_test_runner_workspace(
         unique
     ));
     fs::create_dir_all(&temp_dir).map_err(|e| {
-        format!(
+        TestWorkspaceError::WorkspaceCreate(format!(
             "Failed to create test runner project workspace '{}': {}",
             format_cli_path(&temp_dir),
             e
-        )
+        ))
     })?;
 
     let normalized_test_file = if test_file.is_absolute() {
         test_file.to_path_buf()
     } else {
-        current_dir_checked()?.join(test_file)
+        current_dir_checked()
+            .map_err(TestWorkspaceError::CurrentDir)?
+            .join(test_file)
     };
     let canonical_project_root = project_root.canonicalize().map_err(|e| {
-        format!(
+        TestWorkspaceError::CanonicalProjectRoot(format!(
             "Failed to resolve project root '{}' for test workspace creation: {}",
             format_cli_path(project_root),
             e
-        )
+        ))
     })?;
     let canonical_test_file = normalized_test_file.canonicalize().map_err(|e| {
-        format!(
+        TestWorkspaceError::CanonicalTestFile(format!(
             "Failed to resolve test file '{}' for test workspace creation: {}",
             format_cli_path(&normalized_test_file),
             e
-        )
+        ))
     })?;
     let canonical_original_entry =
         project_root
             .join(&config.entry)
             .canonicalize()
             .map_err(|e| {
-                format!(
+                TestWorkspaceError::CanonicalProjectEntry(format!(
                     "Failed to resolve project entry '{}' for test workspace creation: {}",
                     config.entry, e
-                )
+                ))
             })?;
 
     let test_rel = canonical_test_file
         .strip_prefix(&canonical_project_root)
         .map_err(|_| {
-            format!(
+            TestWorkspaceError::TestOutsideProject(format!(
                 "Test file '{}' is outside project root '{}'",
                 format_cli_path(&canonical_test_file),
                 format_cli_path(&canonical_project_root)
-            )
+            ))
         })?;
     let test_rel_string = normalized_relative_path_string(test_rel, "test runner entry path")?;
     let mut copied_files: Vec<String> = Vec::new();
 
     for source_file in config.get_source_files(project_root) {
         let canonical_source_file = source_file.canonicalize().map_err(|e| {
-            format!(
+            TestWorkspaceError::SourceCanonicalization(format!(
                 "Failed to resolve project source '{}': {}",
                 format_cli_path(&source_file),
                 e
-            )
+            ))
         })?;
         if canonical_original_entry == canonical_source_file
             && canonical_source_file != canonical_test_file
@@ -161,75 +249,75 @@ pub(super) fn create_project_test_runner_workspace(
         let rel = canonical_source_file
             .strip_prefix(&canonical_project_root)
             .map_err(|_| {
-                format!(
+                TestWorkspaceError::SourceOutsideProject(format!(
                     "Project source '{}' is outside project root '{}'",
                     format_cli_path(&canonical_source_file),
                     format_cli_path(&canonical_project_root)
-                )
+                ))
             })?;
         let rel_string = normalized_relative_path_string(rel, "project source path")?;
         copied_files.push(rel_string.clone());
         let rel_path = Path::new(&rel_string);
         let dest = temp_dir.join(rel_path);
         if !dest.starts_with(&temp_dir) {
-            return Err(format!(
+            return Err(TestWorkspaceError::WorkspaceEscape(format!(
                 "Refusing to write source '{}' outside test workspace '{}'",
                 format_cli_path(&canonical_source_file),
                 format_cli_path(&temp_dir)
-            ));
+            )));
         }
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                format!(
+                TestWorkspaceError::SourceDirCreate(format!(
                     "Failed to create runner source directory '{}': {}",
                     format_cli_path(parent),
                     e
-                )
+                ))
             })?;
         }
         if canonical_source_file == canonical_test_file {
             fs::write(&dest, runner_code).map_err(|e| {
-                format!(
+                TestWorkspaceError::RunnerWrite(format!(
                     "Failed to write generated project test runner '{}': {}",
                     format_cli_path(&dest),
                     e
-                )
+                ))
             })?;
         } else {
             fs::copy(&canonical_source_file, &dest).map_err(|e| {
-                format!(
+                TestWorkspaceError::SourceCopy(format!(
                     "Failed to copy project source '{}' into test workspace '{}': {}",
                     format_cli_path(&canonical_source_file),
                     format_cli_path(&dest),
                     e
-                )
+                ))
             })?;
         }
     }
 
     let runner_dest = temp_dir.join(test_rel);
     if !runner_dest.starts_with(&temp_dir) {
-        return Err(format!(
+        return Err(TestWorkspaceError::WorkspaceEscape(format!(
             "Refusing to place generated runner outside test workspace '{}'",
             format_cli_path(&temp_dir)
-        ));
+        )));
     }
     if !runner_dest.exists() {
         if let Some(parent) = runner_dest.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                format!(
+                TestWorkspaceError::RunnerDestinationCreate(format!(
                     "Failed to create runner destination directory '{}': {}",
                     format_cli_path(parent),
                     e
-                )
+                ))
             })?;
         }
         fs::write(&runner_dest, runner_code).map_err(|e| {
-            format!(
+            TestWorkspaceError::RunnerWrite(format!(
                 "Failed to write generated runner source '{}': {}",
                 format_cli_path(&runner_dest),
                 e
-            )
+            ))
         })?;
     }
 
@@ -249,11 +337,11 @@ pub(super) fn create_project_test_runner_workspace(
     temp_config
         .save(&temp_dir.join("arden.toml"))
         .map_err(|e| {
-            format!(
+            TestWorkspaceError::ConfigSave(format!(
                 "Failed to write test runner project config '{}': {}",
                 format_cli_path(&temp_dir.join("arden.toml")),
                 e
-            )
+            ))
         })?;
 
     let runner_output_path = resolve_project_output_path(&temp_dir, &temp_config);

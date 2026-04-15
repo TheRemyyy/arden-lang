@@ -87,7 +87,8 @@ Day-to-day commands:
 
 Advanced large-project tuning exists through environment variables
 (`ARDEN_OBJECT_SHARD_THRESHOLD`, `ARDEN_OBJECT_SHARD_SIZE`) for object-codegen
-sharding. Keep these for profiling and CI tuning, not normal beginner workflow.
+sharding and `ARDEN_CODEGEN_NATIVE_CPU=1` for host-native local codegen tuning.
+Keep these for profiling/CI experiments, not normal beginner workflow.
 
 ## Where To Go Next
 

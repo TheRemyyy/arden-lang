@@ -3,11 +3,53 @@ use crate::cli::output::{
 };
 use crate::project::ProjectConfig;
 use colored::Colorize;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug)]
+enum ProjectInitError {
+    InvalidName(String),
+    PathConflict(String),
+    ProjectDirCreate(String),
+    SrcDirCreate(String),
+    ConfigSave(String),
+    MainWrite(String),
+    ReadmeWrite(String),
+}
+
+impl fmt::Display for ProjectInitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidName(message)
+            | Self::PathConflict(message)
+            | Self::ProjectDirCreate(message)
+            | Self::SrcDirCreate(message)
+            | Self::ConfigSave(message)
+            | Self::MainWrite(message)
+            | Self::ReadmeWrite(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<ProjectInitError> for String {
+    fn from(value: ProjectInitError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for ProjectInitError {
+    fn from(value: String) -> Self {
+        Self::ConfigSave(value)
+    }
+}
+
 pub(crate) fn create_new_project(name: &str, path: Option<&Path>) -> Result<(), String> {
-    validate_new_project_name(name)?;
+    create_new_project_impl(name, path).map_err(Into::into)
+}
+
+fn create_new_project_impl(name: &str, path: Option<&Path>) -> Result<(), ProjectInitError> {
+    validate_new_project_name(name).map_err(ProjectInitError::InvalidName)?;
 
     let project_path = path
         .map(PathBuf::from)
@@ -19,35 +61,37 @@ pub(crate) fn create_new_project(name: &str, path: Option<&Path>) -> Result<(), 
         } else {
             "Path"
         };
-        return Err(format!(
+        return Err(ProjectInitError::PathConflict(format!(
             "{}: {} '{}' already exists",
             "error".red().bold(),
             kind,
             format_cli_path(&project_path)
-        ));
+        )));
     }
 
     fs::create_dir_all(&project_path).map_err(|e| {
-        format!(
+        ProjectInitError::ProjectDirCreate(format!(
             "{}: Failed to create project directory '{}': {}",
             "error".red().bold(),
             format_cli_path(&project_path),
             e
-        )
+        ))
     })?;
     let src_dir = project_path.join("src");
     fs::create_dir_all(&src_dir).map_err(|e| {
-        format!(
+        ProjectInitError::SrcDirCreate(format!(
             "{}: Failed to create src directory '{}': {}",
             "error".red().bold(),
             format_cli_path(&src_dir),
             e
-        )
+        ))
     })?;
 
     let config = ProjectConfig::new(name);
     let config_path = project_path.join("arden.toml");
-    config.save(&config_path)?;
+    config
+        .save(&config_path)
+        .map_err(ProjectInitError::ConfigSave)?;
 
     let main_content = format!(
         r#"import std.io.*;
@@ -62,12 +106,12 @@ function main(): None {{
 
     let main_path = project_path.join("src").join("main.arden");
     fs::write(&main_path, main_content).map_err(|e| {
-        format!(
+        ProjectInitError::MainWrite(format!(
             "{}: Failed to create main.arden '{}': {}",
             "error".red().bold(),
             format_cli_path(&main_path),
             e
-        )
+        ))
     })?;
 
     let readme_content = format!(
@@ -148,12 +192,12 @@ output_kind = "bin"
 
     let readme_path = project_path.join("README.md");
     fs::write(&readme_path, readme_content).map_err(|e| {
-        format!(
+        ProjectInitError::ReadmeWrite(format!(
             "{}: Failed to create README.md '{}': {}",
             "error".red().bold(),
             format_cli_path(&readme_path),
             e
-        )
+        ))
     })?;
 
     println!("{} {}", cli_success("Created project"), cli_accent(name));

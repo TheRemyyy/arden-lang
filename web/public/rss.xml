@@ -10,21 +10,21 @@
     <link>https://www.arden-lang.dev/changelog#unreleased</link>
     <guid>https://www.arden-lang.dev/changelog#unreleased</guid>
     <description>Windows CI smoke wrapper: fixed PowerShell single-quote escaping in `scripts/cli_smoke_windows.ps1` so the script parses correctly and can invoke bash smoke runs.</description>
-    <pubDate>Tue, 14 Apr 2026 00:00:00 GMT</pubDate>
+    <pubDate>Wed, 15 Apr 2026 00:00:00 GMT</pubDate>
   </item>
   <item>
     <title>v1.3.8</title>
     <link>https://www.arden-lang.dev/changelog#1-3-8</link>
     <guid>https://www.arden-lang.dev/changelog#1-3-8</guid>
     <description>2026-04-13. Reworked native artifact production around explicit linker-only backends, so Arden now emits objects directly from LLVM, links Linux outputs through `mold`, and links macOS/Windows outputs through LLVM `lld`.</description>
-    <pubDate>Tue, 14 Apr 2026 00:00:00 GMT</pubDate>
+    <pubDate>Wed, 15 Apr 2026 00:00:00 GMT</pubDate>
   </item>
   <item>
     <title>v1.3.7</title>
     <link>https://www.arden-lang.dev/changelog#1-3-7</link>
     <guid>https://www.arden-lang.dev/changelog#1-3-7</guid>
     <description>2026-04-10. Upgraded the LLVM integration to LLVM 22.1.x across Cargo, CI, release packaging, benchmark tooling, and install docs, including the move to `inkwell` `llvm22-1` and `LLVM_SYS_221_PREFIX`.</description>
-    <pubDate>Tue, 14 Apr 2026 00:00:00 GMT</pubDate>
+    <pubDate>Wed, 15 Apr 2026 00:00:00 GMT</pubDate>
   </item>
   <item>
     <title>v1.3.6</title>

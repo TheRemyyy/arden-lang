@@ -4,28 +4,58 @@ use crate::diagnostics::format_parse_error;
 use crate::lexer;
 use crate::parser::Parser;
 use colored::Colorize;
+use std::fmt;
 use std::fs;
 use std::path::Path;
 
+#[derive(Debug)]
+enum DebugCommandError {
+    SourcePathValidation(String),
+    SourceRead(String),
+    Lex(String),
+    Parse(String),
+}
+
+impl fmt::Display for DebugCommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SourcePathValidation(message)
+            | Self::SourceRead(message)
+            | Self::Lex(message)
+            | Self::Parse(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<DebugCommandError> for String {
+    fn from(value: DebugCommandError) -> Self {
+        value.to_string()
+    }
+}
+
 pub(crate) fn lex_file(file: &Path) -> Result<(), String> {
-    validate_source_file_path(file)?;
+    lex_file_impl(file).map_err(Into::into)
+}
+
+fn lex_file_impl(file: &Path) -> Result<(), DebugCommandError> {
+    validate_source_file_path(file).map_err(DebugCommandError::SourcePathValidation)?;
 
     let source = fs::read_to_string(file).map_err(|e| {
-        format!(
+        DebugCommandError::SourceRead(format!(
             "{}: Failed to read file '{}': {}",
             "error".red().bold(),
             format_cli_path(file),
             e
-        )
+        ))
     })?;
 
     let tokens = lexer::tokenize(&source).map_err(|e| {
-        format!(
+        DebugCommandError::Lex(format!(
             "{}: Lexer error in '{}': {}",
             "error".red().bold(),
             format_cli_path(file),
             e
-        )
+        ))
     })?;
 
     println!("{}", cli_accent("Tokens"));
@@ -37,31 +67,35 @@ pub(crate) fn lex_file(file: &Path) -> Result<(), String> {
 }
 
 pub(crate) fn parse_file(file: &Path) -> Result<(), String> {
-    validate_source_file_path(file)?;
+    parse_file_impl(file).map_err(Into::into)
+}
+
+fn parse_file_impl(file: &Path) -> Result<(), DebugCommandError> {
+    validate_source_file_path(file).map_err(DebugCommandError::SourcePathValidation)?;
 
     let source = fs::read_to_string(file).map_err(|e| {
-        format!(
+        DebugCommandError::SourceRead(format!(
             "{}: Failed to read file '{}': {}",
             "error".red().bold(),
             format_cli_path(file),
             e
-        )
+        ))
     })?;
 
     let tokens = lexer::tokenize(&source).map_err(|e| {
-        format!(
+        DebugCommandError::Lex(format!(
             "{}: Lexer error in '{}': {}",
             "error".red().bold(),
             format_cli_path(file),
             e
-        )
+        ))
     })?;
 
     let filename = format_cli_path(file);
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()
-        .map_err(|e| format_parse_error(&e, &source, &filename))?;
+        .map_err(|e| DebugCommandError::Parse(format_parse_error(&e, &source, &filename)))?;
 
     println!("{}", cli_accent("AST"));
     println!("{:#?}", program);

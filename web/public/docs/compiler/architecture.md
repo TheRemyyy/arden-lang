@@ -79,6 +79,7 @@ Current tuning env vars:
 
 - `ARDEN_OBJECT_SHARD_THRESHOLD` (default `256`)
 - `ARDEN_OBJECT_SHARD_SIZE` (default `4`)
+- `ARDEN_CODEGEN_NATIVE_CPU` (default disabled; set `1/true/yes/on` for host-native CPU tuning)
 
 Example profiling command:
 

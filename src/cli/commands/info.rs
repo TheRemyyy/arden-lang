@@ -3,23 +3,57 @@ use crate::cli::paths::{current_dir_checked, validate_source_file_path};
 use crate::linker::validate_opt_level;
 use crate::project::{find_project_root, ProjectConfig};
 use colored::Colorize;
+use std::fmt;
+
+#[derive(Debug)]
+enum InfoCommandError {
+    ProjectDiscovery(String),
+    ProjectConfigLoad(String),
+    ProjectConfigValidate(String),
+    OptLevelValidation(String),
+    SourcePathValidation(String),
+}
+
+impl fmt::Display for InfoCommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ProjectDiscovery(message)
+            | Self::ProjectConfigLoad(message)
+            | Self::ProjectConfigValidate(message)
+            | Self::OptLevelValidation(message)
+            | Self::SourcePathValidation(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<InfoCommandError> for String {
+    fn from(value: InfoCommandError) -> Self {
+        value.to_string()
+    }
+}
 
 pub(crate) fn show_project_info() -> Result<(), String> {
-    let cwd = current_dir_checked()?;
+    show_project_info_impl().map_err(Into::into)
+}
+
+fn show_project_info_impl() -> Result<(), InfoCommandError> {
+    let cwd = current_dir_checked().map_err(InfoCommandError::ProjectDiscovery)?;
     let project_root = find_project_root(&cwd).ok_or_else(|| {
-        format!(
+        InfoCommandError::ProjectDiscovery(format!(
             "{}: No arden.toml found in current directory '{}' or its parents.",
             "error".red().bold(),
             format_cli_path(&cwd)
-        )
+        ))
     })?;
 
     let config_path = project_root.join("arden.toml");
-    let config = ProjectConfig::load(&config_path)?;
-    config.validate(&project_root)?;
-    validate_opt_level(Some(&config.opt_level))?;
+    let config = ProjectConfig::load(&config_path).map_err(InfoCommandError::ProjectConfigLoad)?;
+    config
+        .validate(&project_root)
+        .map_err(InfoCommandError::ProjectConfigValidate)?;
+    validate_opt_level(Some(&config.opt_level)).map_err(InfoCommandError::OptLevelValidation)?;
     for file in config.get_source_files(&project_root) {
-        validate_source_file_path(&file)?;
+        validate_source_file_path(&file).map_err(InfoCommandError::SourcePathValidation)?;
     }
 
     println!("{}", cli_accent("Project"));

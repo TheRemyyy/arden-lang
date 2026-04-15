@@ -157,6 +157,23 @@ Important:
 - they affect build cache/codegen behavior, not language semantics
 - treat them as implementation-level controls, not stable language guarantees
 
+### Host CPU Native Codegen (Advanced)
+
+By default, Arden emits code for a stable baseline CPU (`x86-64` or `generic`)
+to keep outputs portable across machines/CI runners.
+
+To opt into host-specific tuning for local builds/runs:
+
+```bash
+ARDEN_CODEGEN_NATIVE_CPU=1 arden run file.arden
+```
+
+Notes:
+
+- this is intended for local performance experiments
+- avoid enabling it in shared CI/release pipelines unless you fully control runtime CPUs
+- explicit `--target` builds keep target-driven behavior
+
 ### Platform Linker Overrides (Advanced Troubleshooting)
 
 Use only when diagnosing platform linker/toolchain setup issues.
@@ -173,6 +190,28 @@ Example (Windows PowerShell):
 $env:ARDEN_WINDOWS_BUILTINS_LIB = "C:\\llvm\\lib\\clang\\22\\lib\\windows\\clang_rt.builtins-x86_64.lib"
 arden build --release
 ```
+
+### Tooling / CI Environment Variables
+
+These are useful for repository tooling and diagnostics.
+
+- `ARDEN_COMPILER_PATH`
+  - override compiler binary path in smoke scripts (for example, debug build vs release build)
+- `CI_SKIP_COMPILER_BUILD=1`
+  - skip rebuilding compiler in smoke scripts before execution
+- `ARDEN_FAILURE_SOURCE`
+- `ARDEN_FAILURE_SOURCES`
+- `ARDEN_FAILURE_CONTEXT`
+- `ARDEN_FAILURE_OUTPUT_ROOT`
+  - control CI crash artifact dump scripts (`scripts/ci/*emit_codegen_artifacts*`)
+
+Internal test-only markers (not user-facing CLI settings):
+
+- `ARDEN_BAD_UTF8_ENV`
+- `__ARDEN_TEST_START__`
+- `__ARDEN_TEST_PASS__`
+- `__ARDEN_TEST_SKIP__`
+- `__ARDEN_TEST_SKIP_REASON__`
 
 ### `arden test`
 

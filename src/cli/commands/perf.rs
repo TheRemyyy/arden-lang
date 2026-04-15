@@ -8,52 +8,99 @@ use crate::project::{
 use crate::shared::process_exit::format_exit_failure;
 use crate::{build_project, compile_file};
 use colored::Colorize;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-fn run_binary(exe_path: &Path, args: &[String]) -> Result<(), String> {
+#[derive(Debug)]
+enum PerfCommandError {
+    BinaryValidation(String),
+    ProcessLaunch(String),
+    ProcessExit(String),
+    TempBinaryPath(String),
+    SingleFileCompile(String),
+    ProjectDiscovery(String),
+    ProjectConfigLoad(String),
+    ProjectConfigValidate(String),
+    RunnableValidation(String),
+    ProjectBuild(String),
+    InvalidIterations(String),
+}
+
+impl fmt::Display for PerfCommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BinaryValidation(message)
+            | Self::ProcessLaunch(message)
+            | Self::ProcessExit(message)
+            | Self::TempBinaryPath(message)
+            | Self::SingleFileCompile(message)
+            | Self::ProjectDiscovery(message)
+            | Self::ProjectConfigLoad(message)
+            | Self::ProjectConfigValidate(message)
+            | Self::RunnableValidation(message)
+            | Self::ProjectBuild(message)
+            | Self::InvalidIterations(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<PerfCommandError> for String {
+    fn from(value: PerfCommandError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for PerfCommandError {
+    fn from(value: String) -> Self {
+        Self::ProjectBuild(value)
+    }
+}
+
+fn run_binary_impl(exe_path: &Path, args: &[String]) -> Result<(), PerfCommandError> {
     if !exe_path.exists() {
-        return Err(format!(
+        return Err(PerfCommandError::BinaryValidation(format!(
             "{}: Executable '{}' does not exist",
             "error".red().bold(),
             format_cli_path(exe_path)
-        ));
+        )));
     }
     if !exe_path.is_file() {
-        return Err(format!(
+        return Err(PerfCommandError::BinaryValidation(format!(
             "{}: Executable path '{}' is not a file",
             "error".red().bold(),
             format_cli_path(exe_path)
-        ));
+        )));
     }
     let status = Command::new(exe_path).args(args).status().map_err(|e| {
-        format!(
+        PerfCommandError::ProcessLaunch(format!(
             "{}: Failed to run '{}': {}",
             "error".red().bold(),
             format_cli_path(exe_path),
             e
-        )
+        ))
     })?;
     if !status.success() {
-        return Err(format!(
+        return Err(PerfCommandError::ProcessExit(format!(
             "{}: process '{}' {}",
             "error".red().bold(),
             format_cli_path(exe_path),
             format_exit_failure(status)
-        ));
+        )));
     }
     Ok(())
 }
 
-fn prepare_perf_binary(
+fn prepare_perf_binary_impl(
     file: Option<&Path>,
     release: bool,
     temp_tag: &str,
-) -> Result<(PathBuf, Option<PathBuf>, Vec<String>), String> {
+) -> Result<(PathBuf, Option<PathBuf>, Vec<String>), PerfCommandError> {
     if let Some(file) = file {
-        let output = unique_temp_binary_path(temp_tag, file)?;
+        let output =
+            unique_temp_binary_path(temp_tag, file).map_err(PerfCommandError::TempBinaryPath)?;
         compile_file(
             file,
             Some(&output),
@@ -61,23 +108,27 @@ fn prepare_perf_binary(
             true,
             release.then_some("3"),
             None,
-        )?;
+        )
+        .map_err(PerfCommandError::SingleFileCompile)?;
         return Ok((output.clone(), Some(output), Vec::new()));
     }
 
-    let cwd = current_dir_checked()?;
+    let cwd = current_dir_checked().map_err(PerfCommandError::ProjectDiscovery)?;
     let project_root = find_project_root(&cwd).ok_or_else(|| {
-        format!(
+        PerfCommandError::ProjectDiscovery(format!(
             "{}: No arden.toml found from current directory '{}'",
             "error".red().bold(),
             format_cli_path(&cwd)
-        )
+        ))
     })?;
     let config_path = project_root.join("arden.toml");
-    let config = ProjectConfig::load(&config_path)?;
-    config.validate(&project_root)?;
-    ensure_project_is_runnable(&config.output_kind)?;
-    build_project(release, false, true, false, false)?;
+    let config = ProjectConfig::load(&config_path).map_err(PerfCommandError::ProjectConfigLoad)?;
+    config
+        .validate(&project_root)
+        .map_err(PerfCommandError::ProjectConfigValidate)?;
+    ensure_project_is_runnable(&config.output_kind)
+        .map_err(PerfCommandError::RunnableValidation)?;
+    build_project(release, false, true, false, false).map_err(PerfCommandError::ProjectBuild)?;
     Ok((
         resolve_project_output_path(&project_root, &config),
         None,
@@ -86,16 +137,22 @@ fn prepare_perf_binary(
 }
 
 pub(crate) fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(), String> {
+    bench_target_impl(file, iterations).map_err(Into::into)
+}
+
+fn bench_target_impl(file: Option<&Path>, iterations: usize) -> Result<(), PerfCommandError> {
     if iterations == 0 {
-        return Err("Iterations must be greater than zero.".to_string());
+        return Err(PerfCommandError::InvalidIterations(
+            "Iterations must be greater than zero.".to_string(),
+        ));
     }
 
-    let (exe_path, cleanup_path, args) = prepare_perf_binary(file, false, "arden-bench")?;
-    let run_result = (|| -> Result<Vec<f64>, String> {
+    let (exe_path, cleanup_path, args) = prepare_perf_binary_impl(file, false, "arden-bench")?;
+    let run_result = (|| -> Result<Vec<f64>, PerfCommandError> {
         let mut samples_ms = Vec::with_capacity(iterations);
         for _ in 0..iterations {
             let start = Instant::now();
-            run_binary(&exe_path, &args)?;
+            run_binary_impl(&exe_path, &args)?;
             samples_ms.push(start.elapsed().as_secs_f64() * 1000.0);
         }
         Ok(samples_ms)
@@ -149,12 +206,16 @@ pub(crate) fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(),
 }
 
 pub(crate) fn profile_target(file: Option<&Path>) -> Result<(), String> {
+    profile_target_impl(file).map_err(Into::into)
+}
+
+fn profile_target_impl(file: Option<&Path>) -> Result<(), PerfCommandError> {
     let build_started = Instant::now();
-    let (exe_path, cleanup_path, args) = prepare_perf_binary(file, false, "arden-profile")?;
+    let (exe_path, cleanup_path, args) = prepare_perf_binary_impl(file, false, "arden-profile")?;
     let build_elapsed = build_started.elapsed();
-    let run_result = (|| -> Result<std::time::Duration, String> {
+    let run_result = (|| -> Result<std::time::Duration, PerfCommandError> {
         let run_started = Instant::now();
-        run_binary(&exe_path, &args)?;
+        run_binary_impl(&exe_path, &args)?;
         Ok(run_started.elapsed())
     })();
     if let Some(cleanup_path) = cleanup_path {
