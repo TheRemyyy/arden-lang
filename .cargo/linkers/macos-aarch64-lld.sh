@@ -10,10 +10,16 @@ if [[ -z "$sdk_version" ]]; then
   sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
 fi
 
-linker_bin="$(command -v ld64.lld || command -v ld.lld || command -v lld)"
+linker_bin="$(command -v ld64.lld || command -v lld || true)"
 if [[ -z "$linker_bin" ]]; then
-  printf '%s\n' "error: ld64.lld not found in PATH" >&2
+  printf '%s\n' "error: neither ld64.lld nor lld found in PATH" >&2
   exit 1
+fi
+
+linker_prefix=()
+linker_version_output="$("$linker_bin" --version 2>&1 || true)"
+if [[ "$linker_version_output" == *"generic driver"* ]]; then
+  linker_prefix=("-flavor" "darwin")
 fi
 
 append_driver_payload() {
@@ -61,4 +67,4 @@ for arg in "$@"; do
 done
 forwarded_args+=("-lSystem")
 
-exec "$linker_bin" "${forwarded_args[@]}"
+exec "$linker_bin" "${linker_prefix[@]}" "${forwarded_args[@]}"
