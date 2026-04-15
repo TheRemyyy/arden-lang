@@ -41,7 +41,6 @@ benchmark/benchmark_runner/__pycache__/
 # Web
 web/node_modules
 web/dist
-web/package-lock.json
 
 # IDE
 .idea/

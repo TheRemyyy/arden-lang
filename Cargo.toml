@@ -10,7 +10,7 @@ description = "Arden systems programming language compiler"
 inkwell = { git = "https://github.com/TheDan64/inkwell.git", rev = "832a4487ee4010a957f5143c7d92242d2ffa22a5", default-features = false, features = ["llvm22-1", "target-x86"] }
 
 # Lexer
-logos = "0.15"
+logos = "0.16"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -20,12 +20,12 @@ colored = "3"
 enable-ansi-support = "0.2"
 
 # Project configuration
-toml = "0.8"
+toml = "1.1"
 serde = { version = "1.0", features = ["derive"] }
-bincode = "1.3"
+bincode = "3.0"
 rayon = "1.10"
 tower-lsp = { version = "0.20.0", features = ["proposed"] }
-tokio = { version = "1.49.0", features = ["full"] }
+tokio = { version = "1.52.0", features = ["full"] }
 twox-hash = "2.1"
 
 [profile.release]
