@@ -1,5 +1,39 @@
+use std::fmt;
 use std::fs;
 use std::path::Path;
+
+#[derive(Debug)]
+enum BindgenError {
+    HeaderValidation(String),
+    HeaderRead(String),
+    OutputPathValidation(String),
+    OutputDirCreate(String),
+    OutputWrite(String),
+}
+
+impl fmt::Display for BindgenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::HeaderValidation(message)
+            | Self::HeaderRead(message)
+            | Self::OutputPathValidation(message)
+            | Self::OutputDirCreate(message)
+            | Self::OutputWrite(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<BindgenError> for String {
+    fn from(value: BindgenError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for BindgenError {
+    fn from(value: String) -> Self {
+        Self::OutputWrite(value)
+    }
+}
 
 pub(crate) fn strip_comments(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -255,25 +289,29 @@ pub(crate) fn generate_from_prototype(proto: &str) -> Option<String> {
 }
 
 pub fn generate_bindings(header: &Path, output: Option<&Path>) -> Result<usize, String> {
+    generate_bindings_impl(header, output).map_err(Into::into)
+}
+
+fn generate_bindings_impl(header: &Path, output: Option<&Path>) -> Result<usize, BindgenError> {
     if !header.exists() {
-        return Err(format!(
+        return Err(BindgenError::HeaderValidation(format!(
             "Header '{}' does not exist",
             crate::format_cli_path(header)
-        ));
+        )));
     }
     if !header.is_file() {
-        return Err(format!(
+        return Err(BindgenError::HeaderValidation(format!(
             "Header '{}' is not a file",
             crate::format_cli_path(header)
-        ));
+        )));
     }
 
     let raw = fs::read_to_string(header).map_err(|e| {
-        format!(
+        BindgenError::HeaderRead(format!(
             "Failed to read header '{}': {}",
             crate::format_cli_path(header),
             e
-        )
+        ))
     })?;
     let stripped = strip_comments(&raw);
 
@@ -293,28 +331,28 @@ pub fn generate_bindings(header: &Path, output: Option<&Path>) -> Result<usize, 
     let out_text = lines.join("\n") + "\n";
     if let Some(path) = output {
         if path.exists() && path.is_dir() {
-            return Err(format!(
+            return Err(BindgenError::OutputPathValidation(format!(
                 "Bindgen output path '{}' is a directory; expected a file path",
                 crate::format_cli_path(path)
-            ));
+            )));
         }
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
                 fs::create_dir_all(parent).map_err(|e| {
-                    format!(
+                    BindgenError::OutputDirCreate(format!(
                         "Failed to create bindgen output directory '{}': {}",
                         crate::format_cli_path(parent),
                         e
-                    )
+                    ))
                 })?;
             }
         }
         fs::write(path, out_text).map_err(|e| {
-            format!(
+            BindgenError::OutputWrite(format!(
                 "Failed to write output '{}': {}",
                 crate::format_cli_path(path),
                 e
-            )
+            ))
         })?;
     } else {
         print!("{}", out_text);

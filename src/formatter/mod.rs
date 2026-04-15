@@ -5,9 +5,34 @@ use crate::ast::{
 };
 use crate::lexer;
 use crate::parser::Parser;
+use std::fmt;
 use std::sync::Arc;
 
+#[derive(Debug)]
+enum FormatterError {
+    Lex(String),
+    Parse(String),
+}
+
+impl fmt::Display for FormatterError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Lex(message) | Self::Parse(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<FormatterError> for String {
+    fn from(value: FormatterError) -> Self {
+        value.to_string()
+    }
+}
+
 pub fn format_source(source: &str) -> Result<String, String> {
+    format_source_impl(source).map_err(Into::into)
+}
+
+fn format_source_impl(source: &str) -> Result<String, FormatterError> {
     let shebang = source
         .lines()
         .next()
@@ -15,11 +40,12 @@ pub fn format_source(source: &str) -> Result<String, String> {
         .map(ToString::to_string);
     let package_offset = find_package_offset(source);
 
-    let tokens = lexer::tokenize(source).map_err(|e| format!("Lexer error: {}", e))?;
+    let tokens =
+        lexer::tokenize(source).map_err(|e| FormatterError::Lex(format!("Lexer error: {}", e)))?;
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()
-        .map_err(|e| format!("Parse error: {}", e.message))?;
+        .map_err(|e| FormatterError::Parse(format!("Parse error: {}", e.message)))?;
 
     let mut formatter = Formatter::with_comments(
         collect_comments(source),

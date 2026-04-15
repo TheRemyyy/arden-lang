@@ -10,6 +10,36 @@
 
 use crate::ast::{Attribute, Decl, FunctionDecl, Program, Type};
 use colored::*;
+use std::fmt;
+
+#[derive(Debug)]
+enum TestRunnerValidationError {
+    InvalidSignature(String),
+    DuplicateHook(String),
+    InvalidIgnoreUsage(String),
+}
+
+impl fmt::Display for TestRunnerValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidSignature(message)
+            | Self::DuplicateHook(message)
+            | Self::InvalidIgnoreUsage(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<TestRunnerValidationError> for String {
+    fn from(value: TestRunnerValidationError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for TestRunnerValidationError {
+    fn from(value: String) -> Self {
+        Self::InvalidSignature(value)
+    }
+}
 
 /// Represents a discovered test
 #[derive(Debug, Clone)]
@@ -42,52 +72,58 @@ fn validate_suite_function_signature(
     func: &FunctionDecl,
     qualified_name: &str,
     role: &str,
-) -> Result<(), String> {
+) -> Result<(), TestRunnerValidationError> {
     if func.is_extern {
-        return Err(format!(
+        return Err(TestRunnerValidationError::InvalidSignature(format!(
             "{} function '{}' cannot be extern",
             role, qualified_name
-        ));
+        )));
     }
     if func.is_async {
-        return Err(format!(
+        return Err(TestRunnerValidationError::InvalidSignature(format!(
             "{} function '{}' cannot be async; test runner executes hooks/tests synchronously",
             role, qualified_name
-        ));
+        )));
     }
     if !func.params.is_empty() {
-        return Err(format!(
+        return Err(TestRunnerValidationError::InvalidSignature(format!(
             "{} function '{}' cannot declare parameters",
             role, qualified_name
-        ));
+        )));
     }
     if !func.generic_params.is_empty() {
-        return Err(format!(
+        return Err(TestRunnerValidationError::InvalidSignature(format!(
             "{} function '{}' cannot declare generic parameters",
             role, qualified_name
-        ));
+        )));
     }
     if func.return_type != Type::None {
-        return Err(format!(
+        return Err(TestRunnerValidationError::InvalidSignature(format!(
             "{} function '{}' must return None",
             role, qualified_name
-        ));
+        )));
     }
     Ok(())
 }
 
 pub fn validate_test_runner_attributes(program: &Program) -> Result<(), String> {
+    validate_test_runner_attributes_impl(program).map_err(Into::into)
+}
+
+fn validate_test_runner_attributes_impl(
+    program: &Program,
+) -> Result<(), TestRunnerValidationError> {
     fn check_duplicate_hook(
         existing: &mut Option<String>,
         suite_name: &str,
         role: &str,
         qualified_name: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), TestRunnerValidationError> {
         if let Some(previous) = existing.replace(qualified_name.to_string()) {
-            return Err(format!(
+            return Err(TestRunnerValidationError::DuplicateHook(format!(
                 "Multiple {} hooks in suite '{}': '{}' and '{}'",
                 role, suite_name, previous, qualified_name
-            ));
+            )));
         }
         Ok(())
     }
@@ -96,7 +132,7 @@ pub fn validate_test_runner_attributes(program: &Program) -> Result<(), String> 
         declarations: &[crate::ast::Spanned<Decl>],
         suite_name: &str,
         prefix: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<(), TestRunnerValidationError> {
         let mut before_all: Option<String> = None;
         let mut before_each: Option<String> = None;
         let mut after_each: Option<String> = None;
@@ -152,7 +188,10 @@ pub fn validate_test_runner_attributes(program: &Program) -> Result<(), String> 
                     if has_ignore_attribute(&func.attributes)
                         && !has_attribute(&func.attributes, Attribute::Test)
                     {
-                        return Err(format!("@Ignore on '{}' requires @Test", qualified_name));
+                        return Err(TestRunnerValidationError::InvalidIgnoreUsage(format!(
+                            "@Ignore on '{}' requires @Test",
+                            qualified_name
+                        )));
                     }
                 }
                 Decl::Module(module) => {

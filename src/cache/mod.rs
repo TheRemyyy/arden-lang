@@ -21,11 +21,16 @@ use std::time::UNIX_EPOCH;
 use twox_hash::XxHash64;
 #[derive(Debug)]
 enum CacheCommandError {
+    CacheBlobRead(String),
+    CacheBlobSerialize(String),
+    CacheBlobWrite(String),
     OutputParentDirCreate(String),
     ProjectFingerprintSourceRead(String),
     BuildCacheDirCreate(String),
+    BuildCacheRead(String),
     BuildCacheWrite(String),
     SemanticCacheDirCreate(String),
+    SemanticCacheRead(String),
     SemanticCacheWrite(String),
     FileMetadataRead(String),
     FileModifiedRead(String),
@@ -44,11 +49,16 @@ enum CacheCommandError {
 impl fmt::Display for CacheCommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::OutputParentDirCreate(message)
+            Self::CacheBlobRead(message)
+            | Self::CacheBlobSerialize(message)
+            | Self::CacheBlobWrite(message)
+            | Self::OutputParentDirCreate(message)
             | Self::ProjectFingerprintSourceRead(message)
             | Self::BuildCacheDirCreate(message)
+            | Self::BuildCacheRead(message)
             | Self::BuildCacheWrite(message)
             | Self::SemanticCacheDirCreate(message)
+            | Self::SemanticCacheRead(message)
             | Self::SemanticCacheWrite(message)
             | Self::FileMetadataRead(message)
             | Self::FileModifiedRead(message)
@@ -103,17 +113,24 @@ fn hash_compiler_identity(hasher: &mut impl Hasher) {
 }
 
 pub(crate) fn read_cache_blob_raw(path: &Path, label: &str) -> Result<Option<Vec<u8>>, String> {
+    read_cache_blob_raw_impl(path, label).map_err(Into::into)
+}
+
+fn read_cache_blob_raw_impl(
+    path: &Path,
+    label: &str,
+) -> Result<Option<Vec<u8>>, CacheCommandError> {
     let raw = match fs::read(path) {
         Ok(raw) => raw,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => {
-            return Err(format!(
+            return Err(CacheCommandError::CacheBlobRead(format!(
                 "{}: Failed to read {} '{}': {}",
                 "error".red().bold(),
                 label,
                 crate::format_cli_path(path),
                 error
-            ));
+            )));
         }
     };
     Ok(Some(raw))
@@ -123,7 +140,15 @@ pub(crate) fn read_cache_blob<T: DeserializeOwned>(
     path: &Path,
     label: &str,
 ) -> Result<Option<T>, String> {
-    let Some(raw) = read_cache_blob_raw(path, label)? else {
+    read_cache_blob_impl(path, label).map_err(Into::into)
+}
+
+fn read_cache_blob_impl<T: DeserializeOwned>(
+    path: &Path,
+    label: &str,
+) -> Result<Option<T>, CacheCommandError> {
+    let Some(raw) = read_cache_blob_raw(path, label).map_err(CacheCommandError::CacheBlobRead)?
+    else {
         return Ok(None);
     };
     let value = match bincode::deserialize(&raw) {
@@ -147,8 +172,17 @@ pub(crate) fn read_cache_blob_with_timing<T: DeserializeOwned>(
     label: &str,
     totals: &CacheIoTimingTotals,
 ) -> Result<Option<T>, String> {
+    read_cache_blob_with_timing_impl(path, label, totals).map_err(Into::into)
+}
+
+fn read_cache_blob_with_timing_impl<T: DeserializeOwned>(
+    path: &Path,
+    label: &str,
+    totals: &CacheIoTimingTotals,
+) -> Result<Option<T>, CacheCommandError> {
     let started_at = Instant::now();
-    let Some(raw) = read_cache_blob_raw(path, label)? else {
+    let Some(raw) = read_cache_blob_raw(path, label).map_err(CacheCommandError::CacheBlobRead)?
+    else {
         totals
             .load_ns
             .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
@@ -186,23 +220,31 @@ pub(crate) fn write_cache_blob<T: Serialize>(
     label: &str,
     value: &T,
 ) -> Result<(), String> {
+    write_cache_blob_impl(path, label, value).map_err(Into::into)
+}
+
+fn write_cache_blob_impl<T: Serialize>(
+    path: &Path,
+    label: &str,
+    value: &T,
+) -> Result<(), CacheCommandError> {
     let bytes = bincode::serialize(value).map_err(|e| {
-        format!(
+        CacheCommandError::CacheBlobSerialize(format!(
             "{}: Failed to serialize {} '{}': {}",
             "error".red().bold(),
             label,
             crate::format_cli_path(path),
             e
-        )
+        ))
     })?;
     fs::write(path, bytes).map_err(|e| {
-        format!(
+        CacheCommandError::CacheBlobWrite(format!(
             "{}: Failed to write {} '{}': {}",
             "error".red().bold(),
             label,
             crate::format_cli_path(path),
             e
-        )
+        ))
     })
 }
 
@@ -212,25 +254,34 @@ pub(crate) fn write_cache_blob_with_timing<T: Serialize>(
     value: &T,
     totals: &CacheIoTimingTotals,
 ) -> Result<(), String> {
+    write_cache_blob_with_timing_impl(path, label, value, totals).map_err(Into::into)
+}
+
+fn write_cache_blob_with_timing_impl<T: Serialize>(
+    path: &Path,
+    label: &str,
+    value: &T,
+    totals: &CacheIoTimingTotals,
+) -> Result<(), CacheCommandError> {
     let bytes = bincode::serialize(value).map_err(|e| {
-        format!(
+        CacheCommandError::CacheBlobSerialize(format!(
             "{}: Failed to serialize {} '{}': {}",
             "error".red().bold(),
             label,
             crate::format_cli_path(path),
             e
-        )
+        ))
     })?;
     let byte_len = bytes.len() as u64;
     let started_at = Instant::now();
     fs::write(path, bytes).map_err(|e| {
-        format!(
+        CacheCommandError::CacheBlobWrite(format!(
             "{}: Failed to write {} '{}': {}",
             "error".red().bold(),
             label,
             crate::format_cli_path(path),
             e
-        )
+        ))
     })?;
     totals
         .save_ns
@@ -319,18 +370,22 @@ fn compute_project_fingerprint_impl(
 }
 
 pub(crate) fn load_cached_fingerprint(project_root: &Path) -> Result<Option<String>, String> {
+    load_cached_fingerprint_impl(project_root).map_err(Into::into)
+}
+
+fn load_cached_fingerprint_impl(project_root: &Path) -> Result<Option<String>, CacheCommandError> {
     let cache_file = project_cache_file(project_root);
     if !cache_file.exists() {
         return Ok(None);
     }
 
     let fingerprint = fs::read_to_string(&cache_file).map_err(|e| {
-        format!(
+        CacheCommandError::BuildCacheRead(format!(
             "{}: Failed to read build cache '{}': {}",
             "error".red().bold(),
             crate::format_cli_path(&cache_file),
             e
-        )
+        ))
     })?;
     let fingerprint = fingerprint.trim().to_string();
     if fingerprint.is_empty() {
@@ -342,18 +397,24 @@ pub(crate) fn load_cached_fingerprint(project_root: &Path) -> Result<Option<Stri
 pub(crate) fn load_semantic_cached_fingerprint(
     project_root: &Path,
 ) -> Result<Option<String>, String> {
+    load_semantic_cached_fingerprint_impl(project_root).map_err(Into::into)
+}
+
+fn load_semantic_cached_fingerprint_impl(
+    project_root: &Path,
+) -> Result<Option<String>, CacheCommandError> {
     let cache_file = semantic_project_cache_file(project_root);
     if !cache_file.exists() {
         return Ok(None);
     }
 
     let fingerprint = fs::read_to_string(&cache_file).map_err(|e| {
-        format!(
+        CacheCommandError::SemanticCacheRead(format!(
             "{}: Failed to read semantic build cache '{}': {}",
             "error".red().bold(),
             crate::format_cli_path(&cache_file),
             e
-        )
+        ))
     })?;
     let fingerprint = fingerprint.trim().to_string();
     if fingerprint.is_empty() {

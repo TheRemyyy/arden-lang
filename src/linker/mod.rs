@@ -1,5 +1,3 @@
-#[cfg(any(windows, target_os = "macos"))]
-use crate::cli::output::format_cli_path;
 use crate::project::OutputKind;
 use crate::shared::process_exit::command_failure_details;
 use colored::*;

@@ -12,7 +12,8 @@ use std::path::Path;
 enum CheckCommandError {
     ProjectBuild(String),
     SourcePathValidation(String),
-    ProjectDiscovery(String),
+    CurrentDirRead(String),
+    ProjectRootMissing(String),
     ProjectConfigLoad(String),
     ProjectConfigValidate(String),
     SourceRead(String),
@@ -25,7 +26,8 @@ impl fmt::Display for CheckCommandError {
         match self {
             Self::ProjectBuild(message)
             | Self::SourcePathValidation(message)
-            | Self::ProjectDiscovery(message)
+            | Self::CurrentDirRead(message)
+            | Self::ProjectRootMissing(message)
             | Self::ProjectConfigLoad(message)
             | Self::ProjectConfigValidate(message)
             | Self::SourceRead(message)
@@ -53,7 +55,7 @@ pub(crate) fn check_command(file: Option<&Path>, show_timings: bool) -> Result<(
 
 fn check_command_impl(file: Option<&Path>, show_timings: bool) -> Result<(), CheckCommandError> {
     if file.is_none()
-        && find_project_root(&current_dir_checked().map_err(CheckCommandError::ProjectDiscovery)?)
+        && find_project_root(&current_dir_checked().map_err(CheckCommandError::CurrentDirRead)?)
             .is_some()
     {
         return build_project(false, false, true, true, show_timings)
@@ -72,9 +74,9 @@ fn check_file_impl(file: Option<&Path>) -> Result<(), CheckCommandError> {
         validate_source_file_path(file).map_err(CheckCommandError::SourcePathValidation)?;
         file.to_path_buf()
     } else {
-        let cwd = current_dir_checked().map_err(CheckCommandError::ProjectDiscovery)?;
+        let cwd = current_dir_checked().map_err(CheckCommandError::CurrentDirRead)?;
         let project_root = find_project_root(&cwd).ok_or_else(|| {
-            CheckCommandError::ProjectDiscovery(format!(
+            CheckCommandError::ProjectRootMissing(format!(
                 "{}: No arden.toml found from current directory '{}'. Specify a file or run from a project directory.",
                 "error".red().bold(),
                 format_cli_path(&cwd)

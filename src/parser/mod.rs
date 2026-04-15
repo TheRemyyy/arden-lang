@@ -2719,6 +2719,13 @@ impl<'src> Parser<'src> {
                     self.advance();
                     group_depth += 1;
                 }
+                // Ensure progress even for malformed/unbalanced groups.
+                // Without this, an unmatched leading '(' can recurse into parse_expr()
+                // at the same token position and overflow the stack.
+                if group_depth == 0 {
+                    self.eat(&Token::LParen)?;
+                    group_depth = 1;
+                }
                 let expr = self.parse_expr()?;
                 for _ in 0..group_depth {
                     self.eat(&Token::RParen)?;

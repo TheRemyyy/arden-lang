@@ -2,6 +2,64 @@ use crate::ast::{Decl, Expr, ImportDecl, Parameter, Program, Span, Stmt, Type};
 use crate::lexer;
 use crate::parser::Parser;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::fmt;
+
+#[derive(Debug)]
+enum LintCommandError {
+    Lex(String),
+    Parse(String),
+}
+
+impl fmt::Display for LintCommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Lex(message) | Self::Parse(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<LintCommandError> for String {
+    fn from(value: LintCommandError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for LintCommandError {
+    fn from(value: String) -> Self {
+        Self::Parse(value)
+    }
+}
+
+pub fn lint_source(source: &str, apply_fixes: bool) -> Result<LintResult, String> {
+    lint_source_impl(source, apply_fixes).map_err(Into::into)
+}
+
+fn lint_source_impl(source: &str, apply_fixes: bool) -> Result<LintResult, LintCommandError> {
+    let tokens = lexer::tokenize(source)
+        .map_err(|e| LintCommandError::Lex(format!("Lexer error: {}", e)))?;
+    let mut parser = Parser::new(tokens);
+    let program = parser
+        .parse_program()
+        .map_err(|e| LintCommandError::Parse(format!("Parse error: {}", e.message)))?;
+
+    let mut findings = Vec::new();
+    findings.extend(check_duplicate_imports(&program));
+    findings.extend(check_import_sorting(&program));
+    findings.extend(check_unused_specific_imports(&program));
+    findings.extend(check_unused_variables(&program));
+    findings.extend(check_shadowed_variables(&program));
+
+    let fixed_source = if apply_fixes {
+        Some(apply_safe_import_fixes(source, &program))
+    } else {
+        None
+    };
+
+    Ok(LintResult {
+        findings,
+        fixed_source,
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LintLevel {
@@ -36,32 +94,6 @@ impl LintFinding {
 pub struct LintResult {
     pub findings: Vec<LintFinding>,
     pub fixed_source: Option<String>,
-}
-
-pub fn lint_source(source: &str, apply_fixes: bool) -> Result<LintResult, String> {
-    let tokens = lexer::tokenize(source).map_err(|e| format!("Lexer error: {}", e))?;
-    let mut parser = Parser::new(tokens);
-    let program = parser
-        .parse_program()
-        .map_err(|e| format!("Parse error: {}", e.message))?;
-
-    let mut findings = Vec::new();
-    findings.extend(check_duplicate_imports(&program));
-    findings.extend(check_import_sorting(&program));
-    findings.extend(check_unused_specific_imports(&program));
-    findings.extend(check_unused_variables(&program));
-    findings.extend(check_shadowed_variables(&program));
-
-    let fixed_source = if apply_fixes {
-        Some(apply_safe_import_fixes(source, &program))
-    } else {
-        None
-    };
-
-    Ok(LintResult {
-        findings,
-        fixed_source,
-    })
 }
 
 fn check_duplicate_imports(program: &Program) -> Vec<LintFinding> {

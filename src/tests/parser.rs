@@ -271,6 +271,22 @@ fn test_rejects_test_with_lifecycle_attribute() {
 }
 
 #[test]
+fn parse_unbalanced_deep_parenthesized_expression_returns_error_instead_of_recursing() {
+    let mut source = String::from("function main(): None { ");
+    source.push_str(&"( ".repeat(512));
+    source.push('1');
+    source.push_str(&" )".repeat(511));
+    source.push_str("; return None; }");
+
+    let err = parse_source(&source).must_err("unbalanced deep parens should fail parse");
+    assert!(
+        err.message.contains("Expected `)`"),
+        "unexpected parser error: {}",
+        err.message
+    );
+}
+
+#[test]
 fn test_rejects_multiple_lifecycle_attributes() {
     let source = r#"
         @Before
