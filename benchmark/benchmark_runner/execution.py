@@ -17,6 +17,7 @@ from .mutations import (
     apply_mixed_invalidation_changes,
 )
 from .project_small import (
+    generate_compile_project_tiny_graph,
     generate_compile_project_starter_graph,
     generate_incremental_rebuild_api_surface_cascade,
     generate_incremental_rebuild_large_project_batch,
@@ -127,6 +128,8 @@ def run_compile_benchmark(spec, root: Path, build_env: dict[str, str], arden_tim
 
     if "mega_graph" in base_name or "extreme_graph" in base_name:
         compile_projects = generate_compile_project_synthetic_graph(root, base_name, select_synthetic_graph_config(base_name))
+    elif "tiny_graph" in base_name:
+        compile_projects = generate_compile_project_tiny_graph(root, base_name)
     else:
         compile_projects = generate_compile_project_starter_graph(root, base_name)
     compile_jobs = make_compile_jobs(root, compile_projects, build_env, arden_timings)

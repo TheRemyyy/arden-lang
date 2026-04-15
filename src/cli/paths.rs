@@ -9,9 +9,14 @@ use std::time::UNIX_EPOCH;
 #[derive(Debug)]
 enum CliPathError {
     CurrentDirRead(String),
+    CurrentDirChange(String),
+    ScopedAction(String),
     AncestorInspect(String),
     ParentResolve(String),
     PathResolve(String),
+    DirectoryRead(String),
+    DirectoryEntryRead(String),
+    DirectoryEntryInspect(String),
     TempBinaryName(String),
 }
 
@@ -19,9 +24,14 @@ impl fmt::Display for CliPathError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CurrentDirRead(message)
+            | Self::CurrentDirChange(message)
+            | Self::ScopedAction(message)
             | Self::AncestorInspect(message)
             | Self::ParentResolve(message)
             | Self::PathResolve(message)
+            | Self::DirectoryRead(message)
+            | Self::DirectoryEntryRead(message)
+            | Self::DirectoryEntryInspect(message)
             | Self::TempBinaryName(message) => write!(f, "{message}"),
         }
     }
@@ -95,9 +105,16 @@ pub(crate) fn with_process_current_dir<T>(
     dir: &Path,
     f: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
+    with_process_current_dir_impl(dir, f).map_err(Into::into)
+}
+
+fn with_process_current_dir_impl<T>(
+    dir: &Path,
+    f: impl FnOnce() -> Result<T, String>,
+) -> Result<T, CliPathError> {
     CURRENT_DIR_LOCK_DEPTH.with(|depth| {
         if depth.get() > 0 {
-            return with_process_current_dir_locked(dir, f);
+            return with_process_current_dir_locked_impl(dir, f);
         }
 
         let _lock = process_current_dir_lock()
@@ -105,25 +122,25 @@ pub(crate) fn with_process_current_dir<T>(
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         depth.set(depth.get() + 1);
         let _guard = DirLockDepthGuard;
-        with_process_current_dir_locked(dir, f)
+        with_process_current_dir_locked_impl(dir, f)
     })
 }
 
-fn with_process_current_dir_locked<T>(
+fn with_process_current_dir_locked_impl<T>(
     dir: &Path,
     f: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
-    let previous = capture_working_dir()?;
+) -> Result<T, CliPathError> {
+    let previous = capture_working_dir().map_err(CliPathError::PathResolve)?;
     std::env::set_current_dir(dir).map_err(|e| {
-        format!(
+        CliPathError::CurrentDirChange(format!(
             "{}: Failed to change current directory to '{}': {}",
             "error".red().bold(),
             format_cli_path(dir),
             e
-        )
+        ))
     })?;
     let _restore = CwdRestore { previous };
-    f()
+    f().map_err(CliPathError::ScopedAction)
 }
 
 pub(crate) fn current_dir_checked() -> Result<PathBuf, String> {
@@ -339,34 +356,34 @@ fn unique_temp_binary_path_impl(tag: &str, source: &Path) -> Result<PathBuf, Cli
     Ok(path)
 }
 
-fn collect_arden_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+fn collect_arden_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), CliPathError> {
     for entry in fs::read_dir(dir).map_err(|e| {
-        format!(
+        CliPathError::DirectoryRead(format!(
             "Failed to read directory '{}' while collecting .arden files: {}",
             format_cli_path(dir),
             e
-        )
+        ))
     })? {
         let entry = entry.map_err(|e| {
-            format!(
+            CliPathError::DirectoryEntryRead(format!(
                 "Failed to read directory entry in '{}' while collecting .arden files: {}",
                 format_cli_path(dir),
                 e
-            )
+            ))
         })?;
         let file_type = entry.file_type().map_err(|e| {
-            format!(
+            CliPathError::DirectoryEntryInspect(format!(
                 "Failed to inspect directory entry '{}' while collecting .arden files: {}",
                 format_cli_path(&entry.path()),
                 e
-            )
+            ))
         })?;
         let path = entry.path();
         if file_type.is_symlink() {
-            return Err(format!(
+            return Err(CliPathError::PathResolve(format!(
                 "Path '{}' must not contain symlink entries",
                 format_cli_path(&path)
-            ));
+            )));
         } else if file_type.is_dir() {
             collect_arden_files_recursive(&path, files)?;
         } else if file_type.is_file()

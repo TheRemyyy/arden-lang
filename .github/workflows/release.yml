@@ -22,7 +22,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             artifact_name: arden.exe
             asset_name: arden-windows-x64-portable
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             platform: linux
             target: x86_64-unknown-linux-gnu
             artifact_name: arden
@@ -137,7 +137,7 @@ jobs:
           - os: windows-latest
             platform: windows
             asset_name: arden-windows-x64-portable
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             platform: linux
             asset_name: arden-linux-x64-portable
           - os: macos-latest

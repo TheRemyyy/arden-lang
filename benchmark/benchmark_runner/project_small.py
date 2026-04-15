@@ -191,6 +191,20 @@ def generate_incremental_rebuild_large_project_batch(
     )
 
 
+def generate_compile_project_tiny_graph(
+    root: Path,
+    bench_name: str,
+) -> dict[str, dict[str, Path]]:
+    return generate_compile_project_starter_graph(
+        root,
+        bench_name,
+        mutation_profile="leaf",
+        file_count=1,
+        funcs_per_file=8,
+        mutate_count=1,
+    )
+
+
 def generate_incremental_rebuild_api_surface_cascade(
     root: Path,
     bench_name: str,

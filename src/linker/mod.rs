@@ -1,3 +1,4 @@
+#[cfg(any(windows, target_os = "macos"))]
 use crate::cli::output::format_cli_path;
 use crate::project::OutputKind;
 use crate::shared::process_exit::command_failure_details;
@@ -204,16 +205,16 @@ fn apply_stable_command_dir(command: &mut Command, anchor_path: &Path) {
     }
 }
 
-fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), String> {
+fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), LinkerCommandError> {
     let command_program = command.get_program().to_string_lossy().into_owned();
     let output = command.output().map_err(|error| {
-        format!(
+        LinkerCommandError::LinkExecution(format!(
             "{}: Failed to launch {} ('{}'): {}",
             "error".red().bold(),
             tool_label,
             command_program,
             error
-        )
+        ))
     })?;
     if output.status.success() {
         return Ok(());
@@ -222,12 +223,12 @@ fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), String
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let details = command_failure_details(output.status, &stderr, &stdout);
-    Err(format!(
+    Err(LinkerCommandError::LinkExecution(format!(
         "{}: {} failed: {}",
         "error".red().bold(),
         tool_label,
         details
-    ))
+    )))
 }
 
 #[cfg(target_os = "linux")]
@@ -244,7 +245,7 @@ struct LinuxLinkContext {
 #[cfg(target_os = "linux")]
 fn linux_target_descriptor(
     target: Option<&str>,
-) -> Result<(&'static str, &'static [&'static str]), String> {
+) -> Result<(&'static str, &'static [&'static str]), LinkerCommandError> {
     let target = target.unwrap_or(env::consts::ARCH).to_ascii_lowercase();
     if target.contains("x86_64") {
         return Ok((
@@ -266,11 +267,11 @@ fn linux_target_descriptor(
         ));
     }
 
-    Err(format!(
+    Err(LinkerCommandError::LinkerDetection(format!(
         "{}: Unsupported Linux link target '{}'. Arden currently supports direct mold linking for x86_64 and aarch64 GNU Linux targets.",
         "error".red().bold(),
         target
-    ))
+    )))
 }
 
 #[cfg(target_os = "linux")]
@@ -327,7 +328,7 @@ fn find_gcc_support_object(name: &str) -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "linux")]
-fn linux_link_context(link: &LinkConfig<'_>) -> Result<LinuxLinkContext, String> {
+fn linux_link_context(link: &LinkConfig<'_>) -> Result<LinuxLinkContext, LinkerCommandError> {
     let (triple, dynamic_linker_candidates) = linux_target_descriptor(link.target)?;
     let arch_lib_dirs = collect_existing_dirs(&[
         PathBuf::from(format!("/usr/lib/{triple}")),
@@ -346,11 +347,11 @@ fn linux_link_context(link: &LinkConfig<'_>) -> Result<LinuxLinkContext, String>
             .collect::<Vec<_>>(),
     )
     .ok_or_else(|| {
-        format!(
+        LinkerCommandError::LinkerDetection(format!(
             "{}: Failed to locate the Linux dynamic loader for target '{}'.",
             "error".red().bold(),
             triple
-        )
+        ))
     })?;
 
     let crti = first_existing_path(
@@ -360,11 +361,11 @@ fn linux_link_context(link: &LinkConfig<'_>) -> Result<LinuxLinkContext, String>
             .collect::<Vec<_>>(),
     )
     .ok_or_else(|| {
-        format!(
+        LinkerCommandError::LinkerDetection(format!(
             "{}: Failed to locate crti.o for target '{}'.",
             "error".red().bold(),
             triple
-        )
+        ))
     })?;
     let crtn = first_existing_path(
         &arch_lib_dirs
@@ -373,11 +374,11 @@ fn linux_link_context(link: &LinkConfig<'_>) -> Result<LinuxLinkContext, String>
             .collect::<Vec<_>>(),
     )
     .ok_or_else(|| {
-        format!(
+        LinkerCommandError::LinkerDetection(format!(
             "{}: Failed to locate crtn.o for target '{}'.",
             "error".red().bold(),
             triple
-        )
+        ))
     })?;
 
     let crt1 = if link.output_kind == OutputKind::Bin {
@@ -446,14 +447,14 @@ fn link_with_mold(
     objects: &[PathBuf],
     output_path: &Path,
     link: &LinkConfig<'_>,
-) -> Result<(), String> {
+) -> Result<(), LinkerCommandError> {
     let linker_path = find_tool_in_path("mold")
         .or_else(|| find_tool_in_path("ld.mold"))
         .ok_or_else(|| {
-            format!(
+            LinkerCommandError::LinkerDetection(format!(
                 "{}: Required linker 'mold' not found in PATH. Install mold and retry.",
                 "error".red().bold()
-            )
+            ))
         })?;
     let context = linux_link_context(link)?;
     let mut command = Command::new(linker_path);
@@ -503,7 +504,7 @@ fn link_with_mold(
 }
 
 #[cfg(target_os = "macos")]
-fn macos_target_arch(target: Option<&str>) -> Result<&'static str, String> {
+fn macos_target_arch(target: Option<&str>) -> Result<&'static str, LinkerCommandError> {
     let resolved_target = target
         .map(str::to_ascii_lowercase)
         .unwrap_or_else(|| env::consts::ARCH.to_ascii_lowercase());
@@ -514,15 +515,15 @@ fn macos_target_arch(target: Option<&str>) -> Result<&'static str, String> {
         return Ok("x86_64");
     }
 
-    Err(format!(
+    Err(LinkerCommandError::LinkerDetection(format!(
         "{}: Unsupported macOS link target '{}'. Arden currently supports direct LLVM lld linking for x86_64 and arm64 macOS targets.",
         "error".red().bold(),
         resolved_target
-    ))
+    )))
 }
 
 #[cfg(target_os = "macos")]
-fn macos_sdk_root() -> Result<PathBuf, String> {
+fn macos_sdk_root() -> Result<PathBuf, LinkerCommandError> {
     if let Some(root) = env::var_os("SDKROOT").filter(|value| !value.is_empty()) {
         let path = PathBuf::from(root);
         if path.is_dir() {
@@ -535,37 +536,37 @@ fn macos_sdk_root() -> Result<PathBuf, String> {
     command.arg("--sdk").arg("macosx").arg("--show-sdk-path");
     apply_fallback_current_dir(&mut command);
     let output = command.output().map_err(|error| {
-        format!(
+        LinkerCommandError::LinkExecution(format!(
             "{}: Failed to launch xcrun '{}' to resolve the macOS SDK path: {}",
             "error".red().bold(),
             format_cli_path(&xcrun_path),
             error
-        )
+        ))
     })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         let details = command_failure_details(output.status, &stderr, &stdout);
-        return Err(format!(
+        return Err(LinkerCommandError::LinkExecution(format!(
             "{}: Failed to resolve macOS SDK path with xcrun: {}",
             "error".red().bold(),
             details
-        ));
+        )));
     }
 
     let sdk_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if sdk_path.is_empty() {
-        return Err(format!(
+        return Err(LinkerCommandError::LinkExecution(format!(
             "{}: xcrun did not return a usable macOS SDK path.",
             "error".red().bold()
-        ));
+        )));
     }
 
     Ok(PathBuf::from(sdk_path))
 }
 
 #[cfg(target_os = "macos")]
-fn macos_sdk_version() -> Result<String, String> {
+fn macos_sdk_version() -> Result<String, LinkerCommandError> {
     if let Some(version) = env::var_os("MACOSX_DEPLOYMENT_TARGET").filter(|value| !value.is_empty())
     {
         return Ok(version.to_string_lossy().into_owned());
@@ -576,30 +577,30 @@ fn macos_sdk_version() -> Result<String, String> {
     command.arg("--sdk").arg("macosx").arg("--show-sdk-version");
     apply_fallback_current_dir(&mut command);
     let output = command.output().map_err(|error| {
-        format!(
+        LinkerCommandError::LinkExecution(format!(
             "{}: Failed to launch xcrun '{}' to resolve the macOS SDK version: {}",
             "error".red().bold(),
             format_cli_path(&xcrun_path),
             error
-        )
+        ))
     })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         let details = command_failure_details(output.status, &stderr, &stdout);
-        return Err(format!(
+        return Err(LinkerCommandError::LinkExecution(format!(
             "{}: Failed to resolve the macOS SDK version with xcrun: {}",
             "error".red().bold(),
             details
-        ));
+        )));
     }
 
     let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if version.is_empty() {
-        return Err(format!(
+        return Err(LinkerCommandError::LinkExecution(format!(
             "{}: xcrun did not return a usable macOS SDK version.",
             "error".red().bold()
-        ));
+        )));
     }
 
     Ok(version)
@@ -612,7 +613,7 @@ pub(crate) fn escape_response_file_arg(arg: &str) -> String {
 }
 
 #[cfg(target_os = "macos")]
-fn write_link_response_file(path: &Path, args: &[String]) -> Result<(), String> {
+fn write_link_response_file(path: &Path, args: &[String]) -> Result<(), LinkerCommandError> {
     let mut contents = String::new();
     for arg in args {
         contents.push_str(&escape_response_file_arg(arg));
@@ -620,24 +621,24 @@ fn write_link_response_file(path: &Path, args: &[String]) -> Result<(), String> 
     }
 
     fs::write(path, contents).map_err(|error| {
-        format!(
+        LinkerCommandError::LinkExecution(format!(
             "{}: Failed to write link response file '{}': {}",
             "error".red().bold(),
             format_cli_path(path),
             error
-        )
+        ))
     })
 }
 
 #[cfg(target_os = "macos")]
-fn path_to_response_arg(path: &Path, context: &str) -> Result<String, String> {
+fn path_to_response_arg(path: &Path, context: &str) -> Result<String, LinkerCommandError> {
     path.to_str().map(str::to_owned).ok_or_else(|| {
-        format!(
+        LinkerCommandError::LinkExecution(format!(
             "{}: {} contains non-UTF-8 path '{}', which cannot be encoded into a linker response file",
             "error".red().bold(),
             context,
             format_cli_path(path)
-        )
+        ))
     })
 }
 
@@ -730,12 +731,12 @@ fn link_with_lld_link(
     objects: &[PathBuf],
     output_path: &Path,
     link: &LinkConfig<'_>,
-) -> Result<(), String> {
+) -> Result<(), LinkerCommandError> {
     let linker_path = find_tool_in_path("lld-link").ok_or_else(|| {
-        format!(
+        LinkerCommandError::LinkerDetection(format!(
             "{}: Required LLVM linker 'lld-link' not found in PATH. Install LLVM lld and retry.",
             "error".red().bold()
-        )
+        ))
     })?;
     let mut command = Command::new(linker_path);
     apply_fallback_current_dir(&mut command);
@@ -801,15 +802,15 @@ fn link_with_macos_lld(
     objects: &[PathBuf],
     output_path: &Path,
     link: &LinkConfig<'_>,
-) -> Result<(), String> {
+) -> Result<(), LinkerCommandError> {
     let linker_path = find_tool_in_path("ld64.lld")
         .or_else(|| find_tool_in_path("ld.lld"))
         .or_else(|| find_tool_in_path("lld"))
         .ok_or_else(|| {
-            format!(
+            LinkerCommandError::LinkerDetection(format!(
                 "{}: Required LLVM Mach-O linker not found in PATH. Install ld64.lld and retry.",
                 "error".red().bold()
-            )
+            ))
         })?;
     let target_arch = macos_target_arch(link.target)?;
     let sdk_root = macos_sdk_root()?;
@@ -897,42 +898,20 @@ fn link_objects_impl(
             let mut command = Command::new("ar");
             command.arg("rcs").arg(output_path).args(objects);
             apply_fallback_current_dir(&mut command);
-            let output = command.output().map_err(|e| {
-                LinkerCommandError::LinkExecution(format!(
-                    "{}: Failed to run ar for static library creation '{}': {}",
-                    "error".red().bold(),
-                    format_cli_path(output_path),
-                    e
-                ))
-            })?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let details = command_failure_details(output.status, &stderr, &stdout);
-                return Err(LinkerCommandError::LinkExecution(format!(
-                    "{}: ar failed while creating static library '{}': {}",
-                    "error".red().bold(),
-                    format_cli_path(output_path),
-                    details
-                )));
-            }
-            Ok(())
+            run_link_command(command, "ar")
         }
         OutputKind::Bin | OutputKind::Shared => {
             #[cfg(target_os = "linux")]
             {
                 link_with_mold(objects, output_path, link)
-                    .map_err(LinkerCommandError::LinkExecution)
             }
             #[cfg(target_os = "macos")]
             {
                 link_with_macos_lld(objects, output_path, link)
-                    .map_err(LinkerCommandError::LinkExecution)
             }
             #[cfg(windows)]
             {
                 link_with_lld_link(objects, output_path, link)
-                    .map_err(LinkerCommandError::LinkExecution)
             }
         }
     }

@@ -122,6 +122,7 @@ Measure the full frontend-to-native-binary pipeline cost.
 
 | Benchmark | Project size |
 | :--- | :--- |
+| `compile_project_tiny_graph` | 1-file micro baseline |
 | `compile_project_starter_graph` | 10-file starter graph |
 | `compile_project_mega_graph` | 1 400-file synthetic dependency graph |
 | `compile_project_extreme_graph` | 2 200-file extreme graph (opt-in) |

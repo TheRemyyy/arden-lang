@@ -40,6 +40,12 @@ BENCHMARKS = [
         "Insertion sort on 20,000 pseudo-random integers — stresses memory access and loop overhead",
     ),
     BenchmarkSpec(
+        "compile_project_tiny_graph",
+        "Compile micro project baseline (1-file tiny graph) per language",
+        kind="compile",
+        aliases=("compile_project_tiny", "compile_project_1_file"),
+    ),
+    BenchmarkSpec(
         "compile_project_starter_graph",
         "Compile stress test on a generated starter project graph per language",
         kind="compile",

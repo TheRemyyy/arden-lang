@@ -62,41 +62,45 @@ fn validate_symbol_collisions_impl(
         "Function",
         function_collisions,
         "Project contains colliding top-level function names. Use module-qualified names or rename functions.",
-    )
-    .map_err(CollisionCheckError::Function)?;
+        CollisionCheckError::Function,
+    )?;
     report_collisions(
         "Class",
         class_collisions,
         "Project contains colliding top-level class names. Use unique class names per project.",
-    )
-    .map_err(CollisionCheckError::Class)?;
+        CollisionCheckError::Class,
+    )?;
     report_collisions(
         "Enum",
         enum_collisions,
         "Project contains colliding top-level enum names. Use unique enum names per project.",
-    )
-    .map_err(CollisionCheckError::Enum)?;
+        CollisionCheckError::Enum,
+    )?;
     report_collisions(
         "Interface",
         interface_collisions,
         "Project contains colliding top-level interface names. Use unique interface names per project.",
-    )
-    .map_err(CollisionCheckError::Interface)?;
+        CollisionCheckError::Interface,
+    )?;
     report_collisions(
         "Module",
         module_collisions,
         "Project contains colliding top-level module names. Use unique module names per project.",
-    )
-    .map_err(CollisionCheckError::Module)?;
+        CollisionCheckError::Module,
+    )?;
 
     Ok(())
 }
 
-fn report_collisions(
+fn report_collisions<F>(
     symbol_kind: &str,
     collisions: Vec<(String, String, String)>,
     error_message: &str,
-) -> Result<(), String> {
+    map_error: F,
+) -> Result<(), CollisionCheckError>
+where
+    F: FnOnce(String) -> CollisionCheckError,
+{
     if collisions.is_empty() {
         return Ok(());
     }
@@ -111,5 +115,5 @@ fn report_collisions(
             name, namespace_a, namespace_b
         );
     }
-    Err(error_message.to_string())
+    Err(map_error(error_message.to_string()))
 }
