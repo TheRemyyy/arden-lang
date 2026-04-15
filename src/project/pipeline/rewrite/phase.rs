@@ -42,7 +42,7 @@ impl From<RewritePhaseError> for String {
 
 impl From<String> for RewritePhaseError {
     fn from(value: String) -> Self {
-        Self::PhaseRun(value)
+        Self::UnitCollection(value)
     }
 }
 
@@ -78,7 +78,7 @@ fn run_rewrite_phase_impl(
     project_rewrite::reset_rewrite_timings();
     let rewrite_timing_totals = Arc::new(PipelineRewriteTimingTotals::default());
     let rewrite_fingerprint_timing_totals = Arc::new(RewriteFingerprintTimingTotals::default());
-    let rewritten_results: Vec<Result<RewrittenProjectUnit, String>> = build_timings
+    let rewritten_results: Vec<Result<RewrittenProjectUnit, RewritePhaseError>> = build_timings
         .measure("rewrite", || {
             Ok::<_, String>(
                 inputs
@@ -260,7 +260,13 @@ fn run_rewrite_phase_impl(
 
     let mut rewritten_files: Vec<RewrittenProjectUnit> = Vec::new();
     for result in rewritten_results {
-        rewritten_files.push(result.map_err(RewritePhaseError::UnitCollection)?);
+        match result {
+            Ok(unit) => rewritten_files.push(unit),
+            Err(RewritePhaseError::UnitCollection(message)) => {
+                return Err(RewritePhaseError::UnitCollection(message));
+            }
+            Err(error) => return Err(error),
+        }
     }
     rewritten_files.sort_by(|a, b| a.file.cmp(&b.file));
 

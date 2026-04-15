@@ -21,14 +21,13 @@ use std::time::Instant;
 
 #[derive(Debug)]
 enum ObjectCodegenPhaseError {
-    PhaseRun(String),
     ShardCompile(String),
 }
 
 impl fmt::Display for ObjectCodegenPhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PhaseRun(message) | Self::ShardCompile(message) => write!(f, "{message}"),
+            Self::ShardCompile(message) => write!(f, "{message}"),
         }
     }
 }
@@ -41,7 +40,7 @@ impl From<ObjectCodegenPhaseError> for String {
 
 impl From<String> for ObjectCodegenPhaseError {
     fn from(value: String) -> Self {
-        Self::PhaseRun(value)
+        Self::ShardCompile(value)
     }
 }
 
@@ -96,11 +95,11 @@ fn run_object_codegen_phase_impl(
                             .object_cache_paths_by_file
                             .get(&unit.file)
                             .ok_or_else(|| {
-                                format!(
+                                ObjectCodegenPhaseError::ShardCompile(format!(
                                     "{}: missing object cache paths for rewritten unit '{}'",
                                     cli_error("error"),
                                     format_cli_path(&unit.file)
-                                )
+                                ))
                             })?
                             .object_path
                             .clone()
@@ -219,7 +218,7 @@ fn run_object_codegen_phase_impl(
                         .cache_save_ns
                         .fetch_add(elapsed_nanos_u64(cache_save_started_at), Ordering::Relaxed);
 
-                    Ok::<Vec<(usize, PathBuf)>, String>(
+                    Ok::<Vec<(usize, PathBuf)>, ObjectCodegenPhaseError>(
                         shard
                             .member_indices
                             .iter()
@@ -227,8 +226,7 @@ fn run_object_codegen_phase_impl(
                             .collect(),
                     )
                 })
-                .collect::<Result<Vec<_>, String>>()
-                .map_err(ObjectCodegenPhaseError::ShardCompile)
+                .collect::<Result<Vec<_>, ObjectCodegenPhaseError>>()
                 .map(|results| results.into_iter().flatten().collect())
         })?;
 

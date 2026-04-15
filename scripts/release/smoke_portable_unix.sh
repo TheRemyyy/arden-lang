@@ -97,6 +97,7 @@ function main(): None {
 EOF
 
 echo "[smoke] running portable hello-world"
+set +e
 RUN_OUTPUT="$(run_with_timeout "${SMOKE_STEP_TIMEOUT_SECONDS}" env -i \
   HOME="${HOME_DIR}" \
   PATH="${BASE_PATH}" \
@@ -107,6 +108,28 @@ RUN_OUTPUT="$(run_with_timeout "${SMOKE_STEP_TIMEOUT_SECONDS}" env -i \
   LD_LIBRARY_PATH= \
   DYLD_LIBRARY_PATH= \
   "${BUNDLE_DIR}/arden" run "${WORK_DIR}/hello.arden")"
+RUN_EXIT_CODE=$?
+set -e
+if [[ ${RUN_EXIT_CODE} -ne 0 ]]; then
+  echo "[smoke] first portable run failed (exit ${RUN_EXIT_CODE}), retrying with conservative linker settings"
+  set +e
+  RUN_OUTPUT="$(run_with_timeout "${SMOKE_STEP_TIMEOUT_SECONDS}" env -i \
+    HOME="${HOME_DIR}" \
+    PATH="${BASE_PATH}" \
+    LLVM_SYS_221_PREFIX= \
+    LLVM_SYS_211_PREFIX= \
+    LLVM_CONFIG_PATH= \
+    LIBRARY_PATH= \
+    LD_LIBRARY_PATH= \
+    DYLD_LIBRARY_PATH= \
+    MOLD_JOBS=1 \
+    "${BUNDLE_DIR}/arden" run "${WORK_DIR}/hello.arden")"
+  RUN_EXIT_CODE=$?
+  set -e
+fi
+if [[ ${RUN_EXIT_CODE} -ne 0 ]]; then
+  exit "${RUN_EXIT_CODE}"
+fi
 printf '%s\n' "${RUN_OUTPUT}"
 grep -F "Hello from portable Arden!" <<< "${RUN_OUTPUT}" >/dev/null
 

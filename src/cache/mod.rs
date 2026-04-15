@@ -9,6 +9,7 @@ use colored::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::ErrorKind;
@@ -18,6 +19,59 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::time::UNIX_EPOCH;
 use twox_hash::XxHash64;
+#[derive(Debug)]
+enum CacheCommandError {
+    OutputParentDirCreate(String),
+    ProjectFingerprintSourceRead(String),
+    BuildCacheDirCreate(String),
+    BuildCacheWrite(String),
+    SemanticCacheDirCreate(String),
+    SemanticCacheWrite(String),
+    FileMetadataRead(String),
+    FileModifiedRead(String),
+    FileModifiedInvalid(String),
+    ParseCacheDirCreate(String),
+    ImportCheckCacheDirCreate(String),
+    DependencyGraphCacheDirCreate(String),
+    SemanticSummaryCacheDirCreate(String),
+    TypecheckSummaryCacheDirCreate(String),
+    RewriteCacheDirCreate(String),
+    LinkManifestCacheDirCreate(String),
+    ObjectCacheDirCreate(String),
+    ObjectShardCacheDirCreate(String),
+}
+
+impl fmt::Display for CacheCommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::OutputParentDirCreate(message)
+            | Self::ProjectFingerprintSourceRead(message)
+            | Self::BuildCacheDirCreate(message)
+            | Self::BuildCacheWrite(message)
+            | Self::SemanticCacheDirCreate(message)
+            | Self::SemanticCacheWrite(message)
+            | Self::FileMetadataRead(message)
+            | Self::FileModifiedRead(message)
+            | Self::FileModifiedInvalid(message)
+            | Self::ParseCacheDirCreate(message)
+            | Self::ImportCheckCacheDirCreate(message)
+            | Self::DependencyGraphCacheDirCreate(message)
+            | Self::SemanticSummaryCacheDirCreate(message)
+            | Self::TypecheckSummaryCacheDirCreate(message)
+            | Self::RewriteCacheDirCreate(message)
+            | Self::LinkManifestCacheDirCreate(message)
+            | Self::ObjectCacheDirCreate(message)
+            | Self::ObjectShardCacheDirCreate(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<CacheCommandError> for String {
+    fn from(value: CacheCommandError) -> Self {
+        value.to_string()
+    }
+}
+
 pub(crate) fn project_cache_file(project_root: &Path) -> PathBuf {
     project_root.join(".ardencache").join("build_fingerprint")
 }
@@ -195,6 +249,10 @@ pub(crate) fn project_build_artifact_exists(output_path: &Path, emit_llvm: bool)
 }
 
 pub(crate) fn ensure_output_parent_dir(output_path: &Path) -> Result<(), String> {
+    ensure_output_parent_dir_impl(output_path).map_err(Into::into)
+}
+
+fn ensure_output_parent_dir_impl(output_path: &Path) -> Result<(), CacheCommandError> {
     let Some(parent) = output_path.parent() else {
         return Ok(());
     };
@@ -204,12 +262,12 @@ pub(crate) fn ensure_output_parent_dir(output_path: &Path) -> Result<(), String>
     }
 
     fs::create_dir_all(parent).map_err(|e| {
-        format!(
+        CacheCommandError::OutputParentDirCreate(format!(
             "{}: Failed to create output directory '{}': {}",
             "error".red().bold(),
             crate::format_cli_path(parent),
             e
-        )
+        ))
     })
 }
 
@@ -219,6 +277,15 @@ pub(crate) fn compute_project_fingerprint(
     emit_llvm: bool,
     do_check: bool,
 ) -> Result<String, String> {
+    compute_project_fingerprint_impl(files, config, emit_llvm, do_check).map_err(Into::into)
+}
+
+fn compute_project_fingerprint_impl(
+    files: &[PathBuf],
+    config: &ProjectConfig,
+    emit_llvm: bool,
+    do_check: bool,
+) -> Result<String, CacheCommandError> {
     let mut hasher = stable_hasher();
 
     hash_compiler_identity(&mut hasher);
@@ -238,12 +305,12 @@ pub(crate) fn compute_project_fingerprint(
     for file in files {
         file.hash(&mut hasher);
         let contents = fs::read(file).map_err(|e| {
-            format!(
+            CacheCommandError::ProjectFingerprintSourceRead(format!(
                 "{}: Failed to read source for '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(file),
                 e
-            )
+            ))
         })?;
         contents.hash(&mut hasher);
     }
@@ -299,24 +366,31 @@ pub(crate) fn save_cached_fingerprint(
     project_root: &Path,
     fingerprint: &str,
 ) -> Result<(), String> {
+    save_cached_fingerprint_impl(project_root, fingerprint).map_err(Into::into)
+}
+
+fn save_cached_fingerprint_impl(
+    project_root: &Path,
+    fingerprint: &str,
+) -> Result<(), CacheCommandError> {
     let cache_file = project_cache_file(project_root);
     if let Some(parent) = cache_file.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::BuildCacheDirCreate(format!(
                 "{}: Failed to create cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
     fs::write(&cache_file, fingerprint).map_err(|e| {
-        format!(
+        CacheCommandError::BuildCacheWrite(format!(
             "{}: Failed to write build cache '{}': {}",
             "error".red().bold(),
             crate::format_cli_path(&cache_file),
             e
-        )
+        ))
     })
 }
 
@@ -324,24 +398,31 @@ pub(crate) fn save_semantic_cached_fingerprint(
     project_root: &Path,
     fingerprint: &str,
 ) -> Result<(), String> {
+    save_semantic_cached_fingerprint_impl(project_root, fingerprint).map_err(Into::into)
+}
+
+fn save_semantic_cached_fingerprint_impl(
+    project_root: &Path,
+    fingerprint: &str,
+) -> Result<(), CacheCommandError> {
     let cache_file = semantic_project_cache_file(project_root);
     if let Some(parent) = cache_file.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::SemanticCacheDirCreate(format!(
                 "{}: Failed to create cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
     fs::write(&cache_file, fingerprint).map_err(|e| {
-        format!(
+        CacheCommandError::SemanticCacheWrite(format!(
             "{}: Failed to write semantic build cache '{}': {}",
             "error".red().bold(),
             crate::format_cli_path(&cache_file),
             e
-        )
+        ))
     })
 }
 
@@ -803,29 +884,33 @@ pub(crate) fn semantic_program_fingerprint(program: &Program) -> String {
 }
 
 pub(crate) fn current_file_metadata_stamp(file: &Path) -> Result<FileMetadataStamp, String> {
+    current_file_metadata_stamp_impl(file).map_err(Into::into)
+}
+
+fn current_file_metadata_stamp_impl(file: &Path) -> Result<FileMetadataStamp, CacheCommandError> {
     let metadata = fs::metadata(file).map_err(|e| {
-        format!(
+        CacheCommandError::FileMetadataRead(format!(
             "{}: Failed to stat '{}': {}",
             "error".red().bold(),
             crate::format_cli_path(file),
             e
-        )
+        ))
     })?;
     let modified = metadata.modified().map_err(|e| {
-        format!(
+        CacheCommandError::FileModifiedRead(format!(
             "{}: Failed to read modified time for '{}': {}",
             "error".red().bold(),
             crate::format_cli_path(file),
             e
-        )
+        ))
     })?;
     let duration = modified.duration_since(UNIX_EPOCH).map_err(|e| {
-        format!(
+        CacheCommandError::FileModifiedInvalid(format!(
             "{}: Invalid modified time for '{}': {}",
             "error".red().bold(),
             crate::format_cli_path(file),
             e
-        )
+        ))
     })?;
 
     Ok(FileMetadataStamp {
@@ -858,18 +943,27 @@ pub(crate) fn save_parsed_file_cache(
     file: &Path,
     entry: &ParsedFileCacheEntry,
 ) -> Result<(), String> {
+    save_parsed_file_cache_impl(project_root, file, entry).map_err(Into::into)
+}
+
+fn save_parsed_file_cache_impl(
+    project_root: &Path,
+    file: &Path,
+    entry: &ParsedFileCacheEntry,
+) -> Result<(), CacheCommandError> {
     let path = parsed_file_cache_path(project_root, file);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::ParseCacheDirCreate(format!(
                 "{}: Failed to create parse cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
     write_cache_blob_with_timing(&path, "parse cache", entry, &PARSE_CACHE_TIMING_TOTALS)
+        .map_err(CacheCommandError::ParseCacheDirCreate)
 }
 
 pub(crate) const IMPORT_CHECK_CACHE_SCHEMA: &str = "v2";
@@ -933,15 +1027,30 @@ pub(crate) fn save_import_check_cache_hit(
     import_check_fingerprint: &str,
     rewrite_context_fingerprint: &str,
 ) -> Result<(), String> {
+    save_import_check_cache_hit_impl(
+        project_root,
+        file,
+        import_check_fingerprint,
+        rewrite_context_fingerprint,
+    )
+    .map_err(Into::into)
+}
+
+fn save_import_check_cache_hit_impl(
+    project_root: &Path,
+    file: &Path,
+    import_check_fingerprint: &str,
+    rewrite_context_fingerprint: &str,
+) -> Result<(), CacheCommandError> {
     let path = import_check_cache_path(project_root, file);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::ImportCheckCacheDirCreate(format!(
                 "{}: Failed to create import-check cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
 
@@ -952,6 +1061,7 @@ pub(crate) fn save_import_check_cache_hit(
         rewrite_context_fingerprint: rewrite_context_fingerprint.to_string(),
     };
     write_cache_blob(&path, "import-check cache", &entry)
+        .map_err(CacheCommandError::ImportCheckCacheDirCreate)
 }
 
 pub(crate) fn dependency_graph_cache_path(project_root: &Path) -> PathBuf {
@@ -981,19 +1091,27 @@ pub(crate) fn save_dependency_graph_cache(
     project_root: &Path,
     cache: &DependencyGraphCache,
 ) -> Result<(), String> {
+    save_dependency_graph_cache_impl(project_root, cache).map_err(Into::into)
+}
+
+fn save_dependency_graph_cache_impl(
+    project_root: &Path,
+    cache: &DependencyGraphCache,
+) -> Result<(), CacheCommandError> {
     let path = dependency_graph_cache_path(project_root);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::DependencyGraphCacheDirCreate(format!(
                 "{}: Failed to create dependency graph cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
 
     write_cache_blob(&path, "dependency graph cache", cache)
+        .map_err(CacheCommandError::DependencyGraphCacheDirCreate)
 }
 
 pub(crate) fn semantic_summary_cache_path(project_root: &Path) -> PathBuf {
@@ -1023,19 +1141,27 @@ pub(crate) fn save_semantic_summary_cache(
     project_root: &Path,
     cache: &SemanticSummaryCache,
 ) -> Result<(), String> {
+    save_semantic_summary_cache_impl(project_root, cache).map_err(Into::into)
+}
+
+fn save_semantic_summary_cache_impl(
+    project_root: &Path,
+    cache: &SemanticSummaryCache,
+) -> Result<(), CacheCommandError> {
     let path = semantic_summary_cache_path(project_root);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::SemanticSummaryCacheDirCreate(format!(
                 "{}: Failed to create semantic summary cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
 
     write_cache_blob(&path, "semantic summary cache", cache)
+        .map_err(CacheCommandError::SemanticSummaryCacheDirCreate)
 }
 
 pub(crate) fn typecheck_summary_cache_path(project_root: &Path) -> PathBuf {
@@ -1065,19 +1191,27 @@ pub(crate) fn save_typecheck_summary_cache(
     project_root: &Path,
     cache: &TypecheckSummaryCache,
 ) -> Result<(), String> {
+    save_typecheck_summary_cache_impl(project_root, cache).map_err(Into::into)
+}
+
+fn save_typecheck_summary_cache_impl(
+    project_root: &Path,
+    cache: &TypecheckSummaryCache,
+) -> Result<(), CacheCommandError> {
     let path = typecheck_summary_cache_path(project_root);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::TypecheckSummaryCacheDirCreate(format!(
                 "{}: Failed to create typecheck summary cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
 
     write_cache_blob(&path, "typecheck summary cache", cache)
+        .map_err(CacheCommandError::TypecheckSummaryCacheDirCreate)
 }
 
 pub(crate) const REWRITE_CACHE_SCHEMA: &str = "v9";
@@ -1657,6 +1791,14 @@ pub(crate) fn save_rewritten_file_cache(
     file: &Path,
     payload: RewrittenFileCachePayload<'_>,
 ) -> Result<(), String> {
+    save_rewritten_file_cache_impl(project_root, file, payload).map_err(Into::into)
+}
+
+fn save_rewritten_file_cache_impl(
+    project_root: &Path,
+    file: &Path,
+    payload: RewrittenFileCachePayload<'_>,
+) -> Result<(), CacheCommandError> {
     let RewrittenFileCachePayload {
         semantic_fingerprint,
         rewrite_context_fingerprint,
@@ -1669,12 +1811,12 @@ pub(crate) fn save_rewritten_file_cache(
     let path = rewritten_file_cache_path(project_root, file);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::RewriteCacheDirCreate(format!(
                 "{}: Failed to create rewrite cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
 
@@ -1694,6 +1836,7 @@ pub(crate) fn save_rewritten_file_cache(
         has_specialization_demand,
     };
     write_cache_blob_with_timing(&path, "rewrite cache", &entry, &REWRITE_CACHE_TIMING_TOTALS)
+        .map_err(CacheCommandError::RewriteCacheDirCreate)
 }
 
 pub(crate) fn object_ext() -> &'static str {
@@ -1847,19 +1990,27 @@ pub(crate) fn save_link_manifest_cache(
     project_root: &Path,
     cache: &LinkManifestCache,
 ) -> Result<(), String> {
+    save_link_manifest_cache_impl(project_root, cache).map_err(Into::into)
+}
+
+fn save_link_manifest_cache_impl(
+    project_root: &Path,
+    cache: &LinkManifestCache,
+) -> Result<(), CacheCommandError> {
     let path = link_manifest_cache_path(project_root);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::LinkManifestCacheDirCreate(format!(
                 "{}: Failed to create link manifest cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
 
     write_cache_blob(&path, "link manifest cache", cache)
+        .map_err(CacheCommandError::LinkManifestCacheDirCreate)
 }
 
 pub(crate) fn should_skip_final_link(
@@ -1921,14 +2072,29 @@ pub(crate) fn save_object_cache_meta(
     rewrite_context_fingerprint: &str,
     object_build_fingerprint: &str,
 ) -> Result<(), String> {
+    save_object_cache_meta_impl(
+        cache_paths,
+        semantic_fingerprint,
+        rewrite_context_fingerprint,
+        object_build_fingerprint,
+    )
+    .map_err(Into::into)
+}
+
+fn save_object_cache_meta_impl(
+    cache_paths: &ObjectCachePaths,
+    semantic_fingerprint: &str,
+    rewrite_context_fingerprint: &str,
+    object_build_fingerprint: &str,
+) -> Result<(), CacheCommandError> {
     if let Some(parent) = cache_paths.meta_path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::ObjectCacheDirCreate(format!(
                 "{}: Failed to create object cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
 
@@ -1945,6 +2111,7 @@ pub(crate) fn save_object_cache_meta(
         &meta,
         &OBJECT_CACHE_META_TIMING_TOTALS,
     )
+    .map_err(CacheCommandError::ObjectCacheDirCreate)
 }
 
 pub(crate) fn load_object_shard_cache_hit(
@@ -1982,14 +2149,23 @@ pub(crate) fn save_object_shard_cache_meta(
     members: &[ObjectShardMemberFingerprint],
     object_build_fingerprint: &str,
 ) -> Result<(), String> {
+    save_object_shard_cache_meta_impl(cache_paths, members, object_build_fingerprint)
+        .map_err(Into::into)
+}
+
+fn save_object_shard_cache_meta_impl(
+    cache_paths: &ObjectShardCachePaths,
+    members: &[ObjectShardMemberFingerprint],
+    object_build_fingerprint: &str,
+) -> Result<(), CacheCommandError> {
     if let Some(parent) = cache_paths.meta_path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CacheCommandError::ObjectShardCacheDirCreate(format!(
                 "{}: Failed to create object shard cache directory '{}': {}",
                 "error".red().bold(),
                 crate::format_cli_path(parent),
                 e
-            )
+            ))
         })?;
     }
 
@@ -2005,6 +2181,7 @@ pub(crate) fn save_object_shard_cache_meta(
         &meta,
         &OBJECT_CACHE_META_TIMING_TOTALS,
     )
+    .map_err(CacheCommandError::ObjectShardCacheDirCreate)
 }
 
 pub(crate) fn hash_imports(imports: &[ImportDecl], hasher: &mut impl Hasher) {

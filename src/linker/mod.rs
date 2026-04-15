@@ -5,11 +5,45 @@ use colored::*;
 use std::env;
 #[cfg(any(windows, target_os = "macos"))]
 use std::ffi::OsString;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[derive(Debug)]
+enum LinkerCommandError {
+    OptLevelValidation(String),
+    LinkerDetection(String),
+    LinkExecution(String),
+}
+
+impl fmt::Display for LinkerCommandError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::OptLevelValidation(message)
+            | Self::LinkerDetection(message)
+            | Self::LinkExecution(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl From<LinkerCommandError> for String {
+    fn from(value: LinkerCommandError) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<String> for LinkerCommandError {
+    fn from(value: String) -> Self {
+        Self::LinkExecution(value)
+    }
+}
+
 pub(crate) fn validate_opt_level(opt_level: Option<&str>) -> Result<(), String> {
+    validate_opt_level_impl(opt_level).map_err(Into::into)
+}
+
+fn validate_opt_level_impl(opt_level: Option<&str>) -> Result<(), LinkerCommandError> {
     let Some(raw) = opt_level else {
         return Ok(());
     };
@@ -22,11 +56,11 @@ pub(crate) fn validate_opt_level(opt_level: Option<&str>) -> Result<(), String> 
         return Ok(());
     }
 
-    Err(format!(
+    Err(LinkerCommandError::OptLevelValidation(format!(
         "{}: Invalid optimization level '{}'. Expected one of: 0, 1, 2, 3, s, z, fast.",
         "error".red().bold(),
         raw
-    ))
+    )))
 }
 
 pub(crate) struct LinkConfig<'a> {
@@ -77,15 +111,19 @@ impl LinkerFlavor {
 }
 
 pub(crate) fn detect_linker_flavor() -> Result<LinkerFlavor, String> {
+    detect_linker_flavor_impl().map_err(Into::into)
+}
+
+fn detect_linker_flavor_impl() -> Result<LinkerFlavor, LinkerCommandError> {
     #[cfg(target_os = "linux")]
     {
         if find_tool_in_path("mold").is_some() || find_tool_in_path("ld.mold").is_some() {
             return Ok(LinkerFlavor::Mold);
         }
-        Err(format!(
+        Err(LinkerCommandError::LinkerDetection(format!(
             "{}: Required linker 'mold' not found in PATH. Install mold and retry.",
             "error".red().bold()
-        ))
+        )))
     }
 
     #[cfg(target_os = "macos")]
@@ -96,10 +134,10 @@ pub(crate) fn detect_linker_flavor() -> Result<LinkerFlavor, String> {
         {
             return Ok(LinkerFlavor::Lld);
         }
-        Err(format!(
+        Err(LinkerCommandError::LinkerDetection(format!(
             "{}: Required LLVM linker not found in PATH. Install lld/ld64.lld and retry.",
             "error".red().bold()
-        ))
+        )))
     }
 
     #[cfg(windows)]
@@ -107,18 +145,18 @@ pub(crate) fn detect_linker_flavor() -> Result<LinkerFlavor, String> {
         if find_tool_in_path("lld-link").is_some() {
             return Ok(LinkerFlavor::Lld);
         }
-        Err(format!(
+        Err(LinkerCommandError::LinkerDetection(format!(
             "{}: Required LLVM linker 'lld-link' not found in PATH. Install LLVM lld and retry.",
             "error".red().bold()
-        ))
+        )))
     }
 
     #[cfg(not(any(windows, unix)))]
     {
-        Err(format!(
+        Err(LinkerCommandError::LinkerDetection(format!(
             "{}: Unsupported host platform for linker detection.",
             "error".red().bold()
-        ))
+        )))
     }
 }
 
@@ -839,11 +877,19 @@ pub(crate) fn link_objects(
     output_path: &Path,
     link: &LinkConfig<'_>,
 ) -> Result<(), String> {
+    link_objects_impl(objects, output_path, link).map_err(Into::into)
+}
+
+fn link_objects_impl(
+    objects: &[PathBuf],
+    output_path: &Path,
+    link: &LinkConfig<'_>,
+) -> Result<(), LinkerCommandError> {
     if objects.is_empty() {
-        return Err(format!(
+        return Err(LinkerCommandError::LinkExecution(format!(
             "{}: No object files generated for project build.",
             "error".red().bold()
-        ));
+        )));
     }
 
     match link.output_kind {
@@ -852,23 +898,23 @@ pub(crate) fn link_objects(
             command.arg("rcs").arg(output_path).args(objects);
             apply_fallback_current_dir(&mut command);
             let output = command.output().map_err(|e| {
-                format!(
+                LinkerCommandError::LinkExecution(format!(
                     "{}: Failed to run ar for static library creation '{}': {}",
                     "error".red().bold(),
                     format_cli_path(output_path),
                     e
-                )
+                ))
             })?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let details = command_failure_details(output.status, &stderr, &stdout);
-                return Err(format!(
+                return Err(LinkerCommandError::LinkExecution(format!(
                     "{}: ar failed while creating static library '{}': {}",
                     "error".red().bold(),
                     format_cli_path(output_path),
                     details
-                ));
+                )));
             }
             Ok(())
         }
@@ -876,14 +922,17 @@ pub(crate) fn link_objects(
             #[cfg(target_os = "linux")]
             {
                 link_with_mold(objects, output_path, link)
+                    .map_err(LinkerCommandError::LinkExecution)
             }
             #[cfg(target_os = "macos")]
             {
                 link_with_macos_lld(objects, output_path, link)
+                    .map_err(LinkerCommandError::LinkExecution)
             }
             #[cfg(windows)]
             {
                 link_with_lld_link(objects, output_path, link)
+                    .map_err(LinkerCommandError::LinkExecution)
             }
         }
     }

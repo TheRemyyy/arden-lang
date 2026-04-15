@@ -73,14 +73,13 @@ fn run_parse_index_phase_impl(
     let mut module_collisions: Vec<(String, String, String)> = Vec::new();
     let mut parse_cache_hits = 0_usize;
 
-    let mut parsed_units: Vec<ParsedProjectUnit> = build_timings
-        .measure("parse + symbol scan", || {
+    let mut parsed_units: Vec<ParsedProjectUnit> =
+        build_timings.measure("parse + symbol scan", || {
             files
                 .par_iter()
-                .map(|file| crate::parse_project_unit(project_root, file))
-                .collect::<Result<Vec<_>, String>>()
-        })
-        .map_err(ParseIndexPhaseError::ParseAndScan)?;
+                .map(|file| crate::parse_project_unit(project_root, file).map_err(Into::into))
+                .collect::<Result<Vec<_>, ParseIndexPhaseError>>()
+        })?;
     parsed_units.sort_by(|a, b| a.file.cmp(&b.file));
 
     let total_function_names: usize = parsed_units

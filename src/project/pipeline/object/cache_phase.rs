@@ -31,7 +31,7 @@ impl From<ObjectCacheProbeError> for String {
 
 impl From<String> for ObjectCacheProbeError {
     fn from(value: String) -> Self {
-        Self::CacheProbe(value)
+        Self::ProbeResult(value)
     }
 }
 
@@ -51,7 +51,7 @@ pub(crate) struct ObjectCacheProbeOutputs {
     pub(crate) cache_misses: Vec<crate::ObjectCodegenShard>,
 }
 
-type ProbeResult = Result<(Vec<usize>, Option<PathBuf>), String>;
+type ProbeResult = Result<(Vec<usize>, Option<PathBuf>), ObjectCacheProbeError>;
 
 pub(crate) fn run_object_cache_probe(
     build_timings: &mut BuildTimings,
@@ -76,7 +76,8 @@ fn run_object_cache_probe_impl(
                                 cache_paths,
                                 &shard.member_fingerprints,
                                 inputs.object_build_fingerprint,
-                            )?
+                            )
+                            .map_err(ObjectCacheProbeError::ProbeResult)?
                         } else {
                             let index = shard.member_indices[0];
                             let unit = &inputs.rewritten_files[index];
@@ -84,18 +85,19 @@ fn run_object_cache_probe_impl(
                                 .object_cache_paths_by_file
                                 .get(&unit.file)
                                 .ok_or_else(|| {
-                                    format!(
+                                    ObjectCacheProbeError::ProbeResult(format!(
                                         "{}: missing object cache paths for rewritten unit '{}'",
                                         cli_error("error"),
                                         format_cli_path(&unit.file)
-                                    )
+                                    ))
                                 })?;
                             load_object_cache_hit(
                                 cache_paths,
                                 &unit.semantic_fingerprint,
                                 &unit.rewrite_context_fingerprint,
                                 inputs.object_build_fingerprint,
-                            )?
+                            )
+                            .map_err(ObjectCacheProbeError::ProbeResult)?
                         };
                         Ok((shard.member_indices.clone(), cached_obj))
                     })
@@ -108,7 +110,7 @@ fn run_object_cache_probe_impl(
     let mut object_cache_hits: usize = 0;
     let mut cache_misses: Vec<crate::ObjectCodegenShard> = Vec::new();
     for (shard, result) in inputs.object_shards.iter().zip(cache_probe_results) {
-        let (member_indices, cached_obj) = result.map_err(ObjectCacheProbeError::ProbeResult)?;
+        let (member_indices, cached_obj) = result?;
         if let Some(cached_obj) = cached_obj {
             for index in member_indices {
                 object_paths[index] = Some(cached_obj.clone());

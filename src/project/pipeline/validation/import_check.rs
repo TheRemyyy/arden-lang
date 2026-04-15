@@ -20,13 +20,16 @@ use std::time::Instant;
 #[derive(Debug)]
 enum ImportCheckPhaseError {
     CheckRun(String),
+    UnitCheck(String),
     ResultCollect(String),
 }
 
 impl fmt::Display for ImportCheckPhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::CheckRun(message) | Self::ResultCollect(message) => write!(f, "{message}"),
+            Self::CheckRun(message) | Self::UnitCheck(message) | Self::ResultCollect(message) => {
+                write!(f, "{message}")
+            }
         }
     }
 }
@@ -39,7 +42,7 @@ impl From<ImportCheckPhaseError> for String {
 
 impl From<String> for ImportCheckPhaseError {
     fn from(value: String) -> Self {
-        Self::CheckRun(value)
+        Self::UnitCheck(value)
     }
 }
 
@@ -68,7 +71,7 @@ fn run_import_check_phase_impl(
     let import_check_cache_hits = AtomicUsize::new(0);
     let import_check_timing_totals = Arc::new(ImportCheckTimingTotals::default());
 
-    let import_results: Vec<Result<(), String>> = build_timings
+    let import_results: Vec<Result<(), ImportCheckPhaseError>> = build_timings
         .measure("import check", || {
             Ok::<_, String>(
                 inputs
@@ -148,7 +151,9 @@ fn run_import_check_phase_impl(
                                 }
                                 rendered.push('\n');
                             }
-                            return Err(rendered.trim_end().to_string());
+                            return Err(ImportCheckPhaseError::UnitCheck(
+                                rendered.trim_end().to_string(),
+                            ));
                         }
                         import_check_timing_totals
                             .checker_run_ns
