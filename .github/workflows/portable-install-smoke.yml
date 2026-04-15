@@ -22,7 +22,7 @@ jobs:
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-package-linux
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           name: arden-linux-x64-portable
@@ -74,7 +74,7 @@ jobs:
     env:
       CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER: .cargo/linkers/macos-aarch64-lld.sh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
@@ -110,7 +110,7 @@ jobs:
     runs-on: macos-latest
     needs: build-package-macos
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           name: arden-macos-arm64-portable
@@ -124,7 +124,7 @@ jobs:
     env:
       CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: lld-link
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -182,7 +182,7 @@ jobs:
     runs-on: windows-latest
     needs: build-package-windows
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           name: arden-windows-x64-portable
