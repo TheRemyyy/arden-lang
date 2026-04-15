@@ -29,7 +29,7 @@ jobs:
             linker_env_value: lld-link
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
 
