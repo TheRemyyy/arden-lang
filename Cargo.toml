@@ -16,7 +16,7 @@ logos = "0.16"
 clap = { version = "4", features = ["derive"] }
 
 # Colored output
-colored = "2"
+colored = "3"
 enable-ansi-support = "0.2"
 
 # Project configuration
