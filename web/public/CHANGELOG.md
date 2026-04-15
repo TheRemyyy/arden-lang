@@ -8,121 +8,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
-- LSP reference/rename lookup: fixed span-boundary handling so symbol matches at `span` edges resolve correctly, and selection now respects end-exclusive ranges.
-- LSP position mapping: fixed CRLF offset/column conversion so `\r` no longer shifts LSP line/character coordinates.
-- LSP position mapping: fixed CRLF end-of-line clamping so oversized line columns resolve to the CRLF boundary.
-- LSP lexer diagnostics: offset parsing now saturates for oversized numeric values instead of falling back to `0` on parse overflow.
-- Source diagnostics rendering: fixed Unicode underline width, EOF-after-trailing-newline context rendering, and CR/LF line-ending normalization in terminal output.
-- Import-check wildcard handling: `std.<ns>.*` now only imports direct stdlib members, excluding nested `__` symbols from accidental direct resolution.
-- Import-check alias member parsing: fixed generic type spacing in paths like `alias.Member <T>` so member resolution no longer keeps trailing spaces.
-- Lint import auto-fix: fixed import sorting/dedup on files using lone-CR (`\r`) line endings.
-- Bindgen comment stripping: fixed UTF-8 corruption in generated signatures by preserving non-ASCII bytes while removing comments.
-- Bindgen parameter parsing: fixed unnamed array parameters to use generated argument names instead of misclassifying type tokens as names.
-- Test-runner source rewrite: fixed lone-CR (`\r`) line-ending handling for std.io import detection and top-level `main` stripping.
-- Shebang parsing: fixed lexer/formatter handling for shebang lines terminated by lone-CR (`\r`) endings.
-- Formatter comment/package scanning: fixed lone-CR (`\r`) handling when collecting line comments and locating `package` declarations.
-- Formatter comment emission: normalized lone-CR (`\r`) inside preserved comments to stable `\n` output lines.
-- Semantic cache recovery: disabled partial typecheck-component reuse when semantic summary cache is missing, preventing empty recovered effect summaries.
-- Single-file semantic checks: now reject colliding top-level declarations (including duplicate `main`) instead of silently accepting them.
-- Linker response-file escaping: now escapes `\n`/`\r` in arguments to prevent line-break splitting in generated response files.
-- Project symbol indexing: now rejects duplicate top-level symbols even within the same namespace, instead of silently letting later duplicates pass.
-- Linker tool detection: `PATH` scanning now ignores non-executable files, preventing false-positive linker detection.
-- Linux target validation: direct linker mode now rejects `*-musl` targets early with an explicit GNU-libc-only error.
-- Linux linker toolchain probing: GCC support-object directory selection now uses numeric version ordering (`11` > `10` > `9`) instead of lexicographic ordering.
+- LSP and diagnostics: fixed span-boundary/end-exclusive lookup, CRLF position mapping/clamping, lexer-offset overflow fallback, Unicode underline width, and EOF rendering edge cases.
+- Import/lint parsing: fixed `std.<ns>.*` nested-member filtering, alias-member parsing with spaced generics, and lone-CR import autofix sorting/dedup behavior.
+- Bindgen generation: fixed UTF-8-safe comment stripping and unnamed array parameter naming in generated extern signatures.
+- Test/formatter/lexer EOL handling: fixed lone-CR shebang/import/main-strip behavior and normalized preserved comment emission.
+- Semantic/cache correctness: prevented partial typecheck-component reuse when semantic summary cache is missing.
+- Symbol collisions: single-file checks now reject duplicate top-level declarations (including duplicate `main`), and project indexing now rejects same-namespace duplicates.
+- Linker safety and target validation: response-file args now escape `\n`/`\r`, `PATH` scanning ignores non-executable files, and direct Linux linker mode rejects `*-musl` with a clear GNU-libc-only error.
+- Linux linker probing: GCC support-object directory selection now uses numeric version ordering (`11` > `10` > `9`) instead of lexicographic ordering.
+- CI/smoke hardening: fixed Windows PowerShell quoting, added failure artifact dumps (`.ll`/best-effort objects), moved defaults to baseline CPU/features, and improved cache isolation.
+- Codegen/runtime hardening: stabilized signed modulo lowering and map `op=` key materialization, and reworked `std.fs` `File.read` lowering (`fread` + `memchr`) to avoid Windows backend-regalloc crashes.
+- Deep-expression stability: replaced recursive parser/import/type/borrow hot paths with iterative handling and added deep unary/parenthesized regression coverage.
+- Runtime/process diagnostics: unified richer crash decoding (signals/NTSTATUS), improved missing/non-file executable failures, and added safe truncation for oversized subprocess output.
+- ABI portability: fixed cross-platform C ABI mismatches (`size_t`/`long`/`time_t`/`pthread_t`) and normalized remaining `malloc`/`realloc`/`snprintf` size casting.
+- Type and diagnostics correctness: fixed async-block return-type inference for explicit `return`, and unified parser/type/borrow/import + CLI/project path rendering (including Windows prefix cleanup).
+- Tooling/path hardening: tightened bindgen/cache/object/linker path handling and release smoke script guards/timeouts.
+- Web polish: restored large-screen hero centering and improved ultra-wide readability scaling.
 
-- Windows CI smoke wrapper: fixed PowerShell single-quote escaping in `scripts/cli_smoke_windows.ps1` so the script parses correctly and can invoke bash smoke runs.
-- Integer modulo codegen: switched guarded signed `%` lowering back to LLVM signed remainder emission (`srem`) after zero/overflow guards, avoiding backend register-copy crashes seen on Windows LLVM pipelines.
-- Map compound-assignment codegen hardening: materialized evaluated map keys into temporaries before `get`/`set` in `op=` map index lowering (including `%=`), avoiding backend instability from reusing complex aggregate SSA keys across both helper expansions.
-- Perf cleanup tests: accepted explicit macOS SDK resolver (`xcrun`) launch failures as valid error outcomes in cleanup assertions, so tests stay stable in environments without a configured Apple SDK toolchain.
-- Windows backend stability in `std.fs`: refactored `File.read` lowering to use explicit `fread` byte-count checks + `memchr` NUL detection (instead of a large per-byte IR scan loop), which keeps existing runtime diagnostics (`NUL`/invalid UTF-8) but avoids backend-regalloc crash patterns seen in Windows smoke examples.
-- CI failure forensics on Linux/macOS/Windows: `checks/smoke/examples` now auto-dump LLVM IR (`.ll`) and best-effort object files (`.obj`) on failures, and upload them as run artifacts for immediate crash triage.
-
-- Stack-safety hardening for deep expressions: removed hard parser depth caps and replaced recursive hot paths with iterative handling across parser, import-check, type-check, and borrow-check flows so deeply nested unary/parenthesized inputs no longer abort with stack overflow in `check`.
-- Added regression coverage for deep unary and deep parenthesized parsing to prevent stack-overflow regressions in future parser refactors.
-
-- CI hardening for LLVM 22 builds: default Cargo target CPU is now baseline (`x86-64`/`generic`) instead of `native`, codegen target-machine defaults now use stable baseline CPU/features unless explicitly opted into native tuning (`ARDEN_CODEGEN_NATIVE_CPU=1`), and Cargo cache keys now include `.cargo/config.toml` to prevent stale CPU-incompatible artifact reuse between runners.
-- CI/smoke hardening: cache keys now include runner architecture plus a cache-schema suffix to avoid cross-runner/toolchain cache poisoning, smoke scripts now fail fast when no example files are discovered, and Windows bash-wrapper quoting now safely handles apostrophes in paths.
-- Runtime crash diagnostics hardening: `run/bench/profile/test` and linker/xcrun/ar subprocess failures now share richer exit decoding (Unix signal names + Windows NTSTATUS like `0xC0000409`) so backend/runtime crashes no longer show opaque negative codes.
-- Runtime process hardening: executable launch paths now fail fast on missing/non-file binaries, and oversized subprocess stderr/stdout diagnostics are truncated with an explicit marker to avoid log-flood failures in CI and local crash triage.
-- Integer `%` codegen hardening: replaced direct signed-remainder lowering with a guarded signed-division/multiply/subtract path, and added runtime guards for signed division/modulo overflow (`INT_MIN / -1`, `INT_MIN % -1`) to prevent backend-crash code paths.
-- Corrected multiple platform ABI mismatches in codegen/runtime C interop declarations and call sites (`size_t`/`long`/`time_t`/`pthread_t`), and added LLVM IR regression coverage for libc signature emission.
-- Normalized remaining `malloc`/`realloc`/`snprintf` call sites to explicit `size_t` casting helpers, removing cross-platform integer-width ABI drift in async, stdlib, and container codegen paths.
-- Fixed async-block return-type inference to honor explicit `return` statements, which resolves false `Type mismatch: expected None, got Integer` failures in `Task.await_timeout(...)` call chains.
-- Normalized parser/type/borrow/import diagnostics path rendering across CLI/project flows (project-relative where possible, Windows `\\?\` prefix stripped), fixing cross-platform error-path regressions.
-- Continued CLI/project diagnostics hardening by normalizing remaining test/lint/fmt/discovery/path-validation/config-IO path messages to consistent cross-platform rendering.
-- Normalized remaining CLI `run`/`bench`/`profile`/`new`/`info`/workspace/project-validation path diagnostics to eliminate platform-specific absolute/prefix path noise.
-- Hardened bindgen/cache/object/linker path handling and diagnostics (including non-lossy Windows linker path flags and explicit macOS response-file path validation for non-UTF-8 paths).
-- Release portable smoke: hardened `scripts/release/smoke_portable_unix.sh` with explicit archive/install-script existence checks, per-step timeout guard (`SMOKE_STEP_TIMEOUT_SECONDS`, default `600`), and stage logs to prevent silent multi-hour hangs.
-- Web homepage hero: restored vertical centering on large `100vh` layouts by aligning the top hero grid to center instead of end.
-- Web readability on large displays: added homepage-only ultra-wide scaling (larger typographic base + wider content max-widths at `>=1700px` and `>=2200px`) so 100% browser zoom does not look visually shrunken.
-
-## [1.3.8] - 2026-04-13
+## [1.3.8] - Linker Pipeline & Stability Sweep - 2026-04-13
 
 ### ♻️ Changed
 
-- Reworked native artifact production around explicit linker-only backends, so Arden now emits objects directly from LLVM, links Linux outputs through `mold`, and links macOS/Windows outputs through LLVM `lld`.
-- Switched Cargo self-builds away from pinned `clang` wrappers toward dedicated linker wrapper scripts in `.cargo/config.toml`, and reused exact Windows builtins paths instead of rescanning LLVM on each link.
-- Added broader cross-platform linker benchmark coverage in CI, including a dedicated workflow for cold/hot/incremental timing captures plus a quick main-CI benchmark pass that uploads fresh timing artifacts on Linux, macOS, and Windows.
-- Switched portable Linux release and smoke builds back to a baseline `x86-64` CPU target instead of `target-cpu=native`, while keeping native-tuned benchmark and check flows fast on CI hosts.
-- Unified `arden build --timings` output with the main CLI palette instead of using a separate ad-hoc cyan header path.
-- Tightened terminal styling so `arden new`, timings, and the rest of the CLI keep a consistent color path, while using a safer Windows-specific rendering path than raw ANSI everywhere.
+- Reworked native artifact production to direct LLVM object emission with linker-only backends (`mold` on Linux, `lld` on macOS/Windows).
+- Switched Cargo self-builds from pinned `clang` wrappers to dedicated linker wrapper scripts in `.cargo/config.toml`.
+- Reused exact Windows builtins paths during linking instead of repeated LLVM path rescans.
+- Added broader cross-platform linker benchmark coverage in CI (cold/hot/incremental) with uploaded timing artifacts.
+- Moved portable Linux release/smoke builds to baseline `x86-64` CPU targets while keeping native-tuned perf checks.
+- Unified `arden build --timings` and terminal color/styling behavior with the rest of the CLI.
 
 ### 🐛 Fixed
 
-- Follow-up hardening: semantic pipeline now surfaces source-read failures instead of silently dropping files, single-source diagnostics now use full file paths (parse/type/borrow/import/entry checks), list field-method codegen no longer swallows pointer-resolution errors, and macOS temp/symlink + linker fallback working-directory handling is more robust in perf/link flows.
-- Borrow-mode runtime fixes: `borrow mut` parameters now lower as true by-reference ABI arguments (not by-value copies), so scalar/list/field mutations propagate back to the caller; call sites now pass borrow-mode args with pointer semantics consistently for direct/module/method/constructor paths, and async functions/methods now reject borrow-mode parameters up front.
-- Runtime/codegen: fixed nested `List` crash (`SIGSEGV`) in `run/profile`, improved signal-based crash diagnostics, and hardened temporary object cleanup warnings.
-- Caching/rebuild correctness: invalidated stale project/object caches when compiler binary identity changes; improved project-mode rebuild reliability.
-- CLI/test tooling: fixed `run/bench/profile/test` temporary artifact handling (unique temp outputs, consistent cleanup, explicit cleanup warnings), improved `arden test` failure diagnostics, fixed project-mode test/bench/profile output path resolution (including Windows `.exe` cases), corrected `arden bindgen` status stream routing so generated stdout output is not polluted, and prevented duplicate `std.io` import injection in generated test-runner sources when inline block comments precede imports.
-- Path safety/concurrency: rejected symlinked root directories during source/test discovery and made scoped cwd switching panic-safe with explicit error propagation.
-- Linking/platform fixes: stabilized linker cwd/response-file cleanup handling, improved macOS SDK/protable bundle behavior, and fixed Windows `lld-link` machine/CRT/output-path issues.
-- CI/tooling robustness: fixed benchmark workflow setup/output consistency and replaced panic-style build-path invariants with explicit user-facing errors/warnings.
-- Frontend/runtime correctness: fixed checked/unchecked `Char` ordered comparisons affecting Windows drive-letter path checks, and removed a panic-only fallback in call-arity codegen diagnostics in favor of safe error-path handling.
-- Attribute handling: reject misplaced/invalid attribute combinations (including duplicate attributes, `@Ignore` without `@Test`, and `@Test` mixed with lifecycle hooks), fail fast for invalid test-runner signatures (`@Test/@Before/...` on async/extern/parameterized/generic/non-`None` functions), reject duplicate lifecycle hooks per suite, keep module-scoped `main` intact while stripping only top-level entry `main` in generated test runners, enforce `@Any` call boundaries (pure/non-`@Any` callers now reject `@Any` callees), close effect-check bypasses through function-value variables, function-value contract copies (`g = f`), function-value flows through `if` expressions, function-value calls via callee expressions (`(if ... )()`), higher-order function arguments, and unknown function-contract factory results (`run(make())`) in explicit non-`@Any` callers (including `@Pure`), and broaden strict effect-checking regression coverage (including transitive net-effect rejection from explicitly `@Io` callers).
-- Stdlib/imports: added an explicit `std.net` namespace placeholder to known stdlib namespaces so `import std.net.*;` is recognized even before concrete network API members are implemented.
-- Effect contracts/tooling: closed additional effect-check bypasses for call-produced function values (`make()`) across assignment, direct invocation, `if`/`block` flows, and higher-order arguments via explicit unknown-contract diagnostics; propagated transitive `@Any` through inferred wrappers; fixed macOS example-smoke script portability (no `mapfile`), unblocked macOS `/var`/`/tmp` symlink-alias path validation in perf tests, and resolved strict clippy warning in import-check tests.
-- Effect contracts: fixed additional bound-method function-value bypasses so effect policy is now enforced for `obj.method` values from variables, constructor receivers (`Type().method`), and call receivers (`factory().method`) in both direct invocation and higher-order argument paths.
-- Effect contracts: expanded bound-method receiver inference for function values across `block`/`if`/`match` receiver forms and nested method-call receivers; interface-typed method values now carry conservative unknown contracts so pure/explicit non-`@Any` callers cannot bypass effect checks through interface indirection.
-- Type/borrow diagnostics: generic enum declarations now fail fast with an explicit non-panic diagnostic (`user-defined generic enums are not supported yet`) instead of cascading `Unknown type: T`/codegen crashes, and `borrow mut` parameters now behave consistently as writable aliases inside callees (reads and local updates allowed) while immutable call-site bindings are still rejected.
-- No-check/codegen hardening: `arden compile --no-check` no longer panics on unsupported generic-enum payload shapes (now returns a clear `Codegen error`), and mutable-by-mode parameter handling is now aligned across typecheck/borrowck/codegen for `borrow mut` parameters.
-- No-check diagnostics: generic enum rejection now happens before specialization and reports the concrete enum name plus generic parameters (for clearer `--no-check` failures).
-- CLI perf tests: single-file bench/profile cleanup checks now track actual temp binary prefixes in `$TMPDIR` instead of unrelated neighboring paths.
-- CLI/testing/tooling: `profile` now uses its own temp-binary prefix (`arden-profile`), test-runner workspace paths are normalized/canonicalized more defensively (including `..` inputs), test-run failure diagnostics now include the runner executable path, and Linux smoke examples avoid `mapfile`-only Bash features.
-- Project/test-workspace path safety: project source/output validation now canonicalizes and checks symlink-target containment more strictly, duplicate source aliases resolving to the same file are rejected, and generated test-runner workspace file paths are normalized to prevent `..`/entry-collision regressions.
-- Project config IO: improved `arden.toml` read/write/parse diagnostics to always include the concrete file path and both supported parse shapes (`root` and `[project]`) for faster production triage.
-- Source discovery hardening: made recursive `.arden` collection reject symlink entries inside traversed trees (explicit fail-fast instead of silent traversal skipping).
-- Cache diagnostics: corrected env-override parse warning formatting for consistent log parsing.
-- Test runner diagnostics: improved compile/run error messages for generated test runners by including concrete runner source and executable paths.
-- Linker diagnostics: improved linker/ar failure output to always include actionable failure details (stderr/stdout/exit code fallback) instead of empty generic failures.
-- Run/bench/profile diagnostics: improved process launch and non-zero-exit errors to include the exact executable path.
-- CLI/test diagnostics: standardized file-IO errors across `check`, `debug`, `fmt/lint/fix`, test runner workspace setup, and single-file compile paths so failures include concrete file/directory paths.
-- `arden new` diagnostics: creation failures for project/src/main/readme now include exact target paths; fixed minor test-discovery error-message formatting typo for cleaner logs.
-- macOS linker diagnostics: `xcrun` SDK path/version resolution failures now include stderr/stdout/exit-code fallback details for faster environment triage.
-- Config/path diagnostics: `ProjectConfig::save` serialization failures and temporary binary name generation failures now include concrete target/source paths.
-- Linker/LSP diagnostics: static-library `ar` launch/failure messages now include target output path; LSP startup runtime failure now reports explicit LSP context.
-- Project discovery diagnostics: `No arden.toml found` errors now include the concrete current working directory across `build/run/check/info/bench/profile` flows.
-- Test parsing diagnostics: `arden test` now reports lexer/parser failures with full test-file paths for faster pinpointing in multi-file suites.
-- Diagnostic hardening sweep (20+ micro-fixes): added richer source/target-path context across debug lexer errors, codegen failure reports, linker launch paths, bindgen boundary validation/output directory handling, and recursive test/source discovery error paths.
-- Project validation diagnostics: improved entry/source/output validation errors with clearer resolved-path/project-root context and more explicit output-path ancestor resolution failures.
-- Import-check diagnostics: when source rendering fails during import-error formatting, diagnostics now include the underlying file read error reason.
-- Bindgen boundary safety: reject missing header paths and directory output targets explicitly, auto-create output parent directories for file outputs, and add regression coverage for the new guards.
-- Codegen/no-check reliability and portability: restored root-cause undefined-root diagnostics for nested member chains/generic receiver calls, and switched libc `size_t` + pointer-fallback sizing away from hardcoded 64-bit assumptions.
-- CI stability: fixed effect-attributes smoke examples (`@Any` caller boundaries), tightened test-file name detection to avoid false positives like `latest.arden`, and refined macOS symlink-ancestor handling so system temp aliases don't trip path guards.
+- Fixed semantic pipeline source-read handling so files are not silently dropped, and made single-source parse/type/borrow/import/entry diagnostics use explicit file paths.
+- Fixed `borrow mut` ABI lowering to true by-reference semantics and aligned call-site passing across direct/module/method/constructor paths; async functions now reject borrow-mode params.
+- Fixed nested `List` `SIGSEGV` crashes in `run/profile`, improved signal-aware crash reporting, and hardened temp artifact cleanup warnings.
+- Fixed stale project/object cache invalidation when compiler binary identity changes to improve rebuild correctness.
+- Fixed CLI runtime tooling temp/output behavior (`run/bench/profile/test`), bindgen stdout/status routing, and duplicate `std.io` injection in generated test runners.
+- Fixed path safety and concurrency handling by rejecting symlinked roots during discovery and making scoped cwd switching panic-safe.
+- Fixed platform linker/runtime issues across linker cwd/response-file cleanup, macOS SDK/portable flows, and Windows `lld-link` machine/CRT/output-path handling.
+- Fixed invalid test attribute combinations/signatures (including duplicate hooks and misplaced `@Ignore`), while preserving module-scoped `main` in generated runners.
+- Fixed effect-system enforcement gaps for function values and higher-order calls, including `if`/`block`/callee-expression flows and unknown factory contracts.
+- Fixed additional bound-method and interface-indirection effect bypasses so non-`@Any` callers cannot evade effect checks through method values.
+- Fixed generic enum failure paths to return explicit non-panic diagnostics in checked and `--no-check` compilation.
+- Fixed project/test workspace path normalization and symlink containment checks, including rejection of duplicate source aliases resolving to the same file.
+- Fixed diagnostics quality across `build/run/check/test/bindgen/linker/ar/xcrun` to always include actionable path/process context.
+- Fixed bindgen boundary guards for missing headers/output directories and restored portable `size_t`/pointer sizing behavior in codegen.
+- Fixed CI stability regressions in effect smoke coverage, test-file discovery naming, and macOS symlink-ancestor path handling.
 
-## [1.3.7] - 2026-04-10
+## [1.3.7] - LLVM 22 Upgrade & Compile-Time Performance - 2026-04-10
 
 ### ♻️ Changed
 
-- Upgraded the LLVM integration to LLVM 22.1.x across Cargo, CI, release packaging, benchmark tooling, and install docs, including the move to `inkwell` `llvm22-1` and `LLVM_SYS_221_PREFIX`.
-- Reworked function-value name resolution in the type checker to use a cached leaf-name index instead of repeatedly scanning every known function symbol, cutting large synthetic project cold-build time from roughly `52.7s` to `1.9s` while keeping 10-file body-only rebuilds around `0.7s` in the `--timings` benchmark flow.
-- Expanded `arden build --timings` coverage and breakdowns for cold, warm, 10-file body-only rebuilds, larger mixed nominal-type stress projects, and hotter codegen subphases.
-- Trimmed redundant scalar type validation in codegen `Assign` and `Return` hot paths, improving the 32k-function synthetic cold build from `1.079s` to `1.061s` in A/B `--timings` runs.
-- Trimmed repeated call-path lookups and small argument-buffer reallocations in codegen so hot `expr_call` work scales better on larger mixed `interface`/`enum`/`class` synthetic projects.
-- Reused per-namespace local enum sets during project rewrite instead of rebuilding them in recursive hot paths, dropping XL mixed synthetic rewrite worker time from about `2.36s` to `2.06s` in `--timings` runs.
-- Cached mangled class symbol names for project rewrite call handling instead of rescanning every class on each rewritten call, cutting XL mixed synthetic rewrite worker time to about `0.15s` and cold build time from about `1.10s` to `0.96s`.
-- Collapsed shard-local closure body symbol collection into a single pass per shard, cutting that object-codegen step from roughly `0.02s` to `0.003s` on the 32k-function synthetic cold build.
-- Precomputed top-level declaration/body filter decisions once per codegen pass, cutting mixed-project filter overhead and improving synthetic cold builds to about `1.046s` on 32k functions and `1.068s` on the XL mixed stress project.
-- Lowered the default large-project object-codegen shard size from `8` to `4`, improving LLVM 22 cold `--timings` runs to about `1.021s` on the 32k-functions stress project and `0.908s` on the XL mixed stress project while keeping warm and 10-file rebuilds near-instant.
+- Upgraded compiler/tooling integration to LLVM 22 (`inkwell` `llvm22-1`, `LLVM_SYS_221_PREFIX`) across local builds, CI, release packaging, and docs.
+- Reworked function-value typecheck lookup to a cached leaf-name index, reducing large synthetic cold builds from about `52.7s` to `1.9s` and keeping 10-file rebuilds near `0.7s`.
+- Expanded `arden build --timings` coverage for cold/warm/rebuild runs, mixed nominal-type stress projects, and deeper codegen subphase breakdowns.
+- Reduced redundant scalar validation in codegen `Assign`/`Return` hot paths, improving 32k-function synthetic cold runs from about `1.079s` to `1.061s`.
+- Reduced repeated call-path lookups and small argument-buffer reallocations in hot `expr_call` lowering.
+- Reused per-namespace local enum sets in project rewrite hot paths, dropping XL mixed rewrite worker time from about `2.36s` to `2.06s`.
+- Cached mangled class symbols for rewrite call handling, cutting XL mixed rewrite worker time to about `0.15s` and cold build time from about `1.10s` to `0.96s`.
+- Collapsed shard-local closure symbol collection into a single pass, reducing that step from about `0.02s` to `0.003s` on 32k-function synthetic cold builds.
+- Precomputed top-level declaration/body filtering once per pass, improving synthetic cold runs to about `1.046s` (32k) and `1.068s` (XL mixed).
+- Tuned default large-project object-codegen shard size from `8` to `4`, improving LLVM 22 cold timings to about `1.021s` (32k) and `0.908s` (XL mixed) while preserving warm/incremental behavior.
 
 ## [1.3.6] - Compiler UX, Type/Codegen Correctness, and Project Reliability - 2026-04-08
 
