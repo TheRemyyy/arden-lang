@@ -32,6 +32,15 @@ function toAbsoluteUrl(value) {
   return `${siteUrl}${trimmed}`;
 }
 
+function isAllowedUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' && parsed.hostname === host;
+  } catch {
+    return false;
+  }
+}
+
 async function collectUrlsFromFile(filePath) {
   const contents = await fs.readFile(filePath, 'utf8');
   return contents
@@ -99,7 +108,7 @@ async function resolveUrlList(argv) {
     collected.push(...await collectUrlsFromSitemap());
   }
 
-  return Array.from(new Set(collected)).filter((value) => value.startsWith(siteUrl));
+  return Array.from(new Set(collected)).filter((value) => isAllowedUrl(value));
 }
 
 async function submitIndexNow(urlList) {
