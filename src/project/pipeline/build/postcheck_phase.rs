@@ -5,13 +5,13 @@ use std::fmt;
 
 #[derive(Debug)]
 enum PostcheckPhaseError {
-    Semantic(String),
+    SemanticCheck(String),
 }
 
 impl fmt::Display for PostcheckPhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Semantic(message) => write!(f, "{message}"),
+            Self::SemanticCheck(message) => write!(f, "{message}"),
         }
     }
 }
@@ -19,12 +19,6 @@ impl fmt::Display for PostcheckPhaseError {
 impl From<PostcheckPhaseError> for String {
     fn from(value: PostcheckPhaseError) -> Self {
         value.to_string()
-    }
-}
-
-impl From<String> for PostcheckPhaseError {
-    fn from(value: String) -> Self {
-        Self::Semantic(value)
     }
 }
 
@@ -53,7 +47,7 @@ fn run_postcheck_phase_impl(
 ) -> Result<PostcheckOutcome, PostcheckPhaseError> {
     if inputs.do_check {
         run_semantic_phase(build_timings, inputs.semantic_inputs)
-            .map_err(PostcheckPhaseError::Semantic)?;
+            .map_err(PostcheckPhaseError::SemanticCheck)?;
     }
 
     if inputs.check_only {

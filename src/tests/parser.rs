@@ -287,6 +287,34 @@ fn parse_unbalanced_deep_parenthesized_expression_returns_error_instead_of_recur
 }
 
 #[test]
+fn parse_deep_unbalanced_interpolation_expression_stays_literal_without_recursing() {
+    let mut interpolation = String::new();
+    interpolation.push_str("prefix {");
+    interpolation.push_str(&"(".repeat(512));
+    interpolation.push('1');
+    interpolation.push_str(&")".repeat(511));
+    interpolation.push_str("} suffix");
+
+    let source = format!(
+        "function main(): None {{ s: String = \"{}\"; return None; }}",
+        interpolation
+    );
+
+    let program = parse_source(&source)
+        .must("deep unbalanced interpolation expression should parse as literal text");
+    let Decl::Function(func) = &program.declarations[0].node else {
+        panic!("Expected function declaration");
+    };
+    let Stmt::Let { value, .. } = &func.body[0].node else {
+        panic!("Expected let statement");
+    };
+    let Expr::Literal(Literal::String(actual)) = &value.node else {
+        panic!("Expected interpolation fallback to a plain string literal");
+    };
+    assert_eq!(actual, &interpolation);
+}
+
+#[test]
 fn test_rejects_multiple_lifecycle_attributes() {
     let source = r#"
         @Before

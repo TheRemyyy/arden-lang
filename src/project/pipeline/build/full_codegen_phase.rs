@@ -27,12 +27,6 @@ impl From<FullCodegenPhaseError> for String {
     }
 }
 
-impl From<String> for FullCodegenPhaseError {
-    fn from(value: String) -> Self {
-        Self::EmitLlvmCodegen(value)
-    }
-}
-
 pub(crate) enum FullCodegenRoute {
     EmitLlvmCompleted,
     FullProgramCompleted,

@@ -39,12 +39,6 @@ impl From<ObjectPipelineError> for String {
     }
 }
 
-impl From<String> for ObjectPipelineError {
-    fn from(value: String) -> Self {
-        Self::Codegen(value)
-    }
-}
-
 pub(crate) struct ObjectPipelineInputs<'a, 'b> {
     pub(crate) project_root: &'a Path,
     pub(crate) output_path: &'a Path,

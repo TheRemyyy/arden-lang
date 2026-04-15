@@ -31,12 +31,6 @@ impl From<DependencyGraphPhaseError> for String {
     }
 }
 
-impl From<String> for DependencyGraphPhaseError {
-    fn from(value: String) -> Self {
-        Self::CacheLoad(value)
-    }
-}
-
 pub(crate) struct DependencyGraphInputs<'a> {
     pub(crate) project_root: &'a Path,
     pub(crate) entry_path: &'a Path,

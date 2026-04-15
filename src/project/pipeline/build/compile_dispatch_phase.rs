@@ -32,12 +32,6 @@ impl From<CompileDispatchPhaseError> for String {
     }
 }
 
-impl From<String> for CompileDispatchPhaseError {
-    fn from(value: String) -> Self {
-        Self::FullCodegen(value)
-    }
-}
-
 pub(crate) enum CompileDispatchOutcome {
     ContinueFinalize,
     Completed,

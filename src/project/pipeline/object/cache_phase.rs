@@ -28,12 +28,6 @@ impl From<ObjectCacheProbeError> for String {
     }
 }
 
-impl From<String> for ObjectCacheProbeError {
-    fn from(value: String) -> Self {
-        Self::ProbeResult(value)
-    }
-}
-
 pub(crate) struct ObjectCacheProbeInputs<'a> {
     pub(crate) object_build_fingerprint: &'a str,
     pub(crate) rewritten_files: &'a [RewrittenProjectUnit],

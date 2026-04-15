@@ -21,13 +21,17 @@ use std::time::Instant;
 
 #[derive(Debug)]
 enum ObjectCodegenPhaseError {
-    ShardCompile(String),
+    CachePathResolve(String),
+    ObjectEmit(String),
+    CacheMetaSave(String),
 }
 
 impl fmt::Display for ObjectCodegenPhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ShardCompile(message) => write!(f, "{message}"),
+            Self::CachePathResolve(message)
+            | Self::ObjectEmit(message)
+            | Self::CacheMetaSave(message) => write!(f, "{message}"),
         }
     }
 }
@@ -35,12 +39,6 @@ impl fmt::Display for ObjectCodegenPhaseError {
 impl From<ObjectCodegenPhaseError> for String {
     fn from(value: ObjectCodegenPhaseError) -> Self {
         value.to_string()
-    }
-}
-
-impl From<String> for ObjectCodegenPhaseError {
-    fn from(value: String) -> Self {
-        Self::ShardCompile(value)
     }
 }
 
@@ -95,7 +93,7 @@ fn run_object_codegen_phase_impl(
                             .object_cache_paths_by_file
                             .get(&unit.file)
                             .ok_or_else(|| {
-                                ObjectCodegenPhaseError::ShardCompile(format!(
+                                ObjectCodegenPhaseError::CachePathResolve(format!(
                                     "{}: missing object cache paths for rewritten unit '{}'",
                                     cli_error("error"),
                                     format_cli_path(&unit.file)
@@ -183,7 +181,8 @@ fn run_object_codegen_phase_impl(
                         &codegen_active_symbols,
                         &batch_declaration_symbols,
                         Some(object_emit_timing_totals.as_ref()),
-                    )?;
+                    )
+                    .map_err(ObjectCodegenPhaseError::ObjectEmit)?;
                     object_codegen_timing_totals
                         .llvm_emit_ns
                         .fetch_add(elapsed_nanos_u64(llvm_emit_started_at), Ordering::Relaxed);
@@ -194,25 +193,27 @@ fn run_object_codegen_phase_impl(
                             cache_paths,
                             &shard.member_fingerprints,
                             inputs.object_build_fingerprint,
-                        )?;
+                        )
+                        .map_err(ObjectCodegenPhaseError::CacheMetaSave)?;
                     } else {
                         let unit = &inputs.rewritten_files[shard.member_indices[0]];
                         let cache_paths = inputs
                             .object_cache_paths_by_file
                             .get(&unit.file)
                             .ok_or_else(|| {
-                                format!(
+                                ObjectCodegenPhaseError::CachePathResolve(format!(
                                     "{}: missing object cache paths for rewritten unit '{}'",
                                     cli_error("error"),
                                     format_cli_path(&unit.file)
-                                )
+                                ))
                             })?;
                         save_object_cache_meta(
                             cache_paths,
                             &unit.semantic_fingerprint,
                             &unit.rewrite_context_fingerprint,
                             inputs.object_build_fingerprint,
-                        )?;
+                        )
+                        .map_err(ObjectCodegenPhaseError::CacheMetaSave)?;
                     }
                     object_codegen_timing_totals
                         .cache_save_ns

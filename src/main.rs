@@ -278,42 +278,81 @@ impl From<ParseProjectError> for AppError {
 
 #[derive(Debug)]
 enum ParseProjectError {
-    Message(String),
+    MetadataRead(String),
+    CacheLoad(String),
+    SourceRead(String),
+    Parse(String),
+    CacheSave(String),
 }
 
 impl fmt::Display for ParseProjectError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Message(message) => write!(f, "{message}"),
+            Self::MetadataRead(message)
+            | Self::CacheLoad(message)
+            | Self::SourceRead(message)
+            | Self::Parse(message)
+            | Self::CacheSave(message) => write!(f, "{message}"),
         }
     }
 }
 
 impl From<String> for ParseProjectError {
     fn from(value: String) -> Self {
-        Self::Message(value)
+        Self::Parse(value)
     }
 }
 
 #[derive(Debug)]
 enum BuildProjectError {
-    Message(String),
+    CurrentDirRead(String),
+    ProjectRootMissing(String),
+    ProjectConfigLoad(String),
+    ProjectConfigValidate(String),
+    OptLevelValidate(String),
+    OutputDirCreate(String),
+    FingerprintCompute(String),
+    BuildCacheLookup(String),
+    ParseIndex(String),
+    DependencyGraph(String),
+    SemanticGate(String),
+    SymbolCollision(String),
+    EntryValidation(String),
+    CompileDispatch(String),
+    FinalizeBuild(String),
+    SemanticSummaryCacheLoad(String),
+    TypecheckSummaryCacheLoad(String),
 }
 
 impl fmt::Display for BuildProjectError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Message(message) => write!(f, "{message}"),
+            Self::CurrentDirRead(message)
+            | Self::ProjectRootMissing(message)
+            | Self::ProjectConfigLoad(message)
+            | Self::ProjectConfigValidate(message)
+            | Self::OptLevelValidate(message)
+            | Self::OutputDirCreate(message)
+            | Self::FingerprintCompute(message)
+            | Self::BuildCacheLookup(message)
+            | Self::ParseIndex(message)
+            | Self::DependencyGraph(message)
+            | Self::SemanticGate(message)
+            | Self::SymbolCollision(message)
+            | Self::EntryValidation(message)
+            | Self::CompileDispatch(message)
+            | Self::FinalizeBuild(message)
+            | Self::SemanticSummaryCacheLoad(message)
+            | Self::TypecheckSummaryCacheLoad(message) => write!(f, "{message}"),
         }
     }
 }
 
 impl From<String> for BuildProjectError {
     fn from(value: String) -> Self {
-        Self::Message(value)
+        Self::CompileDispatch(value)
     }
 }
-
 impl From<ParseProjectError> for String {
     fn from(value: ParseProjectError) -> Self {
         value.to_string()
@@ -328,20 +367,42 @@ impl From<BuildProjectError> for String {
 
 #[derive(Debug)]
 enum CompilePipelineError {
-    Message(String),
+    OutputDirCreate(String),
+    CodegenCompile(String),
+    ObjectEmit(String),
+    Link(String),
+    SourcePathValidation(String),
+    CurrentDirRead(String),
+    SourceRead(String),
+    Parse(String),
+    EntryValidation(String),
+    OptLevelValidate(String),
+    SemanticCheck(String),
+    IrWrite(String),
 }
 
 impl fmt::Display for CompilePipelineError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Message(message) => write!(f, "{message}"),
+            Self::OutputDirCreate(message)
+            | Self::CodegenCompile(message)
+            | Self::ObjectEmit(message)
+            | Self::Link(message)
+            | Self::SourcePathValidation(message)
+            | Self::CurrentDirRead(message)
+            | Self::SourceRead(message)
+            | Self::Parse(message)
+            | Self::EntryValidation(message)
+            | Self::OptLevelValidate(message)
+            | Self::SemanticCheck(message)
+            | Self::IrWrite(message) => write!(f, "{message}"),
         }
     }
 }
 
 impl From<String> for CompilePipelineError {
     fn from(value: String) -> Self {
-        Self::Message(value)
+        Self::CodegenCompile(value)
     }
 }
 
@@ -509,16 +570,18 @@ fn parse_project_unit_impl(
     file: &Path,
 ) -> Result<ParsedProjectUnit, ParseProjectError> {
     let filename = format_project_file_label(project_root, file);
-    let file_metadata = current_file_metadata_stamp(file)?;
-    let cached_entry = load_parsed_file_cache_entry(project_root, file)?;
-    let read_source = |f: &Path| {
+    let file_metadata =
+        current_file_metadata_stamp(file).map_err(ParseProjectError::MetadataRead)?;
+    let cached_entry =
+        load_parsed_file_cache_entry(project_root, file).map_err(ParseProjectError::CacheLoad)?;
+    let read_source = |f: &Path| -> Result<String, ParseProjectError> {
         fs::read_to_string(f).map_err(|e| {
-            format!(
+            ParseProjectError::SourceRead(format!(
                 "{}: Failed to read '{}': {}",
                 "error".red().bold(),
                 format_project_file_label(project_root, f),
                 e
-            )
+            ))
         })
     };
     let SourceParseResult {
@@ -1131,7 +1194,8 @@ fn parse_project_unit_impl(
             qualified_symbol_refs: qualified_symbol_refs.clone(),
             api_referenced_symbols: api_referenced_symbols.clone(),
         };
-        save_parsed_file_cache(project_root, file, &cache_entry)?;
+        save_parsed_file_cache(project_root, file, &cache_entry)
+            .map_err(ParseProjectError::CacheSave)?;
 
         (
             function_names,
@@ -1188,25 +1252,28 @@ fn build_project_impl(
     reset_cache_io_timing_totals(&PARSE_CACHE_TIMING_TOTALS);
     reset_cache_io_timing_totals(&REWRITE_CACHE_TIMING_TOTALS);
     reset_cache_io_timing_totals(&OBJECT_CACHE_META_TIMING_TOTALS);
-    let cwd = current_dir_checked()?;
+    let cwd = current_dir_checked().map_err(BuildProjectError::CurrentDirRead)?;
     let project_root = find_project_root(&cwd).ok_or_else(|| {
-        format!(
+        BuildProjectError::ProjectRootMissing(format!(
             "{}: No arden.toml found from current directory '{}'. Are you in a project directory?\nRun `arden new <name>` to create a new project.",
             "error".red().bold(),
             format_cli_path(&cwd)
-        )
+        ))
     })?;
 
     let config_path = project_root.join("arden.toml");
-    let mut config = ProjectConfig::load(&config_path)?;
+    let mut config =
+        ProjectConfig::load(&config_path).map_err(BuildProjectError::ProjectConfigLoad)?;
     if release {
         config.opt_level = "3".to_string();
     }
 
-    build_timings.measure("project config validation", || {
-        config.validate(&project_root)
-    })?;
-    validate_opt_level(Some(&config.opt_level))?;
+    build_timings
+        .measure("project config validation", || {
+            config.validate(&project_root)
+        })
+        .map_err(BuildProjectError::ProjectConfigValidate)?;
+    validate_opt_level(Some(&config.opt_level)).map_err(BuildProjectError::OptLevelValidate)?;
     let files = build_timings.measure_step("source file discovery", || {
         let mut files = config.get_source_files(&project_root);
         files.sort();
@@ -1216,15 +1283,20 @@ fn build_project_impl(
 
     let output_path = resolve_project_output_path(&project_root, &config);
     if !check_only {
-        ensure_output_parent_dir(&output_path)?;
+        ensure_output_parent_dir(&output_path).map_err(BuildProjectError::OutputDirCreate)?;
     }
-    let fingerprint = build_timings.measure("project fingerprint", || {
-        compute_project_fingerprint(&files, &config, emit_llvm, do_check)
-    })?;
+    let fingerprint = build_timings
+        .measure("project fingerprint", || {
+            compute_project_fingerprint(&files, &config, emit_llvm, do_check)
+        })
+        .map_err(BuildProjectError::FingerprintCompute)?;
     if !check_only {
-        if let Some(cached) = build_timings.measure("build cache lookup", || {
-            load_cached_fingerprint(&project_root)
-        })? {
+        if let Some(cached) = build_timings
+            .measure("build cache lookup", || {
+                load_cached_fingerprint(&project_root)
+            })
+            .map_err(BuildProjectError::BuildCacheLookup)?
+        {
             if cached == fingerprint && project_build_artifact_exists(&output_path, emit_llvm) {
                 print_cli_cache(format!(
                     "Reused whole-project build cache for {}",
@@ -1273,7 +1345,8 @@ fn build_project_impl(
         module_collisions,
         project_symbol_lookup,
         total_module_names,
-    } = run_parse_index_phase(&mut build_timings, &project_root, &files)?;
+    } = run_parse_index_phase(&mut build_timings, &project_root, &files)
+        .map_err(BuildProjectError::ParseIndex)?;
     let entry_path = config.get_entry_path(&project_root);
     let DependencyGraphOutputs {
         previous_dependency_graph,
@@ -1301,10 +1374,13 @@ fn build_project_impl(
             },
             project_symbol_lookup: &project_symbol_lookup,
         },
-    )?;
+    )
+    .map_err(BuildProjectError::DependencyGraph)?;
 
-    let previous_semantic_summary = load_semantic_summary_cache(&project_root)?;
-    let previous_typecheck_summary = load_typecheck_summary_cache(&project_root)?;
+    let previous_semantic_summary = load_semantic_summary_cache(&project_root)
+        .map_err(BuildProjectError::SemanticSummaryCacheLoad)?;
+    let previous_typecheck_summary = load_typecheck_summary_cache(&project_root)
+        .map_err(BuildProjectError::TypecheckSummaryCacheLoad)?;
     let impact = compute_project_change_impact(
         previous_dependency_graph.as_ref(),
         &parsed_files,
@@ -1322,10 +1398,12 @@ fn build_project_impl(
             output_path: &output_path,
             impact: &impact,
         },
-    )?;
+    )
+    .map_err(BuildProjectError::SemanticGate)?;
     if semantic_cache_hit {
         print_cli_cache(format!("Reused semantic build cache for {}", config.name));
-        save_cached_fingerprint(&project_root, &fingerprint)?;
+        save_cached_fingerprint(&project_root, &fingerprint)
+            .map_err(BuildProjectError::BuildCacheLookup)?;
         print_cli_artifact_result(
             "Built",
             &config.name,
@@ -1342,9 +1420,11 @@ fn build_project_impl(
         enum_collisions,
         interface_collisions,
         module_collisions,
-    )?;
+    )
+    .map_err(BuildProjectError::SymbolCollision)?;
 
-    run_entry_validation_phase(do_check, &entry_path, &parsed_files)?;
+    run_entry_validation_phase(do_check, &entry_path, &parsed_files)
+        .map_err(BuildProjectError::EntryValidation)?;
 
     let RewritePreparation {
         namespace_functions,
@@ -1463,7 +1543,9 @@ fn build_project_impl(
                 module_file_map: &global_module_file_map,
             },
         },
-    )? {
+    )
+    .map_err(BuildProjectError::CompileDispatch)?
+    {
         return Ok(());
     }
 
@@ -1477,7 +1559,8 @@ fn build_project_impl(
             semantic_fingerprint: &semantic_fingerprint,
             current_dependency_graph_cache: &current_dependency_graph_cache,
         },
-    )?;
+    )
+    .map_err(BuildProjectError::FinalizeBuild)?;
 
     Ok(())
 }
@@ -1499,7 +1582,7 @@ fn compile_program_ast_impl(
     emit_llvm: bool,
     link: &LinkConfig<'_>,
 ) -> Result<(), CompilePipelineError> {
-    ensure_output_parent_dir(output_path)?;
+    ensure_output_parent_dir(output_path).map_err(CompilePipelineError::OutputDirCreate)?;
 
     let context = Context::create();
     let module_name = source_path
@@ -1509,29 +1592,31 @@ fn compile_program_ast_impl(
 
     let mut codegen = Codegen::new(&context, module_name);
     codegen.compile(program).map_err(|e| {
-        format!(
+        CompilePipelineError::CodegenCompile(format!(
             "{}: Codegen error in '{}': {}",
             "error".red().bold(),
             format_cli_path(source_path),
             e.message
-        )
+        ))
     })?;
 
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
-        codegen.write_ir(&ll_path)?;
+        codegen
+            .write_ir(&ll_path)
+            .map_err(CompilePipelineError::IrWrite)?;
         println!("{} {}", cli_success("Wrote LLVM IR"), cli_path(&ll_path));
     } else {
         let object_path = output_path.with_extension(format!("arden-tmp.{}", object_ext()));
         codegen
             .write_object_with_config(&object_path, link.opt_level, link.target, &link.output_kind)
             .map_err(|e| {
-                format!(
+                CompilePipelineError::ObjectEmit(format!(
                     "{}: Failed to emit object for '{}': {}",
                     "error".red().bold(),
                     format_cli_path(source_path),
                     e
-                )
+                ))
             })?;
         let link_result = link_objects(std::slice::from_ref(&object_path), output_path, link);
         if let Err(err) = fs::remove_file(&object_path) {
@@ -1544,7 +1629,7 @@ fn compile_program_ast_impl(
                 );
             }
         }
-        link_result?;
+        link_result.map_err(CompilePipelineError::Link)?;
     }
 
     Ok(())
@@ -1681,10 +1766,12 @@ fn compile_file_impl(
     target: Option<&str>,
 ) -> Result<(), CompilePipelineError> {
     let compile_started = Instant::now();
-    validate_source_file_path(file)?;
+    validate_source_file_path(file).map_err(CompilePipelineError::SourcePathValidation)?;
 
     // Check if we're in a project
-    if let Some(project_root) = find_project_root(&current_dir_checked()?) {
+    if let Some(project_root) =
+        find_project_root(&current_dir_checked().map_err(CompilePipelineError::CurrentDirRead)?)
+    {
         if file.starts_with(&project_root) {
             println!(
                 "{}",
@@ -1694,12 +1781,12 @@ fn compile_file_impl(
     }
 
     let source = fs::read_to_string(file).map_err(|e| {
-        format!(
+        CompilePipelineError::SourceRead(format!(
             "{}: Failed to read file '{}': {}",
             "error".red().bold(),
             format_cli_path(file),
             e
-        )
+        ))
     })?;
 
     let output_path = output.map(PathBuf::from).unwrap_or_else(|| {
@@ -1713,12 +1800,14 @@ fn compile_file_impl(
         }
     });
 
-    ensure_output_parent_dir(&output_path)?;
+    ensure_output_parent_dir(&output_path).map_err(CompilePipelineError::OutputDirCreate)?;
 
     if !do_check {
         let filename = format_cli_path(file);
-        let program = parse_program_from_source(&source, &filename)?;
-        validate_entry_main_signature(&program, &source, &filename)?;
+        let program =
+            parse_program_from_source(&source, &filename).map_err(CompilePipelineError::Parse)?;
+        validate_entry_main_signature(&program, &source, &filename)
+            .map_err(CompilePipelineError::EntryValidation)?;
     }
 
     compile_source(
@@ -1771,16 +1860,18 @@ fn compile_source_impl(
     opt_level: Option<&str>,
     target: Option<&str>,
 ) -> Result<(), CompilePipelineError> {
-    validate_opt_level(opt_level)?;
+    validate_opt_level(opt_level).map_err(CompilePipelineError::OptLevelValidate)?;
 
     let filename = format_cli_path(source_path);
 
     // Tokenize
-    let program = parse_program_from_source(source, &filename)?;
+    let program = parse_program_from_source(source, &filename)
+        .map_err(CompilePipelineError::Parse)?;
 
     // Type check
     if do_check {
-        run_single_file_semantic_checks(source, &filename, &program)?;
+        run_single_file_semantic_checks(source, &filename, &program)
+            .map_err(CompilePipelineError::SemanticCheck)?;
     }
 
     // Codegen
@@ -1792,17 +1883,19 @@ fn compile_source_impl(
 
     let mut codegen = Codegen::new(&context, module_name);
     codegen.compile(&program).map_err(|e| {
-        format!(
+        CompilePipelineError::CodegenCompile(format!(
             "{}: Codegen error in '{}': {}",
             "error".red().bold(),
             format_cli_path(source_path),
             e.message
-        )
+        ))
     })?;
 
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
-        codegen.write_ir(&ll_path)?;
+        codegen
+            .write_ir(&ll_path)
+            .map_err(CompilePipelineError::IrWrite)?;
         println!("{} {}", cli_success("Wrote LLVM IR"), cli_path(&ll_path));
     } else {
         let link = LinkConfig {
@@ -1817,12 +1910,12 @@ fn compile_source_impl(
         codegen
             .write_object_with_config(&object_path, opt_level, target, &OutputKind::Bin)
             .map_err(|e| {
-                format!(
+                CompilePipelineError::ObjectEmit(format!(
                     "{}: Failed to emit object for '{}': {}",
                     "error".red().bold(),
                     format_cli_path(source_path),
                     e
-                )
+                ))
             })?;
         let link_result = link_objects(std::slice::from_ref(&object_path), output_path, &link);
         if let Err(err) = fs::remove_file(&object_path) {
@@ -1835,7 +1928,7 @@ fn compile_source_impl(
                 );
             }
         }
-        link_result?;
+        link_result.map_err(CompilePipelineError::Link)?;
     }
 
     Ok(())

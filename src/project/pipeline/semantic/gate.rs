@@ -11,13 +11,13 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 enum SemanticGateError {
-    GateEvaluation(String),
+    CacheLookup(String),
 }
 
 impl fmt::Display for SemanticGateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::GateEvaluation(message) => write!(f, "{message}"),
+            Self::CacheLookup(message) => write!(f, "{message}"),
         }
     }
 }
@@ -25,12 +25,6 @@ impl fmt::Display for SemanticGateError {
 impl From<SemanticGateError> for String {
     fn from(value: SemanticGateError) -> Self {
         value.to_string()
-    }
-}
-
-impl From<String> for SemanticGateError {
-    fn from(value: String) -> Self {
-        Self::GateEvaluation(value)
     }
 }
 
@@ -126,10 +120,12 @@ fn evaluate_semantic_cache_gate_impl(
                 inputs.do_check,
             );
             let semantic_cache_hit = if !inputs.check_only {
-                load_semantic_cached_fingerprint(inputs.project_root)?.is_some_and(|cached| {
-                    cached == semantic_fingerprint
-                        && project_build_artifact_exists(inputs.output_path, inputs.emit_llvm)
-                })
+                load_semantic_cached_fingerprint(inputs.project_root)
+                    .map_err(SemanticGateError::CacheLookup)?
+                    .is_some_and(|cached| {
+                        cached == semantic_fingerprint
+                            && project_build_artifact_exists(inputs.output_path, inputs.emit_llvm)
+                    })
             } else {
                 false
             };

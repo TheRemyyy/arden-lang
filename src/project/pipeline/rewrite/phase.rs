@@ -22,13 +22,13 @@ use std::time::Instant;
 
 #[derive(Debug)]
 enum RewritePhaseError {
-    UnitCollection(String),
+    RewriteUnit(String),
 }
 
 impl fmt::Display for RewritePhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnitCollection(message) => write!(f, "{message}"),
+            Self::RewriteUnit(message) => write!(f, "{message}"),
         }
     }
 }
@@ -36,12 +36,6 @@ impl fmt::Display for RewritePhaseError {
 impl From<RewritePhaseError> for String {
     fn from(value: RewritePhaseError) -> Self {
         value.to_string()
-    }
-}
-
-impl From<String> for RewritePhaseError {
-    fn from(value: String) -> Self {
-        Self::UnitCollection(value)
     }
 }
 
@@ -91,7 +85,8 @@ fn run_rewrite_phase_impl(
                                     inputs.project_root,
                                     &unit.file,
                                     &unit.semantic_fingerprint,
-                                )?
+                                )
+                                .map_err(RewritePhaseError::RewriteUnit)?
                             {
                                 rewrite_timing_totals.cache_lookup_ns.fetch_add(
                                     elapsed_nanos_u64(cache_lookup_started_at),
@@ -143,7 +138,9 @@ fn run_rewrite_phase_impl(
                             &unit.file,
                             &unit.semantic_fingerprint,
                             &rewrite_context_fingerprint,
-                        )? {
+                        )
+                        .map_err(RewritePhaseError::RewriteUnit)?
+                        {
                             rewrite_timing_totals.cache_lookup_ns.fetch_add(
                                 elapsed_nanos_u64(cache_lookup_started_at),
                                 Ordering::Relaxed,
@@ -235,7 +232,8 @@ fn run_rewrite_phase_impl(
                                 active_symbols: &active_symbols,
                                 has_specialization_demand,
                             },
-                        )?;
+                        )
+                        .map_err(RewritePhaseError::RewriteUnit)?;
                         rewrite_timing_totals
                             .cache_save_ns
                             .fetch_add(elapsed_nanos_u64(cache_save_started_at), Ordering::Relaxed);

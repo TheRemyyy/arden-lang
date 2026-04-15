@@ -13,13 +13,13 @@ use std::time::Instant;
 
 #[derive(Debug)]
 enum ParseIndexPhaseError {
-    ParseAndScan(String),
+    ParseUnit(String),
 }
 
 impl fmt::Display for ParseIndexPhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ParseAndScan(message) => write!(f, "{message}"),
+            Self::ParseUnit(message) => write!(f, "{message}"),
         }
     }
 }
@@ -27,12 +27,6 @@ impl fmt::Display for ParseIndexPhaseError {
 impl From<ParseIndexPhaseError> for String {
     fn from(value: ParseIndexPhaseError) -> Self {
         value.to_string()
-    }
-}
-
-impl From<String> for ParseIndexPhaseError {
-    fn from(value: String) -> Self {
-        Self::ParseAndScan(value)
     }
 }
 
@@ -77,7 +71,10 @@ fn run_parse_index_phase_impl(
         build_timings.measure("parse + symbol scan", || {
             files
                 .par_iter()
-                .map(|file| crate::parse_project_unit(project_root, file).map_err(Into::into))
+                .map(|file| {
+                    crate::parse_project_unit(project_root, file)
+                        .map_err(ParseIndexPhaseError::ParseUnit)
+                })
                 .collect::<Result<Vec<_>, ParseIndexPhaseError>>()
         })?;
     parsed_units.sort_by(|a, b| a.file.cmp(&b.file));
