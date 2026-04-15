@@ -2,7 +2,9 @@
 use crate::linker::gcc_version_sort_keys_for_test;
 #[cfg(target_os = "linux")]
 use crate::linker::linux_target_descriptor_for_test;
-use crate::linker::{escape_response_file_arg, find_tool_in_path, windows_machine_flag};
+use crate::linker::{escape_response_file_arg, windows_machine_flag};
+#[cfg(unix)]
+use crate::linker::find_tool_in_path;
 
 #[test]
 fn windows_machine_flag_prefers_x64_over_x86_substring() {

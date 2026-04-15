@@ -1,7 +1,8 @@
 use crate::project::OutputKind;
+#[cfg(target_os = "macos")]
+use crate::cli::output::format_cli_path;
 use crate::shared::process_exit::command_failure_details;
 use colored::*;
-#[cfg(target_os = "linux")]
 use std::env;
 #[cfg(any(windows, target_os = "macos"))]
 use std::ffi::OsString;
