@@ -38,12 +38,6 @@ impl From<ProjectInitError> for String {
     }
 }
 
-impl From<String> for ProjectInitError {
-    fn from(value: String) -> Self {
-        Self::ConfigSave(value)
-    }
-}
-
 pub(crate) fn create_new_project(name: &str, path: Option<&Path>) -> Result<(), String> {
     create_new_project_impl(name, path).map_err(Into::into)
 }

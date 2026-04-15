@@ -22,13 +22,17 @@ use std::time::Instant;
 
 #[derive(Debug)]
 enum RewritePhaseError {
-    RewriteUnit(String),
+    SafeCacheLookup(String),
+    CacheLookup(String),
+    CacheSave(String),
 }
 
 impl fmt::Display for RewritePhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::RewriteUnit(message) => write!(f, "{message}"),
+            Self::SafeCacheLookup(message)
+            | Self::CacheLookup(message)
+            | Self::CacheSave(message) => write!(f, "{message}"),
         }
     }
 }
@@ -86,7 +90,7 @@ fn run_rewrite_phase_impl(
                                     &unit.file,
                                     &unit.semantic_fingerprint,
                                 )
-                                .map_err(RewritePhaseError::RewriteUnit)?
+                                .map_err(RewritePhaseError::SafeCacheLookup)?
                             {
                                 rewrite_timing_totals.cache_lookup_ns.fetch_add(
                                     elapsed_nanos_u64(cache_lookup_started_at),
@@ -139,7 +143,7 @@ fn run_rewrite_phase_impl(
                             &unit.semantic_fingerprint,
                             &rewrite_context_fingerprint,
                         )
-                        .map_err(RewritePhaseError::RewriteUnit)?
+                        .map_err(RewritePhaseError::CacheLookup)?
                         {
                             rewrite_timing_totals.cache_lookup_ns.fetch_add(
                                 elapsed_nanos_u64(cache_lookup_started_at),
@@ -233,7 +237,7 @@ fn run_rewrite_phase_impl(
                                 has_specialization_demand,
                             },
                         )
-                        .map_err(RewritePhaseError::RewriteUnit)?;
+                        .map_err(RewritePhaseError::CacheSave)?;
                         rewrite_timing_totals
                             .cache_save_ns
                             .fetch_add(elapsed_nanos_u64(cache_save_started_at), Ordering::Relaxed);

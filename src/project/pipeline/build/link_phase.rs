@@ -27,12 +27,6 @@ impl From<FinalLinkPhaseError> for String {
     }
 }
 
-impl From<String> for FinalLinkPhaseError {
-    fn from(value: String) -> Self {
-        Self::FinalLink(value)
-    }
-}
-
 pub(crate) struct FinalLinkInputs<'a, 'b> {
     pub(crate) previous_link_manifest: Option<&'a LinkManifestCache>,
     pub(crate) output_path: &'a Path,

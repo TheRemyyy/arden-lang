@@ -11,13 +11,17 @@ use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
 enum ObjectCacheProbeError {
-    ProbeResult(String),
+    ShardCacheLookup(String),
+    MissingCachePaths(String),
+    UnitCacheLookup(String),
 }
 
 impl fmt::Display for ObjectCacheProbeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ProbeResult(message) => write!(f, "{message}"),
+            Self::ShardCacheLookup(message)
+            | Self::MissingCachePaths(message)
+            | Self::UnitCacheLookup(message) => write!(f, "{message}"),
         }
     }
 }
@@ -70,7 +74,7 @@ fn run_object_cache_probe_impl(
                                 &shard.member_fingerprints,
                                 inputs.object_build_fingerprint,
                             )
-                            .map_err(ObjectCacheProbeError::ProbeResult)?
+                            .map_err(ObjectCacheProbeError::ShardCacheLookup)?
                         } else {
                             let index = shard.member_indices[0];
                             let unit = &inputs.rewritten_files[index];
@@ -78,7 +82,7 @@ fn run_object_cache_probe_impl(
                                 .object_cache_paths_by_file
                                 .get(&unit.file)
                                 .ok_or_else(|| {
-                                    ObjectCacheProbeError::ProbeResult(format!(
+                                    ObjectCacheProbeError::MissingCachePaths(format!(
                                         "{}: missing object cache paths for rewritten unit '{}'",
                                         cli_error("error"),
                                         format_cli_path(&unit.file)
@@ -90,7 +94,7 @@ fn run_object_cache_probe_impl(
                                 &unit.rewrite_context_fingerprint,
                                 inputs.object_build_fingerprint,
                             )
-                            .map_err(ObjectCacheProbeError::ProbeResult)?
+                            .map_err(ObjectCacheProbeError::UnitCacheLookup)?
                         };
                         Ok((shard.member_indices.clone(), cached_obj))
                     })

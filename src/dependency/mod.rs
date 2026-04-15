@@ -172,13 +172,11 @@ pub(crate) fn register_global_symbol(
             }
         }
         std::collections::hash_map::Entry::Occupied(entry) => {
-            if entry.get() != owner_namespace {
-                ctx.collisions.push((
-                    symbol_name.to_string(),
-                    entry.get().clone(),
-                    owner_namespace.to_string(),
-                ));
-            }
+            ctx.collisions.push((
+                symbol_name.to_string(),
+                entry.get().clone(),
+                owner_namespace.to_string(),
+            ));
         }
     }
 }

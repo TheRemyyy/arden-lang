@@ -39,12 +39,6 @@ impl From<ImportCheckPhaseError> for String {
     }
 }
 
-impl From<String> for ImportCheckPhaseError {
-    fn from(value: String) -> Self {
-        Self::UnitCheck(value)
-    }
-}
-
 pub(crate) struct ImportCheckInputs<'a> {
     pub(crate) project_root: &'a Path,
     pub(crate) parsed_files: &'a [ParsedProjectUnit],
@@ -95,7 +89,8 @@ fn run_import_check_phase_impl(
                             &unit.file,
                             &unit.import_check_fingerprint,
                             &rewrite_context_fingerprint,
-                        )? {
+                        )
+                        .map_err(ImportCheckPhaseError::UnitCheck)? {
                             import_check_timing_totals.cache_lookup_ns.fetch_add(
                                 elapsed_nanos_u64(cache_lookup_started_at),
                                 Ordering::Relaxed,
@@ -164,7 +159,8 @@ fn run_import_check_phase_impl(
                             &unit.file,
                             &unit.import_check_fingerprint,
                             &rewrite_context_fingerprint,
-                        )?;
+                        )
+                        .map_err(ImportCheckPhaseError::UnitCheck)?;
                         import_check_timing_totals
                             .cache_save_ns
                             .fetch_add(elapsed_nanos_u64(cache_save_started_at), Ordering::Relaxed);

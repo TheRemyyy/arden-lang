@@ -36,6 +36,19 @@ return None;
 }
 
 #[test]
+fn fixes_imports_when_source_uses_lone_cr_line_endings() {
+    let source =
+        "import std.string.*;\rimport std.io.*;\rimport std.io.*;\r\rfunction main(): None {\rreturn None;\r}\r";
+    let result = lint_source(source, true).must("lint succeeds");
+    let fixed = result.fixed_source.must("fixed source");
+    assert!(
+        fixed.starts_with("import std.io.*;\nimport std.string.*;\n\n"),
+        "{fixed}"
+    );
+    assert_eq!(fixed.matches("import std.io.*;").count(), 1, "{fixed}");
+}
+
+#[test]
 fn flags_unused_specific_imports() {
     let source = r#"import project.helper;
 import std.io.*;

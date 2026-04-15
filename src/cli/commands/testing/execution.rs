@@ -36,12 +36,6 @@ impl From<TestExecutionError> for String {
     }
 }
 
-impl From<String> for TestExecutionError {
-    fn from(value: String) -> Self {
-        Self::Compile(value)
-    }
-}
-
 pub(super) fn compile_and_run_test(
     source_path: &Path,
     exe_path: &Path,

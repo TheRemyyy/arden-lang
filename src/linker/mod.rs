@@ -1,6 +1,7 @@
 use crate::project::OutputKind;
 use crate::shared::process_exit::command_failure_details;
 use colored::*;
+#[cfg(target_os = "linux")]
 use std::env;
 #[cfg(any(windows, target_os = "macos"))]
 use std::ffi::OsString;
@@ -8,6 +9,8 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(unix)]
+use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 
 #[derive(Debug)]
 enum LinkerCommandError {
@@ -29,12 +32,6 @@ impl fmt::Display for LinkerCommandError {
 impl From<LinkerCommandError> for String {
     fn from(value: LinkerCommandError) -> Self {
         value.to_string()
-    }
-}
-
-impl From<String> for LinkerCommandError {
-    fn from(value: String) -> Self {
-        Self::LinkExecution(value)
     }
 }
 
@@ -71,17 +68,35 @@ pub(crate) struct LinkConfig<'a> {
     pub(crate) link_args: &'a [String],
 }
 
-fn find_tool_in_path(tool: &str) -> Option<PathBuf> {
+#[cfg(unix)]
+fn is_executable_permissions(permissions: Permissions) -> bool {
+    permissions.mode() & 0o111 != 0
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> bool {
+    path.is_file()
+        && fs::metadata(path)
+            .map(|metadata| is_executable_permissions(metadata.permissions()))
+            .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> bool {
+    path.is_file()
+}
+
+pub(crate) fn find_tool_in_path(tool: &str) -> Option<PathBuf> {
     env::var_os("PATH").and_then(|paths| {
         env::split_paths(&paths).find_map(|dir| {
             let candidate = dir.join(tool);
-            if candidate.is_file() {
+            if is_executable_file(&candidate) {
                 return Some(candidate);
             }
             #[cfg(windows)]
             {
                 let exe = dir.join(format!("{tool}.exe"));
-                if exe.is_file() {
+                if is_executable_file(&exe) {
                     return Some(exe);
                 }
             }
@@ -245,6 +260,13 @@ fn linux_target_descriptor(
     target: Option<&str>,
 ) -> Result<(&'static str, &'static [&'static str]), LinkerCommandError> {
     let target = target.unwrap_or(env::consts::ARCH).to_ascii_lowercase();
+    if target.contains("musl") {
+        return Err(LinkerCommandError::LinkerDetection(format!(
+            "{}: Unsupported Linux link target '{}'. Arden direct linker mode currently supports GNU libc targets only.",
+            "error".red().bold(),
+            target
+        )));
+    }
     if target.contains("x86_64") {
         return Ok((
             "x86_64-linux-gnu",
@@ -270,6 +292,13 @@ fn linux_target_descriptor(
         "error".red().bold(),
         target
     )))
+}
+
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) fn linux_target_descriptor_for_test(target: Option<&str>) -> Result<(), String> {
+    linux_target_descriptor(target)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(target_os = "linux")]
@@ -309,9 +338,46 @@ fn collect_gcc_version_dirs() -> Vec<PathBuf> {
             }
         }
     }
-    version_dirs.sort();
-    version_dirs.reverse();
+    version_dirs.sort_by_key(|path| std::cmp::Reverse(gcc_version_order_key(path)));
     version_dirs
+}
+
+#[cfg(target_os = "linux")]
+fn gcc_version_order_key(path: &Path) -> (bool, Vec<u32>, String) {
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let parsed = parse_gcc_version_name(&name);
+    (parsed.is_some(), parsed.unwrap_or_default(), name)
+}
+
+#[cfg(target_os = "linux")]
+fn parse_gcc_version_name(name: &str) -> Option<Vec<u32>> {
+    let mut parts = Vec::new();
+    for segment in name.split('.') {
+        if segment.is_empty() {
+            return None;
+        }
+        let value = segment.parse::<u32>().ok()?;
+        parts.push(value);
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts)
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) fn gcc_version_sort_keys_for_test(names: &[&str]) -> Vec<(bool, Vec<u32>, String)> {
+    let mut keys = names
+        .iter()
+        .map(|name| gcc_version_order_key(Path::new(name)))
+        .collect::<Vec<_>>();
+    keys.sort_by(|left, right| right.cmp(left));
+    keys
 }
 
 #[cfg(target_os = "linux")]
@@ -606,7 +672,11 @@ fn macos_sdk_version() -> Result<String, LinkerCommandError> {
 
 #[cfg(any(test, target_os = "macos"))]
 pub(crate) fn escape_response_file_arg(arg: &str) -> String {
-    let escaped = arg.replace('\\', "\\\\").replace('"', "\\\"");
+    let escaped = arg
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r");
     format!("\"{}\"", escaped)
 }
 

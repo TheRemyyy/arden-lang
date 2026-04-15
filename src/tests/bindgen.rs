@@ -31,6 +31,12 @@ fn keeps_tokens_separated_when_stripping_inline_block_comments() {
 }
 
 #[test]
+fn strip_comments_preserves_utf8_identifiers() {
+    let stripped = strip_comments("int café(/* poznámka */int číslo);\n");
+    assert_eq!(stripped, "int café( int číslo);\n");
+}
+
+#[test]
 fn preserves_unsigned_type_normalization() {
     let generated = generate_from_prototype("unsigned short checksum(unsigned int value)")
         .must("unsigned integer types should normalize correctly");
@@ -119,6 +125,16 @@ fn does_not_collapse_double_char_pointer_params_into_string() {
     assert_eq!(
         generated,
         "extern(c) function main_like(argc: Integer, argv: Ptr<None>): None;"
+    );
+}
+
+#[test]
+fn unnamed_array_parameters_fall_back_to_generated_argument_names() {
+    let generated = generate_from_prototype("void fill(int [4], const char [])")
+        .must("unnamed array parameters should parse");
+    assert_eq!(
+        generated,
+        "extern(c) function fill(arg0: Ptr<None>, arg1: String): None;"
     );
 }
 

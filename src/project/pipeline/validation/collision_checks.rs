@@ -28,12 +28,6 @@ impl From<CollisionCheckError> for String {
     }
 }
 
-impl From<String> for CollisionCheckError {
-    fn from(value: String) -> Self {
-        Self::Function(value)
-    }
-}
-
 pub(crate) fn validate_symbol_collisions(
     function_collisions: Vec<(String, String, String)>,
     class_collisions: Vec<(String, String, String)>,
@@ -109,11 +103,18 @@ where
         "{} {symbol_kind} name collisions detected across namespaces:",
         "error".red().bold()
     );
+    let mut collision_names = Vec::with_capacity(collisions.len());
     for (name, namespace_a, namespace_b) in collisions {
         eprintln!(
             "  → '{}' is defined in both '{}' and '{}'",
             name, namespace_a, namespace_b
         );
+        collision_names.push(name);
     }
-    Err(map_error(error_message.to_string()))
+    let detail_suffix = if collision_names.is_empty() {
+        String::new()
+    } else {
+        format!(" Colliding symbols: {}.", collision_names.join(", "))
+    };
+    Err(map_error(format!("{error_message}{detail_suffix}")))
 }

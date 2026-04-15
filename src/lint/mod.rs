@@ -24,12 +24,6 @@ impl From<LintCommandError> for String {
     }
 }
 
-impl From<String> for LintCommandError {
-    fn from(value: String) -> Self {
-        Self::Parse(value)
-    }
-}
-
 pub fn lint_source(source: &str, apply_fixes: bool) -> Result<LintResult, String> {
     lint_source_impl(source, apply_fixes).map_err(Into::into)
 }
@@ -862,7 +856,8 @@ fn check_shadowed_in_expr(
 }
 
 fn apply_safe_import_fixes(source: &str, program: &Program) -> String {
-    let shebang = source
+    let normalized_source = source.replace("\r\n", "\n").replace('\r', "\n");
+    let shebang = normalized_source
         .lines()
         .next()
         .filter(|line| line.starts_with("#!"))
@@ -877,7 +872,7 @@ fn apply_safe_import_fixes(source: &str, program: &Program) -> String {
     let mut import_seen = false;
     let mut body_started = false;
 
-    for line in source.lines() {
+    for line in normalized_source.lines() {
         if shebang.as_ref().is_some_and(|s| s == line) {
             continue;
         }

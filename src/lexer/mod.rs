@@ -112,7 +112,7 @@ fn lex_string_literal<'src>(lex: &mut logos::Lexer<'src, Token<'src>>) -> Option
 
 #[derive(Logos, Debug, Clone, PartialEq)]
 #[logos(skip r"[ \t\r\n\f]+")]
-#[logos(skip r"//[^\n]*")]
+#[logos(skip r"//[^\r\n]*")]
 #[logos(skip r"/\*([^*]|\*[^/])*\*/")]
 pub enum Token<'src> {
     // Keywords
@@ -352,7 +352,7 @@ impl<'src> std::fmt::Display for Token<'src> {
 /// Tokenize source code
 pub fn tokenize(source: &str) -> Result<Vec<(Token<'_>, std::ops::Range<usize>)>, String> {
     let (source, span_offset) = if source.starts_with("#!") {
-        match source.find('\n') {
+        match source.find(['\n', '\r']) {
             Some(pos) => (&source[pos..], pos),
             None => ("", source.len()),
         }

@@ -32,3 +32,72 @@ fn keeps_diagnostic_gutter_aligned_for_multi_digit_lines() {
         "{rendered}"
     );
 }
+
+#[test]
+fn diagnostic_underline_width_tracks_unicode_scalar_count() {
+    let source = "🙂🙂x\n";
+    let second_emoji_start = "🙂".len();
+    let second_emoji_end = second_emoji_start + "🙂".len();
+    let diagnostic = SourceDiagnostic {
+        header: "error: unicode width".to_string(),
+        filename: "unicode.arden",
+        span: second_emoji_start..second_emoji_end,
+        help: None,
+        note: None,
+    };
+
+    let rendered = render_source_diagnostic(source, &diagnostic);
+    let caret_count = rendered.chars().filter(|ch| *ch == '^').count();
+    assert_eq!(caret_count, 1, "{rendered}");
+}
+
+#[test]
+fn diagnostic_renders_context_for_eof_after_trailing_newline() {
+    let source = "value\n";
+    let eof = source.len();
+    let diagnostic = SourceDiagnostic {
+        header: "error: eof".to_string(),
+        filename: "eof.arden",
+        span: eof..eof,
+        help: None,
+        note: None,
+    };
+
+    let rendered = render_source_diagnostic(source, &diagnostic);
+    assert!(rendered.contains("eof.arden:2:1"), "{rendered}");
+    assert!(rendered.contains("2 |"), "{rendered}");
+    assert!(rendered.contains("^"), "{rendered}");
+}
+
+#[test]
+fn diagnostic_output_normalizes_crlf_lines() {
+    let source = "value\r\n";
+    let diagnostic = SourceDiagnostic {
+        header: "error: crlf".to_string(),
+        filename: "crlf.arden",
+        span: 0..5,
+        help: None,
+        note: None,
+    };
+
+    let rendered = render_source_diagnostic(source, &diagnostic);
+    assert!(!rendered.contains('\r'), "{rendered:?}");
+    assert!(rendered.contains("1 | value"), "{rendered}");
+}
+
+#[test]
+fn diagnostic_location_and_context_handle_lone_cr_line_endings() {
+    let source = "value\rother";
+    let start = source.find("other").expect("other token");
+    let diagnostic = SourceDiagnostic {
+        header: "error: cr".to_string(),
+        filename: "cr.arden",
+        span: start..(start + "other".len()),
+        help: None,
+        note: None,
+    };
+
+    let rendered = render_source_diagnostic(source, &diagnostic);
+    assert!(rendered.contains("cr.arden:2:1"), "{rendered}");
+    assert!(rendered.contains("2 | other"), "{rendered}");
+}

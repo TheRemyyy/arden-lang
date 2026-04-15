@@ -28,12 +28,6 @@ impl From<FinishPhaseError> for String {
     }
 }
 
-impl From<String> for FinishPhaseError {
-    fn from(value: String) -> Self {
-        Self::BuildCacheSave(value)
-    }
-}
-
 pub(crate) struct FinalizeBuildInputs<'a> {
     pub(crate) project_root: &'a Path,
     pub(crate) config_name: &'a str,

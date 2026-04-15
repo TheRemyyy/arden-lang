@@ -53,12 +53,6 @@ impl From<PerfCommandError> for String {
     }
 }
 
-impl From<String> for PerfCommandError {
-    fn from(value: String) -> Self {
-        Self::ProjectBuild(value)
-    }
-}
-
 fn run_binary_impl(exe_path: &Path, args: &[String]) -> Result<(), PerfCommandError> {
     if !exe_path.exists() {
         return Err(PerfCommandError::BinaryValidation(format!(

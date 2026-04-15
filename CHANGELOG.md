@@ -8,16 +8,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- LSP reference/rename lookup: fixed span-boundary handling so symbol matches at `span` edges resolve correctly, and selection now respects end-exclusive ranges.
+- LSP position mapping: fixed CRLF offset/column conversion so `\r` no longer shifts LSP line/character coordinates.
+- LSP position mapping: fixed CRLF end-of-line clamping so oversized line columns resolve to the CRLF boundary.
+- LSP lexer diagnostics: offset parsing now saturates for oversized numeric values instead of falling back to `0` on parse overflow.
+- Source diagnostics rendering: fixed Unicode underline width, EOF-after-trailing-newline context rendering, and CR/LF line-ending normalization in terminal output.
+- Import-check wildcard handling: `std.<ns>.*` now only imports direct stdlib members, excluding nested `__` symbols from accidental direct resolution.
+- Import-check alias member parsing: fixed generic type spacing in paths like `alias.Member <T>` so member resolution no longer keeps trailing spaces.
+- Lint import auto-fix: fixed import sorting/dedup on files using lone-CR (`\r`) line endings.
+- Bindgen comment stripping: fixed UTF-8 corruption in generated signatures by preserving non-ASCII bytes while removing comments.
+- Bindgen parameter parsing: fixed unnamed array parameters to use generated argument names instead of misclassifying type tokens as names.
+- Test-runner source rewrite: fixed lone-CR (`\r`) line-ending handling for std.io import detection and top-level `main` stripping.
+- Shebang parsing: fixed lexer/formatter handling for shebang lines terminated by lone-CR (`\r`) endings.
+- Formatter comment/package scanning: fixed lone-CR (`\r`) handling when collecting line comments and locating `package` declarations.
+- Formatter comment emission: normalized lone-CR (`\r`) inside preserved comments to stable `\n` output lines.
+- Semantic cache recovery: disabled partial typecheck-component reuse when semantic summary cache is missing, preventing empty recovered effect summaries.
+- Single-file semantic checks: now reject colliding top-level declarations (including duplicate `main`) instead of silently accepting them.
+- Linker response-file escaping: now escapes `\n`/`\r` in arguments to prevent line-break splitting in generated response files.
+- Project symbol indexing: now rejects duplicate top-level symbols even within the same namespace, instead of silently letting later duplicates pass.
+- Linker tool detection: `PATH` scanning now ignores non-executable files, preventing false-positive linker detection.
+- Linux target validation: direct linker mode now rejects `*-musl` targets early with an explicit GNU-libc-only error.
+- Linux linker toolchain probing: GCC support-object directory selection now uses numeric version ordering (`11` > `10` > `9`) instead of lexicographic ordering.
 - Windows CI smoke wrapper: fixed PowerShell single-quote escaping in `scripts/cli_smoke_windows.ps1` so the script parses correctly and can invoke bash smoke runs.
 - Integer modulo codegen: switched guarded signed `%` lowering back to LLVM signed remainder emission (`srem`) after zero/overflow guards, avoiding backend register-copy crashes seen on Windows LLVM pipelines.
 - Map compound-assignment codegen hardening: materialized evaluated map keys into temporaries before `get`/`set` in `op=` map index lowering (including `%=`), avoiding backend instability from reusing complex aggregate SSA keys across both helper expansions.
 - Perf cleanup tests: accepted explicit macOS SDK resolver (`xcrun`) launch failures as valid error outcomes in cleanup assertions, so tests stay stable in environments without a configured Apple SDK toolchain.
 - Windows backend stability in `std.fs`: refactored `File.read` lowering to use explicit `fread` byte-count checks + `memchr` NUL detection (instead of a large per-byte IR scan loop), which keeps existing runtime diagnostics (`NUL`/invalid UTF-8) but avoids backend-regalloc crash patterns seen in Windows smoke examples.
 - CI failure forensics on Linux/macOS/Windows: `checks/smoke/examples` now auto-dump LLVM IR (`.ll`) and best-effort object files (`.obj`) on failures, and upload them as run artifacts for immediate crash triage.
-
 - Stack-safety hardening for deep expressions: removed hard parser depth caps and replaced recursive hot paths with iterative handling across parser, import-check, type-check, and borrow-check flows so deeply nested unary/parenthesized inputs no longer abort with stack overflow in `check`.
 - Added regression coverage for deep unary and deep parenthesized parsing to prevent stack-overflow regressions in future parser refactors.
-
 - CI hardening for LLVM 22 builds: default Cargo target CPU is now baseline (`x86-64`/`generic`) instead of `native`, codegen target-machine defaults now use stable baseline CPU/features unless explicitly opted into native tuning (`ARDEN_CODEGEN_NATIVE_CPU=1`), and Cargo cache keys now include `.cargo/config.toml` to prevent stale CPU-incompatible artifact reuse between runners.
 - CI/smoke hardening: cache keys now include runner architecture plus a cache-schema suffix to avoid cross-runner/toolchain cache poisoning, smoke scripts now fail fast when no example files are discovered, and Windows bash-wrapper quoting now safely handles apostrophes in paths.
 - Runtime crash diagnostics hardening: `run/bench/profile/test` and linker/xcrun/ar subprocess failures now share richer exit decoding (Unix signal names + Windows NTSTATUS like `0xC0000409`) so backend/runtime crashes no longer show opaque negative codes.

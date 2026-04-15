@@ -17,8 +17,25 @@ fn skips_unix_shebang_line() {
 }
 
 #[test]
+fn skips_shebang_line_with_lone_cr_ending() {
+    let tokens = tokenize("#!/usr/bin/env arden\rfunction main(): None { return None; }")
+        .must("tokenization succeeds");
+    assert!(matches!(tokens.first(), Some((Token::Function, _))));
+}
+
+#[test]
 fn preserves_absolute_spans_after_shebang() {
     let source = "#!/usr/bin/env arden\nfunction main(): None { return None; }";
+    let tokens = tokenize(source).must("tokenization succeeds");
+    let (token, span) = tokens.first().must("function token should exist");
+    assert!(matches!(token, Token::Function));
+    assert_eq!(&source[span.clone()], "function");
+    assert_eq!(span.start, source.find("function").must("function keyword"));
+}
+
+#[test]
+fn preserves_absolute_spans_after_lone_cr_shebang() {
+    let source = "#!/usr/bin/env arden\rfunction main(): None { return None; }";
     let tokens = tokenize(source).must("tokenization succeeds");
     let (token, span) = tokens.first().must("function token should exist");
     assert!(matches!(token, Token::Function));

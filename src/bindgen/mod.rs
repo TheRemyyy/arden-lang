@@ -29,27 +29,25 @@ impl From<BindgenError> for String {
     }
 }
 
-impl From<String> for BindgenError {
-    fn from(value: String) -> Self {
-        Self::OutputWrite(value)
-    }
-}
-
 pub(crate) fn strip_comments(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let bytes = input.as_bytes();
     let mut i = 0usize;
+    let mut segment_start = 0usize;
     while i < bytes.len() {
         if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'/' {
+            out.push_str(&input[segment_start..i]);
             while i < bytes.len() && bytes[i] != b'\n' {
                 i += 1;
             }
             if !out.ends_with([' ', '\n', '\t']) {
                 out.push(' ');
             }
+            segment_start = i;
             continue;
         }
         if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
+            out.push_str(&input[segment_start..i]);
             i += 2;
             while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
                 i += 1;
@@ -58,11 +56,15 @@ pub(crate) fn strip_comments(input: &str) -> String {
             if !out.ends_with([' ', '\n', '\t']) {
                 out.push(' ');
             }
+            segment_start = i;
             continue;
         }
-        out.push(bytes[i] as char);
-        i += 1;
+        let Some(ch) = input[i..].chars().next() else {
+            break;
+        };
+        i += ch.len_utf8();
     }
+    out.push_str(&input[segment_start..]);
     out
 }
 
@@ -171,6 +173,46 @@ fn map_c_type_to_arden(c_type: &str) -> Option<String> {
 }
 
 fn parse_param(param: &str, index: usize) -> Option<(String, String)> {
+    fn is_c_type_keyword(token: &str) -> bool {
+        matches!(
+            token,
+            "void"
+                | "char"
+                | "short"
+                | "int"
+                | "long"
+                | "float"
+                | "double"
+                | "signed"
+                | "unsigned"
+                | "size_t"
+                | "ssize_t"
+                | "intptr_t"
+                | "uintptr_t"
+                | "uint8_t"
+                | "uint16_t"
+                | "uint32_t"
+                | "uint64_t"
+                | "int8_t"
+                | "int16_t"
+                | "int32_t"
+                | "int64_t"
+                | "bool"
+                | "_Bool"
+                | "const"
+                | "volatile"
+                | "restrict"
+                | "__restrict"
+                | "__restrict__"
+                | "register"
+                | "extern"
+                | "static"
+                | "inline"
+                | "__inline"
+                | "__inline__"
+        )
+    }
+
     let p = param.trim();
     if p.is_empty() || p == "void" {
         return None;
@@ -210,6 +252,10 @@ fn parse_param(param: &str, index: usize) -> Option<(String, String)> {
     } else if name_index == 0 && tokens.len() == 1 {
         // No explicit parameter name in prototype.
         type_part = p.to_string();
+        name = format!("arg{}", index);
+    } else if array_depth > 0 && is_c_type_keyword(name.as_str()) {
+        // C allows unnamed array parameters in prototypes: `int [4]`, `const char []`.
+        type_part = tokens[..=name_index].join(" ");
         name = format!("arg{}", index);
     }
     if array_depth > 0 {

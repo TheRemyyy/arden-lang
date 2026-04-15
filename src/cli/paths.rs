@@ -43,12 +43,6 @@ impl From<CliPathError> for String {
     }
 }
 
-impl From<String> for CliPathError {
-    fn from(value: String) -> Self {
-        Self::PathResolve(value)
-    }
-}
-
 use crate::cli::output::format_cli_path;
 use crate::project::find_project_root;
 

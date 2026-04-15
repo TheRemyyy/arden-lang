@@ -35,12 +35,6 @@ impl From<TestRunnerValidationError> for String {
     }
 }
 
-impl From<String> for TestRunnerValidationError {
-    fn from(value: String) -> Self {
-        Self::InvalidSignature(value)
-    }
-}
-
 /// Represents a discovered test
 #[derive(Debug, Clone)]
 pub struct Test {
@@ -483,6 +477,8 @@ pub fn generate_test_runner_with_source(
 }
 
 fn ensure_test_runner_imports(source: &str) -> String {
+    let normalized_source = source.replace("\r\n", "\n").replace('\r', "\n");
+
     fn has_stdio_import(source: &str) -> bool {
         let mut in_block_comment = false;
 
@@ -522,11 +518,11 @@ fn ensure_test_runner_imports(source: &str) -> String {
         false
     }
 
-    if has_stdio_import(source) {
-        return source.to_string();
+    if has_stdio_import(&normalized_source) {
+        return normalized_source;
     }
 
-    let mut lines: Vec<&str> = source.lines().collect();
+    let mut lines: Vec<&str> = normalized_source.lines().collect();
     if let Some(idx) = lines
         .iter()
         .position(|line| line.trim_start().starts_with("package "))
@@ -545,11 +541,12 @@ fn ensure_test_runner_imports(source: &str) -> String {
         return format!("{}\n", lines.join("\n"));
     }
 
-    format!("import std.io.*;\n\n{}", source)
+    format!("import std.io.*;\n\n{}", normalized_source)
 }
 
 /// Simple filter to remove existing main function from source
 fn filter_out_main_function(source: &str) -> String {
+    let normalized_source = source.replace("\r\n", "\n").replace('\r', "\n");
     let mut result = String::new();
     let mut pending_attributes: Vec<&str> = Vec::new();
     let mut in_main = false;
@@ -635,7 +632,7 @@ fn filter_out_main_function(source: &str) -> String {
         rest.starts_with("function main(")
     }
 
-    for line in source.lines() {
+    for line in normalized_source.lines() {
         let trimmed = line.trim();
 
         // Skip package declaration (will be regenerated)

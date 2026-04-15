@@ -58,6 +58,16 @@ function main(): None { return; }
 }
 
 #[test]
+fn preserves_leading_comments_before_package_with_lone_cr_endings() {
+    let source = "// banner\rpackage demo;\rfunction main(): None { return; }\r";
+    let formatted = format_source(source).must("format succeeds");
+    assert!(
+        formatted.starts_with("// banner\npackage demo;\n"),
+        "{formatted}"
+    );
+}
+
+#[test]
 fn preserves_literal_braces_in_plain_strings() {
     let source = r#"
 function main(): None {
@@ -134,6 +144,16 @@ function main(): None { return None; }
 "#;
     let formatted = format_source(source).must("format succeeds");
     assert!(formatted.starts_with("#!/usr/bin/env arden\n"));
+}
+
+#[test]
+fn preserves_shebang_line_with_lone_cr_ending() {
+    let source = "#!/usr/bin/env arden\rfunction main(): None { return None; }\r";
+    let formatted = format_source(source).must("format succeeds");
+    assert!(
+        formatted.starts_with("#!/usr/bin/env arden\n"),
+        "{formatted}"
+    );
 }
 
 #[test]
@@ -554,4 +574,12 @@ return None;
     let tokens = tokenize(&formatted).must("formatted output should lex");
     let mut parser = Parser::new(tokens);
     parser.parse_program().must("formatted output should parse");
+}
+
+#[test]
+fn normalizes_lone_cr_inside_block_comments() {
+    let source = "/*\r * banner\r */\rpackage demo;\rfunction main(): None { return None; }\r";
+    let formatted = format_source(source).must("format succeeds");
+    assert!(!formatted.contains('\r'), "{formatted:?}");
+    assert!(formatted.contains("/*\n * banner\n */"), "{formatted}");
 }

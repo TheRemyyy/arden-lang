@@ -199,6 +199,50 @@ fn cli_build_recovers_from_corrupted_semantic_summary_cache_blob() {
 }
 
 #[test]
+fn cli_build_recovers_corrupted_semantic_summary_without_dropping_effect_data() {
+    let temp_root = make_temp_project_root("cli-corrupt-semantic-summary-effects");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nclass Counter { value: Integer; constructor(value: Integer) { this.value = value; } function bump(): None { this.value = this.value + 1; return None; } }\nfunction main(): Integer { c: Counter = Counter(0); c.bump(); return c.value; }\n",
+    )
+    .must("write semantic-summary regression project");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).must("initial build should pass");
+        let initial_summary = crate::load_semantic_summary_cache(&temp_root)
+            .must("load initial semantic summary cache")
+            .must("initial semantic summary cache should exist");
+        assert!(
+            !initial_summary.class_mutating_methods.is_empty(),
+            "initial semantic summary should capture class mutating methods"
+        );
+
+        let semantic_summary_cache = temp_root
+            .join(".ardencache")
+            .join("semantic_summary")
+            .join("latest.json");
+        fs::write(&semantic_summary_cache, b"not valid cache")
+            .must("corrupt semantic summary cache");
+        remove_incremental_build_fingerprints(&temp_root);
+
+        build_project(false, false, true, false, false)
+            .must("build should recover from corrupted semantic summary cache");
+
+        let recovered_summary = crate::load_semantic_summary_cache(&temp_root)
+            .must("load recovered semantic summary cache")
+            .must("recovered semantic summary cache should exist");
+        assert_eq!(
+            recovered_summary.class_mutating_methods, initial_summary.class_mutating_methods,
+            "semantic recovery should preserve class mutating method summary data"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn cli_build_recovers_from_corrupted_typecheck_summary_cache_blob() {
     let temp_root = make_temp_project_root("cli-corrupt-typecheck-summary-cache");
     write_simple_project(&temp_root);
@@ -1591,6 +1635,30 @@ fn cli_check_file_rejects_non_arden_paths() {
 }
 
 #[test]
+fn cli_check_file_rejects_duplicate_top_level_main_declarations() {
+    let temp_root = make_temp_project_root("cli-check-duplicate-main");
+    let source_file = temp_root.join("duplicate_main.arden");
+    fs::write(
+        &source_file,
+        "function main(): None { return None; }\nfunction main(): None { return None; }\n",
+    )
+    .must("write duplicate main source");
+
+    let err = check_file(Some(&source_file))
+        .must_err("single-file check should reject duplicate top-level main declarations");
+    assert!(
+        err.contains("Single-file checks found colliding top-level symbols"),
+        "{err}"
+    );
+    assert!(
+        err.contains("Function 'main' is declared multiple times"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn cli_check_command_reports_cross_file_type_errors() {
     let temp_root = make_temp_project_root("cli-check-type-error");
     let src_dir = temp_root.join("src");
@@ -1619,6 +1687,42 @@ fn cli_check_command_reports_cross_file_type_errors() {
                 || err.contains("Expected Integer"),
             "{err}"
         );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_check_command_rejects_duplicate_top_level_function_in_same_namespace() {
+    let temp_root = make_temp_project_root("cli-check-duplicate-function-same-namespace");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.arden", "src/a.arden", "src/b.arden"],
+        "src/main.arden",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nfunction main(): Integer { return helper(); }\n",
+    )
+    .must("write main");
+    fs::write(
+        src_dir.join("a.arden"),
+        "package app;\nfunction helper(): Integer { return 1; }\n",
+    )
+    .must("write first helper");
+    fs::write(
+        src_dir.join("b.arden"),
+        "package app;\nfunction helper(): Integer { return 2; }\n",
+    )
+    .must("write duplicate helper");
+
+    with_current_dir(&temp_root, || {
+        let err = check_command(None, false)
+            .must_err("project check should reject duplicate top-level function definitions");
+        assert!(err.contains("colliding top-level function names"), "{err}");
+        assert!(err.contains("helper"), "{err}");
     });
 
     let _ = fs::remove_dir_all(temp_root);

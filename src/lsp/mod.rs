@@ -65,6 +65,10 @@ struct ScopedSymbolResolver<'a> {
     next_binding_id: usize,
 }
 
+pub(crate) fn offset_in_span_impl(offset: usize, span: &std::ops::Range<usize>) -> bool {
+    offset >= span.start && offset < span.end
+}
+
 impl<'a> ScopedSymbolResolver<'a> {
     fn new(backend: &'a Backend, text: &'a str, symbol: &'a str, cursor_offset: usize) -> Self {
         Self {
@@ -487,7 +491,7 @@ impl<'a> ScopedSymbolResolver<'a> {
     }
 
     fn record_occurrence(&mut self, id: usize, span: std::ops::Range<usize>) {
-        if self.cursor_offset >= span.start && self.cursor_offset <= span.end {
+        if offset_in_span_impl(self.cursor_offset, &span) {
             self.selected_binding = Some(id);
         }
         self.occurrences.entry(id).or_default().push(span);
@@ -506,12 +510,19 @@ pub(crate) fn offset_to_position_impl(text: &str, target: usize) -> Position {
     let bounded_target = target.min(text.len());
     let mut line = 0u32;
     let mut col = 0u32;
+    let bytes = text.as_bytes();
 
     for (idx, ch) in text.char_indices() {
         if idx >= bounded_target {
             break;
         }
-        if ch == '\n' {
+        if ch == '\r' {
+            if bytes.get(idx + 1) == Some(&b'\n') {
+                continue;
+            }
+            line += 1;
+            col = 0;
+        } else if ch == '\n' {
             line += 1;
             col = 0;
         } else {
@@ -525,13 +536,26 @@ pub(crate) fn offset_to_position_impl(text: &str, target: usize) -> Position {
 pub(crate) fn position_to_offset_impl(text: &str, pos: Position) -> usize {
     let mut line = 0u32;
     let mut col = 0u32;
+    let bytes = text.as_bytes();
 
     for (idx, ch) in text.char_indices() {
         if line == pos.line && col >= pos.character {
             return idx;
         }
 
-        if ch == '\n' {
+        if ch == '\r' {
+            if bytes.get(idx + 1) == Some(&b'\n') {
+                if line == pos.line {
+                    return idx;
+                }
+                continue;
+            }
+            if line == pos.line {
+                return idx;
+            }
+            line += 1;
+            col = 0;
+        } else if ch == '\n' {
             if line == pos.line {
                 return idx;
             }
@@ -600,9 +624,10 @@ pub(crate) fn find_nth_name_occurrence_in_span(
     let mut seen = 0usize;
     while i + sym.len() <= span.end {
         if &bytes[i..i + sym.len()] == sym {
-            let left_ok = i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
+            let left_ok =
+                i == span.start || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
             let right_idx = i + sym.len();
-            let right_ok = right_idx == bytes.len()
+            let right_ok = right_idx == span.end
                 || !(bytes[right_idx].is_ascii_alphanumeric() || bytes[right_idx] == b'_');
             if left_ok && right_ok {
                 if seen == nth {
@@ -705,15 +730,8 @@ impl Backend {
     }
 
     fn lexer_error_to_diagnostic(&self, text: &str, msg: &str) -> Diagnostic {
-        // Expected shape: "Unknown token at <offset>: '<snippet>'"
-        let offset = msg
-            .split("Unknown token at ")
-            .nth(1)
-            .and_then(|s| s.split(':').next())
-            .and_then(|s| s.trim().parse::<usize>().ok())
-            .unwrap_or(0);
         Diagnostic {
-            range: self.span_to_range(text, offset..(offset + 1)),
+            range: lexer_error_range_impl(text, msg),
             severity: Some(DiagnosticSeverity::ERROR),
             code: None,
             code_description: None,
@@ -1365,6 +1383,33 @@ impl Backend {
 
         None
     }
+}
+
+pub(crate) fn lexer_error_range_impl(text: &str, msg: &str) -> Range {
+    // Expected shape: "Unknown token at <offset>: '<snippet>'"
+    let offset = msg
+        .split("Unknown token at ")
+        .nth(1)
+        .and_then(|s| s.split(':').next())
+        .and_then(|s| parse_saturating_usize(s.trim()))
+        .unwrap_or(0);
+    let end = offset.saturating_add(1);
+    Range {
+        start: offset_to_position_impl(text, offset),
+        end: offset_to_position_impl(text, end),
+    }
+}
+
+fn parse_saturating_usize(input: &str) -> Option<usize> {
+    if input.is_empty() || !input.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let mut value = 0usize;
+    for byte in input.bytes() {
+        let digit = (byte - b'0') as usize;
+        value = value.saturating_mul(10).saturating_add(digit);
+    }
+    Some(value)
 }
 
 #[tower_lsp::async_trait]

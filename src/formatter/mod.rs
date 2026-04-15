@@ -33,11 +33,10 @@ pub fn format_source(source: &str) -> Result<String, String> {
 }
 
 fn format_source_impl(source: &str) -> Result<String, FormatterError> {
-    let shebang = source
-        .lines()
-        .next()
-        .filter(|line| line.starts_with("#!"))
-        .map(ToString::to_string);
+    let shebang = source.strip_prefix("#!").map(|rest| {
+        let tail = rest.find(['\n', '\r']).map_or(rest.len(), |idx| idx);
+        format!("#!{}", &rest[..tail])
+    });
     let package_offset = find_package_offset(source);
 
     let tokens =
@@ -900,7 +899,7 @@ impl Formatter {
             }
             if current == b'/' && index + 1 < bytes.len() && bytes[index + 1] == b'/' {
                 index += 2;
-                while index < bytes.len() && bytes[index] != b'\n' {
+                while index < bytes.len() && bytes[index] != b'\n' && bytes[index] != b'\r' {
                     index += 1;
                 }
                 continue;
@@ -1040,7 +1039,8 @@ impl Formatter {
         if trimmed.is_empty() {
             return;
         }
-        for line in trimmed.lines() {
+        let normalized = trimmed.replace("\r\n", "\n").replace('\r', "\n");
+        for line in normalized.lines() {
             self.push_line(line.trim_end());
         }
     }
@@ -1232,7 +1232,7 @@ fn collect_comments(source: &str) -> Vec<SourceComment> {
         if current == b'/' && next == b'/' {
             let start = i;
             i += 2;
-            while i < bytes.len() && bytes[i] != b'\n' {
+            while i < bytes.len() && bytes[i] != b'\n' && bytes[i] != b'\r' {
                 i += 1;
             }
             comments.push(SourceComment {
@@ -1263,17 +1263,30 @@ fn collect_comments(source: &str) -> Vec<SourceComment> {
 }
 
 fn find_package_offset(source: &str) -> Option<usize> {
-    let mut offset = 0;
-    for line in source.split_inclusive('\n') {
+    let bytes = source.as_bytes();
+    let mut line_start = 0usize;
+
+    while line_start < bytes.len() {
+        let mut line_end = line_start;
+        while line_end < bytes.len() && bytes[line_end] != b'\n' && bytes[line_end] != b'\r' {
+            line_end += 1;
+        }
+        let line = &source[line_start..line_end];
         let trimmed = line.trim_start();
         if trimmed.starts_with("package ") {
-            return Some(offset + (line.len() - trimmed.len()));
+            return Some(line_start + (line.len() - trimmed.len()));
         }
-        offset += line.len();
+
+        if line_end >= bytes.len() {
+            break;
+        }
+
+        if bytes[line_end] == b'\r' && bytes.get(line_end + 1) == Some(&b'\n') {
+            line_start = line_end + 2;
+        } else {
+            line_start = line_end + 1;
+        }
     }
 
-    let trimmed = source[offset..].trim_start();
-    trimmed
-        .starts_with("package ")
-        .then_some(offset + (source[offset..].len() - trimmed.len()))
+    None
 }

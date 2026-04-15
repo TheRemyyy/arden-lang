@@ -8,6 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- LSP reference/rename lookup: fixed span-boundary handling so symbol matches at `span` edges resolve correctly, and selection now respects end-exclusive ranges.
+- LSP position mapping: fixed CRLF offset/column conversion so `\r` no longer shifts LSP line/character coordinates.
+- LSP position mapping: fixed CRLF end-of-line clamping so oversized line columns resolve to the CRLF boundary.
+- LSP lexer diagnostics: offset parsing now saturates for oversized numeric values instead of falling back to `0` on parse overflow.
+- Source diagnostics rendering: fixed Unicode underline width, EOF-after-trailing-newline context rendering, and CR/LF line-ending normalization in terminal output.
+- Import-check wildcard handling: `std.<ns>.*` now only imports direct stdlib members, excluding nested `__` symbols from accidental direct resolution.
+- Import-check alias member parsing: fixed generic type spacing in paths like `alias.Member <T>` so member resolution no longer keeps trailing spaces.
+- Lint import auto-fix: fixed import sorting/dedup on files using lone-CR (`\r`) line endings.
+- Bindgen comment stripping: fixed UTF-8 corruption in generated signatures by preserving non-ASCII bytes while removing comments.
+- Bindgen parameter parsing: fixed unnamed array parameters to use generated argument names instead of misclassifying type tokens as names.
+- Test-runner source rewrite: fixed lone-CR (`\r`) line-ending handling for std.io import detection and top-level `main` stripping.
+- Shebang parsing: fixed lexer/formatter handling for shebang lines terminated by lone-CR (`\r`) endings.
+- Formatter comment/package scanning: fixed lone-CR (`\r`) handling when collecting line comments and locating `package` declarations.
+- Formatter comment emission: normalized lone-CR (`\r`) inside preserved comments to stable `\n` output lines.
+- Semantic cache recovery: disabled partial typecheck-component reuse when semantic summary cache is missing, preventing empty recovered effect summaries.
+- Single-file semantic checks: now reject colliding top-level declarations (including duplicate `main`) instead of silently accepting them.
+- Linker response-file escaping: now escapes `\n`/`\r` in arguments to prevent line-break splitting in generated response files.
+- Project symbol indexing: now rejects duplicate top-level symbols even within the same namespace, instead of silently letting later duplicates pass.
+- Linker tool detection: `PATH` scanning now ignores non-executable files, preventing false-positive linker detection.
+- Linux target validation: direct linker mode now rejects `*-musl` targets early with an explicit GNU-libc-only error.
+- Linux linker toolchain probing: GCC support-object directory selection now uses numeric version ordering (`11` > `10` > `9`) instead of lexicographic ordering.
+
 - Windows CI smoke wrapper: fixed PowerShell single-quote escaping in `scripts/cli_smoke_windows.ps1` so the script parses correctly and can invoke bash smoke runs.
 - Integer modulo codegen: switched guarded signed `%` lowering back to LLVM signed remainder emission (`srem`) after zero/overflow guards, avoiding backend register-copy crashes seen on Windows LLVM pipelines.
 - Map compound-assignment codegen hardening: materialized evaluated map keys into temporaries before `get`/`set` in `op=` map index lowering (including `%=`), avoiding backend instability from reusing complex aggregate SSA keys across both helper expansions.

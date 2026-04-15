@@ -22,12 +22,6 @@ impl From<BindgenCommandError> for String {
     }
 }
 
-impl From<String> for BindgenCommandError {
-    fn from(value: String) -> Self {
-        Self::Generate(value)
-    }
-}
-
 pub(crate) fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
     bindgen_header_impl(header, output).map_err(Into::into)
 }

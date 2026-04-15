@@ -43,12 +43,6 @@ impl From<CheckCommandError> for String {
     }
 }
 
-impl From<String> for CheckCommandError {
-    fn from(value: String) -> Self {
-        Self::ProjectBuild(value)
-    }
-}
-
 pub(crate) fn check_command(file: Option<&Path>, show_timings: bool) -> Result<(), String> {
     check_command_impl(file, show_timings).map_err(Into::into)
 }

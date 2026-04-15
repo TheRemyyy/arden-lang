@@ -16,7 +16,8 @@ pub(crate) struct SourceDiagnostic<'a> {
 }
 
 pub(crate) fn render_source_diagnostic(source: &str, diagnostic: &SourceDiagnostic<'_>) -> String {
-    let lines: Vec<&str> = source.lines().collect();
+    let normalized_source = source.replace("\r\n", "\n").replace('\r', "\n");
+    let lines: Vec<&str> = normalized_source.split('\n').collect();
     let (line_num, col) = span_to_location(&diagnostic.span, source);
     let gutter_width = line_num.to_string().len().max(1);
     let empty_gutter = " ".repeat(gutter_width);
@@ -34,7 +35,9 @@ pub(crate) fn render_source_diagnostic(source: &str, diagnostic: &SourceDiagnost
     output.push_str(&format!("  {} {}\n", empty_gutter, "|".blue().bold()));
 
     if line_num <= lines.len() {
-        let source_line = lines[line_num - 1];
+        let source_line = lines[line_num - 1]
+            .strip_suffix('\r')
+            .unwrap_or(lines[line_num - 1]);
         output.push_str(&format!(
             "  {} {}\n",
             format!("{line_num:>width$} |", width = gutter_width)
@@ -44,11 +47,7 @@ pub(crate) fn render_source_diagnostic(source: &str, diagnostic: &SourceDiagnost
         ));
 
         let underline_start = visual_column_offset(source_line, col);
-        let underline_len = diagnostic
-            .span
-            .end
-            .saturating_sub(diagnostic.span.start)
-            .max(1);
+        let underline_len = underline_len_for_line(source, source_line, line_num, &diagnostic.span);
         let available = source_line.chars().count().saturating_sub(underline_start);
         let carets = "^".repeat(underline_len.min(available).max(1));
         output.push_str(&format!(
@@ -159,12 +158,19 @@ pub(crate) fn render_borrow_errors(
 pub(crate) fn span_to_location(span: &Range<usize>, source: &str) -> (usize, usize) {
     let mut line_num: usize = 1;
     let mut col: usize = 1;
+    let bytes = source.as_bytes();
 
     for (i, ch) in source.char_indices() {
         if i >= span.start {
             break;
         }
-        if ch == '\n' {
+        if ch == '\r' {
+            if bytes.get(i + 1) == Some(&b'\n') {
+                continue;
+            }
+            line_num += 1;
+            col = 1;
+        } else if ch == '\n' {
             line_num += 1;
             col = 1;
         } else {
@@ -177,4 +183,47 @@ pub(crate) fn span_to_location(span: &Range<usize>, source: &str) -> (usize, usi
 
 fn visual_column_offset(line: &str, col: usize) -> usize {
     line.chars().take(col.saturating_sub(1)).count()
+}
+
+fn line_start_offset(source: &str, line_num: usize) -> usize {
+    if line_num <= 1 {
+        return 0;
+    }
+
+    let mut current_line = 1usize;
+    let bytes = source.as_bytes();
+    for (idx, ch) in source.char_indices() {
+        if ch == '\r' {
+            if bytes.get(idx + 1) == Some(&b'\n') {
+                continue;
+            }
+            current_line += 1;
+            if current_line == line_num {
+                return idx + ch.len_utf8();
+            }
+        } else if ch == '\n' {
+            current_line += 1;
+            if current_line == line_num {
+                return idx + ch.len_utf8();
+            }
+        }
+    }
+
+    source.len()
+}
+
+fn underline_len_for_line(
+    source: &str,
+    source_line: &str,
+    line_num: usize,
+    span: &Range<usize>,
+) -> usize {
+    let line_start = line_start_offset(source, line_num);
+    let line_end = line_start.saturating_add(source_line.len());
+    let clipped_start = span.start.clamp(line_start, line_end);
+    let clipped_end = span.end.clamp(clipped_start, line_end);
+    source
+        .get(clipped_start..clipped_end)
+        .map(|slice| slice.chars().count().max(1))
+        .unwrap_or(1)
 }

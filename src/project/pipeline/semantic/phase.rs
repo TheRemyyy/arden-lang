@@ -21,7 +21,6 @@ use std::path::{Path, PathBuf};
 #[derive(Debug)]
 enum SemanticPhaseError {
     CacheReuseGuard(String),
-    SemanticCheck(String),
     ComponentCheck(String),
     Diagnostic(String),
     SemanticCacheSave(String),
@@ -32,7 +31,6 @@ impl fmt::Display for SemanticPhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CacheReuseGuard(message)
-            | Self::SemanticCheck(message)
             | Self::ComponentCheck(message)
             | Self::Diagnostic(message)
             | Self::SemanticCacheSave(message)
@@ -44,12 +42,6 @@ impl fmt::Display for SemanticPhaseError {
 impl From<SemanticPhaseError> for String {
     fn from(value: SemanticPhaseError) -> Self {
         value.to_string()
-    }
-}
-
-impl From<String> for SemanticPhaseError {
-    fn from(value: String) -> Self {
-        Self::SemanticCheck(value)
     }
 }
 
@@ -103,17 +95,22 @@ fn run_semantic_phase_impl(
         .collect();
     let semantic_components =
         semantic_check_components(inputs.parsed_files, inputs.file_dependency_graph);
-    let reusable_component_fps = inputs
-        .previous_typecheck_summary
-        .as_ref()
-        .map(|cache| {
-            reusable_component_fingerprints(
-                cache,
-                &current_semantic_fingerprints,
-                &semantic_components,
-            )
-        })
-        .unwrap_or_default();
+    let has_previous_semantic_summary = inputs.previous_semantic_summary.is_some();
+    let reusable_component_fps = if has_previous_semantic_summary {
+        inputs
+            .previous_typecheck_summary
+            .as_ref()
+            .map(|cache| {
+                reusable_component_fingerprints(
+                    cache,
+                    &current_semantic_fingerprints,
+                    &semantic_components,
+                )
+            })
+            .unwrap_or_default()
+    } else {
+        HashSet::new()
+    };
     let reusable_typecheck_cache = reusable_component_fps.len() == semantic_components.len()
         && typecheck_summary_cache_matches(
             inputs.previous_typecheck_summary.ok_or_else(|| {

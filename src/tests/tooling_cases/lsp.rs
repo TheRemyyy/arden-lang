@@ -1,7 +1,7 @@
 use super::TestExpectExt;
 use crate::lsp::{
-    find_nth_name_occurrence_in_span, offset_to_position_impl, position_to_offset_impl,
-    word_at_position_impl,
+    find_nth_name_occurrence_in_span, lexer_error_range_impl, offset_in_span_impl,
+    offset_to_position_impl, position_to_offset_impl, word_at_position_impl,
 };
 use tower_lsp::lsp_types::Position;
 
@@ -93,4 +93,70 @@ fn lsp_name_lookup_honors_requested_span_window() {
         find_nth_name_occurrence_in_span(text, "alpha", &span, 2),
         None
     );
+}
+
+#[test]
+fn lsp_name_lookup_treats_span_edges_as_identifier_boundaries() {
+    let text = "foobar foo";
+
+    let left_edge_span = 0..3;
+    assert_eq!(
+        find_nth_name_occurrence_in_span(text, "foo", &left_edge_span, 0),
+        Some(0..3)
+    );
+
+    let right_edge_span = 7..10;
+    assert_eq!(
+        find_nth_name_occurrence_in_span(text, "foo", &right_edge_span, 0),
+        Some(7..10)
+    );
+}
+
+#[test]
+fn lsp_offset_in_span_uses_end_exclusive_boundary() {
+    let span = 3..6;
+    assert!(offset_in_span_impl(3, &span));
+    assert!(offset_in_span_impl(5, &span));
+    assert!(!offset_in_span_impl(6, &span));
+}
+
+#[test]
+fn lsp_lexer_error_range_handles_extreme_offsets_without_overflow() {
+    let text = "x";
+    let msg = "Unknown token at 18446744073709551615: '?'";
+    let range = lexer_error_range_impl(text, msg);
+    assert_eq!(range.start, Position::new(0, 1));
+    assert_eq!(range.end, Position::new(0, 1));
+}
+
+#[test]
+fn lsp_lexer_error_range_saturates_for_offsets_larger_than_usize() {
+    let text = "x";
+    let msg = "Unknown token at 9999999999999999999999999999999999999999: '?'";
+    let range = lexer_error_range_impl(text, msg);
+    assert_eq!(range.start, Position::new(0, 1));
+    assert_eq!(range.end, Position::new(0, 1));
+}
+
+#[test]
+fn lsp_crlf_offsets_roundtrip_without_counting_carriage_return_column() {
+    let text = "first\r\nsecond";
+    let second_start = text.find("second").must("second line token should exist");
+    let position = offset_to_position_impl(text, second_start);
+    assert_eq!(position, Position::new(1, 0));
+    assert_eq!(position_to_offset_impl(text, position), second_start);
+}
+
+#[test]
+fn lsp_position_to_offset_uses_logical_columns_on_crlf_lines() {
+    let text = "ab\r\nxy";
+    let y_offset = text.find('y').must("expected y");
+    assert_eq!(offset_to_position_impl(text, y_offset), Position::new(1, 1));
+    assert_eq!(position_to_offset_impl(text, Position::new(1, 1)), y_offset);
+}
+
+#[test]
+fn lsp_position_to_offset_clamps_past_eol_to_start_of_crlf_sequence() {
+    let text = "ab\r\nxy";
+    assert_eq!(position_to_offset_impl(text, Position::new(0, 99)), 2);
 }

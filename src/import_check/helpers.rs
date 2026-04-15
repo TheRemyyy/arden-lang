@@ -38,7 +38,7 @@ pub(super) fn did_you_mean(name: &str, candidates: &[String]) -> Option<String> 
     for candidate in candidates {
         let distance = levenshtein_distance(name, candidate);
         // Only suggest if distance is reasonable (<= 3 and less than half the length).
-        let threshold = (name.len() / 2).max(3);
+        let threshold = (name.chars().count() / 2).max(3);
         if distance <= threshold {
             if let Some((_, best_distance)) = &best_match {
                 if distance < *best_distance {
@@ -97,13 +97,11 @@ pub(super) fn direct_stdlib_wildcard_member_name(
     if owner_ns != import_path {
         return None;
     }
-    Some(
-        symbol_name
-            .split_once("__")
-            .map(|(_, member)| member)
-            .unwrap_or(symbol_name)
-            .to_string(),
-    )
+    let member = symbol_name
+        .split_once("__")
+        .map(|(_, value)| value)
+        .unwrap_or(symbol_name);
+    (!member.is_empty() && !member.contains("__")).then(|| member.to_string())
 }
 
 pub(super) fn parse_alias_member_path(name: &str) -> Option<Vec<String>> {
@@ -118,8 +116,45 @@ pub(super) fn parse_alias_member_path(name: &str) -> Option<Vec<String>> {
     }
     if let Some(last) = parts.last_mut() {
         if let Some((base, _)) = last.split_once('<') {
-            *last = base.to_string();
+            *last = base.trim().to_string();
         }
     }
+    if parts.last().is_some_and(String::is_empty) {
+        return None;
+    }
     Some(parts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{direct_stdlib_wildcard_member_name, parse_alias_member_path};
+
+    #[test]
+    fn stdlib_wildcard_member_ignores_nested_members() {
+        assert_eq!(
+            direct_stdlib_wildcard_member_name("std.net", "std.net", "Net__http__get"),
+            None
+        );
+        assert_eq!(
+            direct_stdlib_wildcard_member_name("std.math", "std.math", "Math__abs"),
+            Some("abs".to_string())
+        );
+        assert_eq!(
+            direct_stdlib_wildcard_member_name("std.io", "std.io", "println"),
+            Some("println".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_alias_member_path_trims_member_before_generics() {
+        assert_eq!(
+            parse_alias_member_path("alias.Box <Integer>"),
+            Some(vec!["alias".to_string(), "Box".to_string()])
+        );
+    }
+
+    #[test]
+    fn parse_alias_member_path_rejects_empty_member_after_generic_strip() {
+        assert_eq!(parse_alias_member_path("alias.<Integer>"), None);
+    }
 }

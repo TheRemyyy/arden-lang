@@ -240,14 +240,42 @@ enum Commands {
 
 #[derive(Debug)]
 enum AppError {
-    Message(String),
+    New(String),
+    Build(String),
+    Run(String),
+    Compile(String),
+    Check(String),
+    Info(String),
+    Lint(String),
+    Fix(String),
+    Fmt(String),
+    Lex(String),
+    Parse(String),
+    Test(String),
+    Bindgen(String),
+    Bench(String),
+    Profile(String),
     LspRuntimeInit(std::io::Error),
 }
 
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Message(message) => write!(f, "{message}"),
+            Self::New(message)
+            | Self::Build(message)
+            | Self::Run(message)
+            | Self::Compile(message)
+            | Self::Check(message)
+            | Self::Info(message)
+            | Self::Lint(message)
+            | Self::Fix(message)
+            | Self::Fmt(message)
+            | Self::Lex(message)
+            | Self::Parse(message)
+            | Self::Test(message)
+            | Self::Bindgen(message)
+            | Self::Bench(message)
+            | Self::Profile(message) => write!(f, "{message}"),
             Self::LspRuntimeInit(err) => write!(
                 f,
                 "{}: Failed to start runtime for LSP server: {}",
@@ -258,21 +286,21 @@ impl fmt::Display for AppError {
     }
 }
 
-impl From<String> for AppError {
-    fn from(value: String) -> Self {
-        Self::Message(value)
-    }
-}
-
 impl From<BuildProjectError> for AppError {
     fn from(value: BuildProjectError) -> Self {
-        Self::Message(value.to_string())
+        Self::Build(value.to_string())
     }
 }
 
 impl From<ParseProjectError> for AppError {
     fn from(value: ParseProjectError) -> Self {
-        Self::Message(value.to_string())
+        Self::Compile(value.to_string())
+    }
+}
+
+impl From<CompilePipelineError> for AppError {
+    fn from(value: CompilePipelineError) -> Self {
+        Self::Compile(value.to_string())
     }
 }
 
@@ -297,12 +325,6 @@ impl fmt::Display for ParseProjectError {
     }
 }
 
-impl From<String> for ParseProjectError {
-    fn from(value: String) -> Self {
-        Self::Parse(value)
-    }
-}
-
 #[derive(Debug)]
 enum BuildProjectError {
     CurrentDirRead(String),
@@ -312,12 +334,15 @@ enum BuildProjectError {
     OptLevelValidate(String),
     OutputDirCreate(String),
     FingerprintCompute(String),
-    BuildCacheLookup(String),
+    BuildCacheLoad(String),
+    BuildCacheSave(String),
     ParseIndex(String),
     DependencyGraph(String),
     SemanticGate(String),
     SymbolCollision(String),
     EntryValidation(String),
+    RewritePipeline(String),
+    Postcheck(String),
     CompileDispatch(String),
     FinalizeBuild(String),
     SemanticSummaryCacheLoad(String),
@@ -334,12 +359,15 @@ impl fmt::Display for BuildProjectError {
             | Self::OptLevelValidate(message)
             | Self::OutputDirCreate(message)
             | Self::FingerprintCompute(message)
-            | Self::BuildCacheLookup(message)
+            | Self::BuildCacheLoad(message)
+            | Self::BuildCacheSave(message)
             | Self::ParseIndex(message)
             | Self::DependencyGraph(message)
             | Self::SemanticGate(message)
             | Self::SymbolCollision(message)
             | Self::EntryValidation(message)
+            | Self::RewritePipeline(message)
+            | Self::Postcheck(message)
             | Self::CompileDispatch(message)
             | Self::FinalizeBuild(message)
             | Self::SemanticSummaryCacheLoad(message)
@@ -348,11 +376,6 @@ impl fmt::Display for BuildProjectError {
     }
 }
 
-impl From<String> for BuildProjectError {
-    fn from(value: String) -> Self {
-        Self::CompileDispatch(value)
-    }
-}
 impl From<ParseProjectError> for String {
     fn from(value: ParseProjectError) -> Self {
         value.to_string()
@@ -400,21 +423,9 @@ impl fmt::Display for CompilePipelineError {
     }
 }
 
-impl From<String> for CompilePipelineError {
-    fn from(value: String) -> Self {
-        Self::CodegenCompile(value)
-    }
-}
-
 impl From<CompilePipelineError> for String {
     fn from(value: CompilePipelineError) -> Self {
         value.to_string()
-    }
-}
-
-impl From<CompilePipelineError> for AppError {
-    fn from(value: CompilePipelineError) -> Self {
-        Self::Message(value.to_string())
     }
 }
 
@@ -430,14 +441,14 @@ fn run_cli() -> Result<(), AppError> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::New { name, path } => new_project(&name, path.as_deref()).map_err(AppError::from),
+        Commands::New { name, path } => new_project(&name, path.as_deref()).map_err(AppError::New),
         Commands::Build {
             release,
             emit_llvm,
             no_check,
             timings,
         } => build_project_impl(release, emit_llvm, !no_check, false, timings)
-            .map_err(AppError::from),
+            .map_err(|e| AppError::Build(e.to_string())),
         Commands::Run {
             file,
             args,
@@ -446,9 +457,9 @@ fn run_cli() -> Result<(), AppError> {
             timings,
         } => {
             if let Some(f) = file {
-                run_single_file(&f, &args, release, !no_check).map_err(AppError::from)
+                run_single_file(&f, &args, release, !no_check).map_err(AppError::Run)
             } else {
-                run_project(&args, release, !no_check, timings).map_err(AppError::from)
+                run_project(&args, release, !no_check, timings).map_err(AppError::Run)
             }
         }
         Commands::Compile {
@@ -466,33 +477,33 @@ fn run_cli() -> Result<(), AppError> {
             opt_level.as_deref(),
             target.as_deref(),
         )
-        .map_err(AppError::from),
+        .map_err(AppError::Compile),
         Commands::Check { file, timings } => {
-            check_command(file.as_deref(), timings).map_err(AppError::from)
+            check_command(file.as_deref(), timings).map_err(AppError::Check)
         }
-        Commands::Info => show_project_info().map_err(AppError::from),
-        Commands::Lint { path } => lint_target(path.as_deref()).map_err(AppError::from),
-        Commands::Fix { path } => fix_target(path.as_deref()).map_err(AppError::from),
+        Commands::Info => show_project_info().map_err(AppError::Info),
+        Commands::Lint { path } => lint_target(path.as_deref()).map_err(AppError::Lint),
+        Commands::Fix { path } => fix_target(path.as_deref()).map_err(AppError::Fix),
         Commands::Fmt { path, check } => {
-            format_targets(path.as_deref(), check).map_err(AppError::from)
+            format_targets(path.as_deref(), check).map_err(AppError::Fmt)
         }
-        Commands::Lex { file } => lex_file(&file).map_err(AppError::from),
-        Commands::Parse { file } => parse_file(&file).map_err(AppError::from),
+        Commands::Lex { file } => lex_file(&file).map_err(AppError::Lex),
+        Commands::Parse { file } => parse_file(&file).map_err(AppError::Parse),
         Commands::Lsp => {
             let runtime = tokio::runtime::Runtime::new().map_err(AppError::LspRuntimeInit)?;
             runtime.block_on(lsp::run_lsp_server());
             Ok(())
         }
         Commands::Test { path, list, filter } => {
-            run_tests(path.as_deref(), list, filter.as_deref()).map_err(AppError::from)
+            run_tests(path.as_deref(), list, filter.as_deref()).map_err(AppError::Test)
         }
         Commands::Bindgen { header, output } => {
-            bindgen_header(&header, output.as_deref()).map_err(AppError::from)
+            bindgen_header(&header, output.as_deref()).map_err(AppError::Bindgen)
         }
         Commands::Bench { file, iterations } => {
-            bench_target(file.as_deref(), iterations).map_err(AppError::from)
+            bench_target(file.as_deref(), iterations).map_err(AppError::Bench)
         }
-        Commands::Profile { file } => profile_target(file.as_deref()).map_err(AppError::from),
+        Commands::Profile { file } => profile_target(file.as_deref()).map_err(AppError::Profile),
     }
 }
 
@@ -515,17 +526,17 @@ fn parse_source_text(
     filename: &str,
 ) -> Result<SourceParseResult, ParseProjectError> {
     let tokens = lexer::tokenize(source).map_err(|e| {
-        format!(
+        ParseProjectError::Parse(format!(
             "{}: Lexer error in {}: {}",
             "error".red().bold(),
             filename,
             e
-        )
+        ))
     })?;
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()
-        .map_err(|e| format_parse_error(&e, source, filename))?;
+        .map_err(|e| ParseProjectError::Parse(format_parse_error(&e, source, filename)))?;
     let namespace = program
         .package
         .clone()
@@ -1084,11 +1095,11 @@ fn parse_project_unit_impl(
         import_check_fingerprint,
     ) = if from_parse_cache {
         let cache = cached_entry.as_ref().ok_or_else(|| {
-            format!(
+            ParseProjectError::CacheLoad(format!(
                 "{}: parse cache reported a hit for '{}' but no cache entry was available",
                 cli_error("error"),
                 format_cli_path(file)
-            )
+            ))
         })?;
         (
             cache.function_names.clone(),
@@ -1173,11 +1184,11 @@ fn parse_project_unit_impl(
             compiler_version: env!("CARGO_PKG_VERSION").to_string(),
             file_metadata,
             source_fingerprint: source_fingerprint_for_cache.clone().ok_or_else(|| {
-                format!(
+                ParseProjectError::CacheSave(format!(
                     "{}: parsed file '{}' is missing a source fingerprint",
                     cli_error("error"),
                     format_cli_path(file)
-                )
+                ))
             })?,
             api_fingerprint: api_fingerprint.clone(),
             semantic_fingerprint: semantic_fingerprint.clone(),
@@ -1295,7 +1306,7 @@ fn build_project_impl(
             .measure("build cache lookup", || {
                 load_cached_fingerprint(&project_root)
             })
-            .map_err(BuildProjectError::BuildCacheLookup)?
+            .map_err(BuildProjectError::BuildCacheLoad)?
         {
             if cached == fingerprint && project_build_artifact_exists(&output_path, emit_llvm) {
                 print_cli_cache(format!(
@@ -1403,7 +1414,7 @@ fn build_project_impl(
     if semantic_cache_hit {
         print_cli_cache(format!("Reused semantic build cache for {}", config.name));
         save_cached_fingerprint(&project_root, &fingerprint)
-            .map_err(BuildProjectError::BuildCacheLookup)?;
+            .map_err(BuildProjectError::BuildCacheSave)?;
         print_cli_artifact_result(
             "Built",
             &config.name,
@@ -1482,7 +1493,8 @@ fn build_project_impl(
             namespace_module_map: &namespace_module_map,
             global_module_map: &global_module_map,
         },
-    )?;
+    )
+    .map_err(BuildProjectError::RewritePipeline)?;
 
     if let PostcheckOutcome::Completed = run_postcheck_phase(
         &mut build_timings,
@@ -1503,7 +1515,9 @@ fn build_project_impl(
                 dependent_api_impact: &impact.dependent_api_impact,
             },
         },
-    )? {
+    )
+    .map_err(BuildProjectError::Postcheck)?
+    {
         return Ok(());
     }
 
@@ -1696,12 +1710,12 @@ fn compile_program_ast_to_object_filtered_impl(
     codegen
         .compile_filtered_with_decl_symbols(program, active_symbols, declaration_symbols)
         .map_err(|e| {
-            format!(
+            CompilePipelineError::CodegenCompile(format!(
                 "{}: Codegen error in '{}': {}",
                 "error".red().bold(),
                 format_cli_path(source_path),
                 e.message
-            )
+            ))
         })?;
     if let Some(timings) = timings {
         timings
@@ -1712,12 +1726,12 @@ fn compile_program_ast_to_object_filtered_impl(
     if let Some(parent) = object_path.parent() {
         let object_dir_setup_started_at = Instant::now();
         fs::create_dir_all(parent).map_err(|e| {
-            format!(
+            CompilePipelineError::OutputDirCreate(format!(
                 "{}: Failed to create object cache directory '{}': {}",
                 "error".red().bold(),
                 format_cli_path(parent),
                 e
-            )
+            ))
         })?;
         if let Some(timings) = timings {
             timings.object_dir_setup_ns.fetch_add(
@@ -1730,12 +1744,12 @@ fn compile_program_ast_to_object_filtered_impl(
     codegen
         .write_object_with_config(object_path, link.opt_level, link.target, &link.output_kind)
         .map_err(|e| {
-            format!(
+            CompilePipelineError::ObjectEmit(format!(
                 "{}: Failed to emit object for '{}': {}",
                 "error".red().bold(),
                 format_cli_path(source_path),
                 e
-            )
+            ))
         })?;
     if let Some(timings) = timings {
         timings
@@ -1818,7 +1832,8 @@ fn compile_file_impl(
         do_check,
         opt_level,
         target,
-    )?;
+    )
+    .map_err(CompilePipelineError::CodegenCompile)?;
 
     println!(
         "{} {} {}",
@@ -1865,8 +1880,8 @@ fn compile_source_impl(
     let filename = format_cli_path(source_path);
 
     // Tokenize
-    let program = parse_program_from_source(source, &filename)
-        .map_err(CompilePipelineError::Parse)?;
+    let program =
+        parse_program_from_source(source, &filename).map_err(CompilePipelineError::Parse)?;
 
     // Type check
     if do_check {

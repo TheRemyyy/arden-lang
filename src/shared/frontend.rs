@@ -10,6 +10,7 @@ use crate::stdlib::stdlib_registry;
 use crate::typeck;
 use crate::typeck::TypeChecker;
 use colored::Colorize;
+use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 
@@ -27,12 +28,6 @@ impl fmt::Display for ParseFrontendError {
     }
 }
 
-impl From<String> for ParseFrontendError {
-    fn from(value: String) -> Self {
-        Self::Parser(value)
-    }
-}
-
 impl From<ParseFrontendError> for String {
     fn from(value: ParseFrontendError) -> Self {
         value.to_string()
@@ -41,6 +36,7 @@ impl From<ParseFrontendError> for String {
 
 #[derive(Debug)]
 enum SemanticFrontendError {
+    SymbolCollision(String),
     ImportCheck(String),
     Typecheck(String),
     BorrowCheck(String),
@@ -50,17 +46,12 @@ enum SemanticFrontendError {
 impl fmt::Display for SemanticFrontendError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ImportCheck(message)
+            Self::SymbolCollision(message)
+            | Self::ImportCheck(message)
             | Self::Typecheck(message)
             | Self::BorrowCheck(message)
             | Self::MainSignature(message) => write!(f, "{message}"),
         }
-    }
-}
-
-impl From<String> for SemanticFrontendError {
-    fn from(value: String) -> Self {
-        Self::Typecheck(value)
     }
 }
 
@@ -100,6 +91,8 @@ fn run_single_file_semantic_checks_impl(
     filename: &str,
     program: &Program,
 ) -> Result<(), SemanticFrontendError> {
+    validate_single_file_top_level_symbol_collisions(program)?;
+
     let namespace = extract_namespace(program);
     let imports = extract_top_level_imports(program);
     let function_namespaces = import_check::extract_function_namespaces(program, &namespace);
@@ -137,6 +130,78 @@ fn run_single_file_semantic_checks_impl(
     }
 
     Ok(())
+}
+
+fn validate_single_file_top_level_symbol_collisions(
+    program: &Program,
+) -> Result<(), SemanticFrontendError> {
+    let mut seen_functions = HashSet::new();
+    let mut seen_classes = HashSet::new();
+    let mut seen_enums = HashSet::new();
+    let mut seen_interfaces = HashSet::new();
+    let mut seen_modules = HashSet::new();
+    let mut collisions = Vec::new();
+
+    for decl in &program.declarations {
+        match &decl.node {
+            Decl::Function(function) => {
+                if !seen_functions.insert(function.name.clone()) {
+                    collisions.push(format!(
+                        "Function '{}' is declared multiple times",
+                        function.name
+                    ));
+                }
+            }
+            Decl::Class(class_decl) => {
+                if !seen_classes.insert(class_decl.name.clone()) {
+                    collisions.push(format!(
+                        "Class '{}' is declared multiple times",
+                        class_decl.name
+                    ));
+                }
+            }
+            Decl::Enum(enum_decl) => {
+                if !seen_enums.insert(enum_decl.name.clone()) {
+                    collisions.push(format!(
+                        "Enum '{}' is declared multiple times",
+                        enum_decl.name
+                    ));
+                }
+            }
+            Decl::Interface(interface_decl) => {
+                if !seen_interfaces.insert(interface_decl.name.clone()) {
+                    collisions.push(format!(
+                        "Interface '{}' is declared multiple times",
+                        interface_decl.name
+                    ));
+                }
+            }
+            Decl::Module(module_decl) => {
+                if !seen_modules.insert(module_decl.name.clone()) {
+                    collisions.push(format!(
+                        "Module '{}' is declared multiple times",
+                        module_decl.name
+                    ));
+                }
+            }
+            Decl::Import(_) => {}
+        }
+    }
+
+    if collisions.is_empty() {
+        return Ok(());
+    }
+
+    let details = collisions
+        .into_iter()
+        .map(|item| format!("  - {item}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(SemanticFrontendError::SymbolCollision(format!(
+        "{}: Single-file checks found colliding top-level symbols.\n{}",
+        "error".red().bold(),
+        details
+    )))
 }
 
 pub(crate) fn extract_namespace(program: &ast::Program) -> String {

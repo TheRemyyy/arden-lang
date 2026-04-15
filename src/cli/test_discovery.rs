@@ -30,12 +30,6 @@ impl From<TestDiscoveryError> for String {
     }
 }
 
-impl From<String> for TestDiscoveryError {
-    fn from(value: String) -> Self {
-        Self::PathResolve(value)
-    }
-}
-
 pub(crate) fn find_test_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     find_test_files_impl(dir).map_err(Into::into)
 }
@@ -53,7 +47,9 @@ fn find_test_files_impl(dir: &Path) -> Result<Vec<PathBuf>, TestDiscoveryError> 
             format_cli_path(dir)
         )));
     }
-    if crate::cli::paths::path_traverses_symlinked_directories(dir)? {
+    if crate::cli::paths::path_traverses_symlinked_directories(dir)
+        .map_err(TestDiscoveryError::PathResolve)?
+    {
         return Err(TestDiscoveryError::PathResolve(format!(
             "Path '{}' must not traverse symlinked directories",
             format_cli_path(dir)

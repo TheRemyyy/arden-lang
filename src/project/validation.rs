@@ -34,12 +34,6 @@ impl From<ProjectValidationError> for String {
     }
 }
 
-impl From<String> for ProjectValidationError {
-    fn from(value: String) -> Self {
-        Self::RuleViolation(value)
-    }
-}
-
 fn validate_project_path(
     canonical_root: &Path,
     project_root: &Path,

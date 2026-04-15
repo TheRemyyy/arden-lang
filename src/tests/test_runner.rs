@@ -645,3 +645,25 @@ function helper(): None { return None; }
     );
     assert!(generated.contains("function helper(): None"), "{generated}");
 }
+
+#[test]
+fn handles_lone_cr_line_endings_when_filtering_main_and_injecting_imports() {
+    let discovery = TestDiscovery {
+        suites: vec![],
+        total_tests: 0,
+        ignored_tests: 0,
+    };
+    let source =
+        "import std.io.*;\rfunction main(): Integer { return 0; }\rfunction helper(): None { return None; }\r";
+    let generated = generate_test_runner_with_source(&discovery, source);
+    assert_eq!(
+        generated.matches("import std.io.*;").count(),
+        1,
+        "{generated}"
+    );
+    assert!(
+        !generated.contains("function main(): Integer { return 0; }"),
+        "{generated}"
+    );
+    assert!(generated.contains("function helper(): None"), "{generated}");
+}

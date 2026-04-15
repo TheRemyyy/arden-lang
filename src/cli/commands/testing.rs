@@ -59,12 +59,6 @@ impl From<TestingCommandError> for String {
     }
 }
 
-impl From<String> for TestingCommandError {
-    fn from(value: String) -> Self {
-        Self::Build(value)
-    }
-}
-
 /// Run tests for a file or project.
 pub(crate) fn run_tests(
     test_path: Option<&Path>,

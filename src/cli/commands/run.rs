@@ -50,12 +50,6 @@ impl From<RunCommandError> for String {
     }
 }
 
-impl From<String> for RunCommandError {
-    fn from(value: String) -> Self {
-        Self::Build(value)
-    }
-}
-
 fn run_binary_impl(exe_path: &Path, args: &[String]) -> Result<(), RunCommandError> {
     if !exe_path.exists() {
         return Err(RunCommandError::BinaryValidation(format!(

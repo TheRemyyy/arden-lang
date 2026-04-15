@@ -27,12 +27,6 @@ impl From<EntryValidationPhaseError> for String {
     }
 }
 
-impl From<String> for EntryValidationPhaseError {
-    fn from(value: String) -> Self {
-        Self::MainSignature(value)
-    }
-}
-
 pub(crate) fn run_entry_validation_phase(
     do_check: bool,
     entry_path: &Path,
