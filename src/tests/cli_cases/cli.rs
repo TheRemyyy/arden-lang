@@ -5,7 +5,6 @@ use crate::cli::paths::collect_arden_files;
 use crate::cli::test_discovery::find_test_files;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn write_simple_project(root: &Path) {
@@ -509,9 +508,6 @@ fn cli_run_tests_executes_project_local_alias_import_tests() {
 
 #[test]
 fn cli_build_reports_import_check_errors_only_once() {
-    let _lock = cli_test_lock()
-        .lock()
-        .unwrap_or_else(|poisoned: std::sync::PoisonError<_>| poisoned.into_inner());
     let temp_root = make_temp_project_root("cli-build-import-check-single-print");
     write_test_project_config(
         &temp_root,
@@ -530,43 +526,9 @@ fn cli_build_reports_import_check_errors_only_once() {
         )
         .must("write helper");
 
-    let mut initial_build = Command::new("cargo");
-    normalize_nested_cargo_linker_env(&mut initial_build);
-    let initial_output = initial_build
-        .arg("run")
-        .arg("--quiet")
-        .arg("--manifest-path")
-        .arg(env!("CARGO_MANIFEST_DIR").to_string() + "/Cargo.toml")
-        .arg("--")
-        .arg("build")
-        .current_dir(&temp_root)
-        .output()
-        .must("run initial project build");
-    let initial_output = if initial_output.status.success() {
-        initial_output
-    } else {
-        // Nested cargo runs in CI can intermittently fail due transient toolchain/process
-        // startup issues unrelated to import-check behavior. Retry once before failing.
-        std::thread::sleep(std::time::Duration::from_millis(150));
-        let mut retry_build = Command::new("cargo");
-        normalize_nested_cargo_linker_env(&mut retry_build);
-        retry_build
-            .arg("run")
-            .arg("--quiet")
-            .arg("--manifest-path")
-            .arg(env!("CARGO_MANIFEST_DIR").to_string() + "/Cargo.toml")
-            .arg("--")
-            .arg("build")
-            .current_dir(&temp_root)
-            .output()
-            .must("retry initial project build")
-    };
-    assert!(
-        initial_output.status.success(),
-        "initial build should succeed: stdout={} stderr={}",
-        String::from_utf8_lossy(&initial_output.stdout),
-        String::from_utf8_lossy(&initial_output.stderr)
-    );
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).must("initial build should succeed");
+    });
 
     std::thread::sleep(std::time::Duration::from_millis(20));
     fs::write(
@@ -575,26 +537,9 @@ fn cli_build_reports_import_check_errors_only_once() {
         )
         .must("rewrite helper without imported constructor symbol");
 
-    let mut stale_import_build = Command::new("cargo");
-    normalize_nested_cargo_linker_env(&mut stale_import_build);
-    let output = stale_import_build
-        .arg("run")
-        .arg("--quiet")
-        .arg("--manifest-path")
-        .arg(env!("CARGO_MANIFEST_DIR").to_string() + "/Cargo.toml")
-        .arg("--")
-        .arg("build")
-        .current_dir(&temp_root)
-        .output()
-        .must("run stale-import build");
-    assert!(
-        !output.status.success(),
-        "stale import build should fail: stdout={} stderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).must_err("stale import build should fail")
+    });
     assert!(
         stderr.contains("Imported namespace alias 'root' has no member 'M.Box'"),
         "{stderr}"

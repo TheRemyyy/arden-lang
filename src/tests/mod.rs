@@ -16,12 +16,11 @@ pub(crate) use crate::{
     DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
 };
 pub(crate) use helpers::{
-    assert_frontend_pipeline_ok, build_project_symbol_lookup, cli_test_lock,
-    codegen_program_for_unit, collect_project_symbol_maps,
+    assert_frontend_pipeline_ok, build_project_symbol_lookup, codegen_program_for_unit,
+    collect_project_symbol_maps,
     compute_rewrite_context_fingerprint_for_unit, fingerprint_for, make_temp_project_root,
-    normalize_nested_cargo_linker_env, normalize_output, parse_program,
-    rewrite_fingerprint_for_test_unit, with_current_dir, write_test_project_config,
-    ProjectSymbolLookupMaps, TestExpectErrExt, TestExpectExt,
+    normalize_output, parse_program, rewrite_fingerprint_for_test_unit, with_current_dir,
+    write_test_project_config, ProjectSymbolLookupMaps, TestExpectErrExt, TestExpectExt,
 };
 pub(crate) use project_rewrite_dependency_graph::{
     empty_global_interface_file_map, empty_global_interface_map,

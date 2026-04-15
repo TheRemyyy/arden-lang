@@ -242,15 +242,19 @@ fn run_tests_impl(
 }
 
 pub(super) fn resolve_test_files(test_path: Option<&Path>) -> Result<Vec<PathBuf>, String> {
+    resolve_test_files_impl(test_path).map_err(Into::into)
+}
+
+fn resolve_test_files_impl(test_path: Option<&Path>) -> Result<Vec<PathBuf>, TestingCommandError> {
     if let Some(path) = test_path {
         if path.is_file() {
-            validate_source_file_path(path)?;
+            validate_source_file_path(path).map_err(TestingCommandError::ResolveTestFiles)?;
             Ok(vec![path.to_path_buf()])
         } else {
-            workspace::find_test_files(path)
+            workspace::find_test_files(path).map_err(TestingCommandError::ResolveTestFiles)
         }
     } else {
-        let current_dir = current_dir_checked()?;
-        default_test_files(&current_dir)
+        let current_dir = current_dir_checked().map_err(TestingCommandError::ResolveTestFiles)?;
+        default_test_files(&current_dir).map_err(TestingCommandError::ResolveTestFiles)
     }
 }

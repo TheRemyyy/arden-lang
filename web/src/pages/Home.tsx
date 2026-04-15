@@ -118,7 +118,7 @@ export function Home() {
                 <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-10 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.12fr_0.88fr] lg:items-center lg:pb-16 lg:pt-10">
                     <div className="relative z-10">
                         <h1 className="max-w-4xl font-display text-4xl font-bold leading-[0.95] tracking-[-0.04em] text-[var(--text)] md:text-6xl">
-                            Arden is a native programming language with clearer compiler feedback.
+                            Arden is a system programming language with clearer compiler feedback.
                         </h1>
                         <p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-muted)] md:text-lg">
                             Build native binaries with a modern language surface, readable diagnostics, and practical tooling that stays fast as codebases grow.

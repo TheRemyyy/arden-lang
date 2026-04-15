@@ -1,7 +1,6 @@
 use crate::ast::Program;
 use crate::borrowck::BorrowChecker;
 use crate::cache::ProjectSymbolLookup;
-pub(crate) use crate::cli::paths::process_current_dir_lock as cli_test_lock;
 use crate::dependency::insert_symbol_lookup_entry;
 use crate::formatter::format_program_canonical;
 use crate::parser::Parser;
@@ -15,7 +14,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -391,38 +389,6 @@ pub(crate) fn normalize_output(bytes: &[u8]) -> String {
 pub(crate) fn with_current_dir<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
     crate::cli::paths::with_process_current_dir(dir, || Ok::<T, String>(f()))
         .must("set current dir")
-}
-
-pub(crate) fn normalize_nested_cargo_linker_env(command: &mut Command) {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for (key, value) in std::env::vars_os() {
-        let key_text = key.to_string_lossy();
-        if key_text == "RUSTFLAGS"
-            || key_text == "RUSTDOCFLAGS"
-            || key_text == "CARGO_ENCODED_RUSTFLAGS"
-            || (key_text.starts_with("CARGO_TARGET_") && key_text.ends_with("_RUSTFLAGS"))
-            || (key_text.starts_with("CARGO_TARGET_") && key_text.ends_with("_RUSTDOCFLAGS"))
-        {
-            // Nested cargo invocations in CLI tests should not inherit outer sanitizer or
-            // toolchain-specific rustflags from CI jobs, otherwise initial project builds can
-            // fail before the actual CLI behavior is exercised.
-            command.env_remove(&key);
-            continue;
-        }
-        if !key_text.starts_with("CARGO_TARGET_") || !key_text.ends_with("_LINKER") {
-            continue;
-        }
-
-        let linker = PathBuf::from(&value);
-        let linker_text = linker.to_string_lossy();
-        let looks_like_relative_path = linker.is_relative()
-            && (linker_text.starts_with('.')
-                || linker_text.contains('/')
-                || linker_text.contains('\\'));
-        if looks_like_relative_path {
-            command.env(&key, repo_root.join(linker));
-        }
-    }
 }
 
 pub(crate) fn write_test_project_config(root: &Path, files: &[&str], entry: &str, output: &str) {

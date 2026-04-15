@@ -22,14 +22,14 @@ use std::time::Instant;
 
 #[derive(Debug)]
 enum RewritePhaseError {
-    Rewrite(String),
-    RewriteResult(String),
+    PhaseRun(String),
+    UnitCollection(String),
 }
 
 impl fmt::Display for RewritePhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Rewrite(message) | Self::RewriteResult(message) => write!(f, "{message}"),
+            Self::PhaseRun(message) | Self::UnitCollection(message) => write!(f, "{message}"),
         }
     }
 }
@@ -42,7 +42,7 @@ impl From<RewritePhaseError> for String {
 
 impl From<String> for RewritePhaseError {
     fn from(value: String) -> Self {
-        Self::Rewrite(value)
+        Self::PhaseRun(value)
     }
 }
 
@@ -256,11 +256,11 @@ fn run_rewrite_phase_impl(
                     .collect(),
             )
         })
-        .map_err(RewritePhaseError::Rewrite)?;
+        .map_err(RewritePhaseError::PhaseRun)?;
 
     let mut rewritten_files: Vec<RewrittenProjectUnit> = Vec::new();
     for result in rewritten_results {
-        rewritten_files.push(result.map_err(RewritePhaseError::RewriteResult)?);
+        rewritten_files.push(result.map_err(RewritePhaseError::UnitCollection)?);
     }
     rewritten_files.sort_by(|a, b| a.file.cmp(&b.file));
 

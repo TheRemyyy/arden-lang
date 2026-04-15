@@ -49,7 +49,7 @@ pub(crate) fn create_new_project(name: &str, path: Option<&Path>) -> Result<(), 
 }
 
 fn create_new_project_impl(name: &str, path: Option<&Path>) -> Result<(), ProjectInitError> {
-    validate_new_project_name(name).map_err(ProjectInitError::InvalidName)?;
+    validate_new_project_name(name)?;
 
     let project_path = path
         .map(PathBuf::from)
@@ -216,12 +216,12 @@ output_kind = "bin"
     Ok(())
 }
 
-fn validate_new_project_name(name: &str) -> Result<(), String> {
+fn validate_new_project_name(name: &str) -> Result<(), ProjectInitError> {
     if name.is_empty() {
-        return Err(format!(
+        return Err(ProjectInitError::InvalidName(format!(
             "{}: Project name cannot be empty",
             "error".red().bold()
-        ));
+        )));
     }
 
     let is_valid = name
@@ -231,9 +231,9 @@ fn validate_new_project_name(name: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    Err(format!(
+    Err(ProjectInitError::InvalidName(format!(
         "{}: Invalid project name '{}'. Use only ASCII letters, digits, '_' or '-'.",
         "error".red().bold(),
         name
-    ))
+    )))
 }
