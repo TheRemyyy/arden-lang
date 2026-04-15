@@ -9,22 +9,22 @@
     <title>Unreleased</title>
     <link>https://www.arden-lang.dev/changelog#unreleased</link>
     <guid>https://www.arden-lang.dev/changelog#unreleased</guid>
-    <description>Windows CI smoke wrapper: fixed PowerShell single-quote escaping in `scripts/cli_smoke_windows.ps1` so the script parses correctly and can invoke bash smoke runs.</description>
+    <description>LSP and diagnostics: fixed span-boundary/end-exclusive lookup, CRLF position mapping/clamping, lexer-offset overflow fallback, Unicode underline width, and EOF rendering edge cases.</description>
     <pubDate>Wed, 15 Apr 2026 00:00:00 GMT</pubDate>
   </item>
   <item>
     <title>v1.3.8</title>
     <link>https://www.arden-lang.dev/changelog#1-3-8</link>
     <guid>https://www.arden-lang.dev/changelog#1-3-8</guid>
-    <description>2026-04-13. Reworked native artifact production around explicit linker-only backends, so Arden now emits objects directly from LLVM, links Linux outputs through `mold`, and links macOS/Windows outputs through LLVM `lld`.</description>
-    <pubDate>Wed, 15 Apr 2026 00:00:00 GMT</pubDate>
+    <description>Linker Pipeline &amp; Stability Sweep. Reworked native artifact production to direct LLVM object emission with linker-only backends (`mold` on Linux, `lld` on macOS/Windows).</description>
+    <pubDate>Mon, 13 Apr 2026 00:00:00 GMT</pubDate>
   </item>
   <item>
     <title>v1.3.7</title>
     <link>https://www.arden-lang.dev/changelog#1-3-7</link>
     <guid>https://www.arden-lang.dev/changelog#1-3-7</guid>
-    <description>2026-04-10. Upgraded the LLVM integration to LLVM 22.1.x across Cargo, CI, release packaging, benchmark tooling, and install docs, including the move to `inkwell` `llvm22-1` and `LLVM_SYS_221_PREFIX`.</description>
-    <pubDate>Wed, 15 Apr 2026 00:00:00 GMT</pubDate>
+    <description>LLVM 22 Upgrade &amp; Compile-Time Performance. Upgraded compiler/tooling integration to LLVM 22 (`inkwell` `llvm22-1`, `LLVM_SYS_221_PREFIX`) across local builds, CI, release packaging, and docs.</description>
+    <pubDate>Fri, 10 Apr 2026 00:00:00 GMT</pubDate>
   </item>
   <item>
     <title>v1.3.6</title>
