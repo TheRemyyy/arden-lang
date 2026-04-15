@@ -110,11 +110,33 @@ fn lex_string_literal<'src>(lex: &mut logos::Lexer<'src, Token<'src>>) -> Option
     None
 }
 
+fn skip_line_comment<'src>(lex: &mut logos::Lexer<'src, Token<'src>>) -> logos::Skip {
+    let remainder = lex.remainder();
+    let comment_len = match remainder.find(['\n', '\r']) {
+        Some(index) => index,
+        None => remainder.len(),
+    };
+    lex.bump(comment_len);
+    logos::Skip
+}
+
+fn skip_block_comment<'src>(lex: &mut logos::Lexer<'src, Token<'src>>) -> logos::Skip {
+    let remainder = lex.remainder();
+    let block_len = match remainder.find("*/") {
+        Some(index) => index + 2,
+        None => remainder.len(),
+    };
+    lex.bump(block_len);
+    logos::Skip
+}
+
 #[derive(Logos, Debug, Clone, PartialEq)]
 #[logos(skip r"[ \t\r\n\f]+")]
-#[logos(skip r"//[^\r\n]*")]
-#[logos(skip r"/\*([^*]|\*[^/])*\*/")]
 pub enum Token<'src> {
+    #[regex(r"//", skip_line_comment)]
+    #[regex(r"/\*", skip_block_comment)]
+    Comment,
+
     // Keywords
     #[token("function")]
     Function,
@@ -315,14 +337,13 @@ pub enum Token<'src> {
         let s = lex.slice();
         let inner = &s[1..s.len() - 1];
         if let Some(escaped) = inner.strip_prefix('\\') {
-            let ch = escaped.chars().next()?;
-            Some(match ch {
-                'n' => '\n',
-                't' => '\t',
-                'r' => '\r',
-                '\\' => '\\',
-                '\'' => '\'',
-                _ => return None,
+            escaped.chars().next().and_then(|ch| match ch {
+                'n' => Some('\n'),
+                't' => Some('\t'),
+                'r' => Some('\r'),
+                '\\' => Some('\\'),
+                '\'' => Some('\''),
+                _ => None,
             })
         } else {
             inner.chars().next()

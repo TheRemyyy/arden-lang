@@ -1,5 +1,4 @@
-import Search from 'lucide-react/dist/esm/icons/search';
-import X from 'lucide-react/dist/esm/icons/x';
+import { Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { SITE_SEARCH_OPEN_EVENT } from '../lib/search-events';
 import { searchSite } from '../lib/site-search';

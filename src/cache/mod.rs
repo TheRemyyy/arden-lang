@@ -138,8 +138,8 @@ fn read_cache_blob_impl<T: DeserializeOwned>(
     else {
         return Ok(None);
     };
-    let value = match bincode::deserialize(&raw) {
-        Ok(value) => value,
+    let value = match bincode::serde::decode_from_slice(&raw, bincode::config::standard()) {
+        Ok((value, _bytes_read)) => value,
         Err(error) => {
             eprintln!(
                 "{}: Ignoring invalid {} '{}': {}",
@@ -176,8 +176,8 @@ fn read_cache_blob_with_timing_impl<T: DeserializeOwned>(
         return Ok(None);
     };
     let byte_len = raw.len() as u64;
-    let value = match bincode::deserialize(&raw) {
-        Ok(value) => value,
+    let value = match bincode::serde::decode_from_slice(&raw, bincode::config::standard()) {
+        Ok((value, _bytes_read)) => value,
         Err(error) => {
             eprintln!(
                 "{}: Ignoring invalid {} '{}': {}",
@@ -215,7 +215,7 @@ fn write_cache_blob_impl<T: Serialize>(
     label: &str,
     value: &T,
 ) -> Result<(), CacheCommandError> {
-    let bytes = bincode::serialize(value).map_err(|e| {
+    let bytes = bincode::serde::encode_to_vec(value, bincode::config::standard()).map_err(|e| {
         CacheCommandError::CacheBlobSerialize(format!(
             "{}: Failed to serialize {} '{}': {}",
             "error".red().bold(),
@@ -250,7 +250,7 @@ fn write_cache_blob_with_timing_impl<T: Serialize>(
     value: &T,
     totals: &CacheIoTimingTotals,
 ) -> Result<(), CacheCommandError> {
-    let bytes = bincode::serialize(value).map_err(|e| {
+    let bytes = bincode::serde::encode_to_vec(value, bincode::config::standard()).map_err(|e| {
         CacheCommandError::CacheBlobSerialize(format!(
             "{}: Failed to serialize {} '{}': {}",
             "error".red().bold(),

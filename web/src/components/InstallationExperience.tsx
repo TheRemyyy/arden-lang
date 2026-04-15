@@ -1,11 +1,13 @@
-import Apple from 'lucide-react/dist/esm/icons/apple';
-import Download from 'lucide-react/dist/esm/icons/download';
-import ExternalLink from 'lucide-react/dist/esm/icons/external-link';
-import Github from 'lucide-react/dist/esm/icons/github';
-import MonitorDown from 'lucide-react/dist/esm/icons/monitor-down';
-import MonitorSmartphone from 'lucide-react/dist/esm/icons/monitor-smartphone';
-import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
-import TerminalSquare from 'lucide-react/dist/esm/icons/terminal-square';
+import {
+    Apple,
+    Download,
+    ExternalLink,
+    GitBranch,
+    MonitorDown,
+    MonitorSmartphone,
+    ShieldCheck,
+    TerminalSquare,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { CURRENT_VERSION } from '../lib/site';
 import {
@@ -255,7 +257,7 @@ export function InstallationExperience({ compact = false }: InstallationExperien
                     </a>
                     <a href={INSTALL_DOCS_PATH} className="inline-flex items-center gap-2 transition-colors hover:text-[var(--text)]">
                         Source install guide
-                        <Github className="h-4 w-4" />
+                        <GitBranch className="h-4 w-4" />
                     </a>
                 </div>
             </section>
@@ -311,7 +313,7 @@ export function InstallationExperience({ compact = false }: InstallationExperien
                     <div className="mt-6 flex flex-wrap gap-3 text-sm">
                         <a href={INSTALL_DOCS_PATH} className="inline-flex items-center gap-2 font-semibold text-[var(--accent)] transition-colors hover:text-[var(--text)]">
                             Source install docs
-                            <Github className="h-4 w-4" />
+                            <GitBranch className="h-4 w-4" />
                         </a>
                         <a
                             href={releaseSummary?.checksumsUrl ?? releaseSummary?.releaseUrl ?? getFallbackReleaseUrl()}

@@ -1,8 +1,4 @@
-import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right';
-import Gauge from 'lucide-react/dist/esm/icons/gauge';
-import MoveRight from 'lucide-react/dist/esm/icons/move-right';
-import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
-import TerminalSquare from 'lucide-react/dist/esm/icons/terminal-square';
+import { ArrowRight, Gauge, MoveRight, ShieldCheck, TerminalSquare } from 'lucide-react';
 import { GITHUB_REPO_URL, SITE_CREATOR_URL } from '../lib/site';
 
 const operatingPrinciples = [

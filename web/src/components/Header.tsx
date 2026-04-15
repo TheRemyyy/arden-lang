@@ -1,4 +1,4 @@
-import Search from 'lucide-react/dist/esm/icons/search';
+import { Search } from 'lucide-react';
 import { useState } from 'react';
 import { openSiteSearch } from '../lib/search-events';
 import { GITHUB_REPO_URL, SITE_NAME, UI_LOGO_SRC } from '../lib/site';
