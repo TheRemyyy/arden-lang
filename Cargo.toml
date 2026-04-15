@@ -10,7 +10,7 @@ description = "Arden systems programming language compiler"
 inkwell = { git = "https://github.com/TheDan64/inkwell.git", rev = "832a4487ee4010a957f5143c7d92242d2ffa22a5", default-features = false, features = ["llvm22-1", "target-x86"] }
 
 # Lexer
-logos = "0.15"
+logos = "0.16"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
