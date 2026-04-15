@@ -42,7 +42,7 @@
         "@types/node": "^25.3.5",
         "@types/react": "^19.2.7",
         "@types/react-dom": "^19.2.3",
-        "@vitejs/plugin-react": "^5.1.2",
+        "@vitejs/plugin-react": "^6.0.1",
         "autoprefixer": "^10.4.17",
         "jsdom": "^28.1.0",
         "postcss": "^8.4.35",
