@@ -137,7 +137,7 @@ jobs:
             ${ARDEN_WINDOWS_UM_LIB_DIR:+--extra-lib-dir "um=${ARDEN_WINDOWS_UM_LIB_DIR}"}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
           path: dist/${{ matrix.asset_name }}${{ matrix.platform == 'windows' && '.zip' || '.tar.gz' }}

@@ -41,11 +41,11 @@ jobs:
             --bundle-root dist \
             --llvm-prefix "${LLVM_SYS_221_PREFIX}" \
             --extra-bin "$(command -v mold)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-linux-x64
           path: target/x86_64-unknown-linux-gnu/release/arden
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-linux-x64-portable
           path: dist/arden-linux-x64-portable.tar.gz
@@ -81,11 +81,11 @@ jobs:
             --bundle-root dist \
             --llvm-prefix "${LLVM_SYS_221_PREFIX}" \
             --extra-prefix "$(brew --prefix lld)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-macos-arm64
           path: target/aarch64-apple-darwin/release/arden
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-macos-arm64-portable
           path: dist/arden-macos-arm64-portable.tar.gz
@@ -121,11 +121,11 @@ jobs:
             --bundle-root dist \
             --llvm-prefix "${LLVM_SYS_221_PREFIX}" \
             --extra-prefix "$(brew --prefix lld)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-macos-x64
           path: target/x86_64-apple-darwin/release/arden
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-macos-x64-portable
           path: dist/arden-macos-x64-portable.tar.gz
@@ -183,11 +183,11 @@ jobs:
             --extra-lib-dir "vc=${ARDEN_WINDOWS_VC_LIB_DIR}" \
             --extra-lib-dir "ucrt=${ARDEN_WINDOWS_UCRT_LIB_DIR}" \
             --extra-lib-dir "um=${ARDEN_WINDOWS_UM_LIB_DIR}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-windows-x64
           path: target/x86_64-pc-windows-msvc/release/arden.exe
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arden-windows-x64-portable
           path: dist/arden-windows-x64-portable.zip
@@ -339,7 +339,7 @@ jobs:
       - name: Enforce line coverage threshold
         run: cargo llvm-cov --locked --workspace --all-features --lcov --output-path lcov.info --fail-under-lines 55
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-lcov
           path: lcov.info
@@ -529,7 +529,7 @@ jobs:
           cat benchmark/results/ci/${{ matrix.name }}/tiny_hot.md
           printf '\n%s\n' 'Starter benchmark summary:'
           cat benchmark/results/ci/${{ matrix.name }}/starter_hot.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bench-quick-${{ matrix.name }}
           path: benchmark/results/ci/${{ matrix.name }}
