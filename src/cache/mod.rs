@@ -16,8 +16,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
-use std::time::UNIX_EPOCH;
+use std::time::{Instant, UNIX_EPOCH};
 use twox_hash::XxHash64;
 #[derive(Debug)]
 enum CacheCommandError {
@@ -98,18 +97,6 @@ pub(crate) fn stable_hasher() -> XxHash64 {
 
 fn hash_compiler_identity(hasher: &mut impl Hasher) {
     env!("CARGO_PKG_VERSION").hash(hasher);
-    if let Ok(exe_path) = std::env::current_exe() {
-        exe_path.hash(hasher);
-        if let Ok(metadata) = fs::metadata(&exe_path) {
-            metadata.len().hash(hasher);
-            if let Ok(modified) = metadata.modified() {
-                if let Ok(duration) = modified.duration_since(UNIX_EPOCH) {
-                    duration.as_secs().hash(hasher);
-                    duration.subsec_nanos().hash(hasher);
-                }
-            }
-        }
-    }
 }
 
 pub(crate) fn read_cache_blob_raw(path: &Path, label: &str) -> Result<Option<Vec<u8>>, String> {
@@ -353,7 +340,9 @@ fn compute_project_fingerprint_impl(
     emit_llvm.hash(&mut hasher);
     do_check.hash(&mut hasher);
 
-    for file in files {
+    let mut sorted_files = files.to_vec();
+    sorted_files.sort();
+    for file in &sorted_files {
         file.hash(&mut hasher);
         let contents = fs::read(file).map_err(|e| {
             CacheCommandError::ProjectFingerprintSourceRead(format!(
@@ -1734,7 +1723,9 @@ pub(crate) fn compute_semantic_project_fingerprint(
     emit_llvm.hash(&mut hasher);
     do_check.hash(&mut hasher);
 
-    for unit in parsed_files {
+    let mut sorted_units = parsed_files.iter().collect::<Vec<_>>();
+    sorted_units.sort_by(|left, right| left.file.cmp(&right.file));
+    for unit in sorted_units {
         unit.file.hash(&mut hasher);
         unit.semantic_fingerprint.hash(&mut hasher);
     }

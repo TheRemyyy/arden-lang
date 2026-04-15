@@ -90,6 +90,46 @@ jobs:
           name: arden-macos-arm64-portable
           path: dist/arden-macos-arm64-portable.tar.gz
 
+  build-macos-intel:
+    name: Build (macos-x64)
+    runs-on: macos-26-intel
+    env:
+      CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER: .cargo/linkers/macos-x86_64-lld.sh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+      - uses: ./.github/actions/install-llvm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-x86_64-apple-darwin-cargo-${{ hashFiles('**/Cargo.lock', '.cargo/config.toml') }}
+      - name: Build release
+        run: cargo build --release --target x86_64-apple-darwin
+      - name: Package portable bundle
+        shell: bash
+        run: |
+          mkdir -p dist
+          python3 scripts/release/package_release.py \
+            --platform macos \
+            --binary target/x86_64-apple-darwin/release/arden \
+            --asset-name arden-macos-x64-portable \
+            --bundle-root dist \
+            --llvm-prefix "${LLVM_SYS_221_PREFIX}" \
+            --extra-prefix "$(brew --prefix lld)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arden-macos-x64
+          path: target/x86_64-apple-darwin/release/arden
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arden-macos-x64-portable
+          path: dist/arden-macos-x64-portable.tar.gz
+
   build-windows:
     name: Build (windows-x64)
     runs-on: windows-latest
@@ -200,6 +240,32 @@ jobs:
       - run: cargo fmt -- --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
+  checks-macos-intel:
+    name: Rust Checks (macos-x64)
+    runs-on: macos-26-intel
+    env:
+      CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER: .cargo/linkers/macos-x86_64-lld.sh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.12'
+      - uses: ./.github/actions/install-llvm
+      - uses: lukka/get-cmake@latest
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-checks-cargo-${{ hashFiles('**/Cargo.lock', '.cargo/config.toml') }}
+      - run: cargo check --locked --all-targets --all-features --verbose
+      - run: cargo test --locked --verbose -- --no-capture
+      - run: cargo test --locked --release --all-targets --verbose -- --no-capture
+      - run: cargo fmt -- --check
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
   checks-windows:
     name: Rust Checks (windows-x64)
     runs-on: windows-latest
@@ -241,6 +307,17 @@ jobs:
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
         env:
           RUSTFLAGS: ${{ format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) }}
+
+  audit-linux:
+    name: Dependency Audit (linux-x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Run cargo audit
+        run: cargo audit
 
   coverage-linux:
     name: Coverage Gate (linux-x64)
@@ -332,6 +409,23 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: arden-macos-arm64
+          path: target/release
+      - run: chmod +x target/release/arden
+      - run: bash scripts/cli_smoke.sh
+        env:
+          CI_SKIP_COMPILER_BUILD: "1"
+          ARDEN_COMPILER_PATH: ${{ github.workspace }}/target/release/arden
+
+  smoke-macos-intel:
+    name: CLI Smoke (macos-x64)
+    runs-on: macos-26-intel
+    needs: build-macos-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-llvm
+      - uses: actions/download-artifact@v4
+        with:
+          name: arden-macos-x64
           path: target/release
       - run: chmod +x target/release/arden
       - run: bash scripts/cli_smoke.sh
@@ -464,6 +558,18 @@ jobs:
           path: dist
       - run: bash scripts/release/smoke_portable_unix.sh dist/arden-macos-arm64-portable.tar.gz
 
+  portable-smoke-macos-intel:
+    name: Portable Smoke (macos-x64)
+    runs-on: macos-26-intel
+    needs: build-macos-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: arden-macos-x64-portable
+          path: dist
+      - run: bash scripts/release/smoke_portable_unix.sh dist/arden-macos-x64-portable.tar.gz
+
   portable-smoke-windows:
     name: Portable Smoke (windows-x64)
     runs-on: windows-latest
@@ -504,6 +610,23 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: arden-macos-arm64
+          path: target/release
+      - run: chmod +x target/release/arden
+      - run: bash scripts/examples_smoke_macos.sh
+        env:
+          CI_SKIP_COMPILER_BUILD: "1"
+          ARDEN_COMPILER_PATH: ${{ github.workspace }}/target/release/arden
+
+  examples-macos-intel:
+    name: Examples (macos-x64)
+    runs-on: macos-26-intel
+    needs: build-macos-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-llvm
+      - uses: actions/download-artifact@v4
+        with:
+          name: arden-macos-x64
           path: target/release
       - run: chmod +x target/release/arden
       - run: bash scripts/examples_smoke_macos.sh
@@ -556,18 +679,23 @@ jobs:
     needs:
       - checks-linux
       - checks-macos
+      - checks-macos-intel
       - checks-windows
+      - audit-linux
       - coverage-linux
       - fuzz-smoke-linux
       - sanitizer-linux
       - smoke-linux
       - smoke-macos
+      - smoke-macos-intel
       - smoke-windows
       - portable-smoke-linux
       - portable-smoke-macos
+      - portable-smoke-macos-intel
       - portable-smoke-windows
       - examples-linux
       - examples-macos
+      - examples-macos-intel
       - examples-windows
       - web
     steps:

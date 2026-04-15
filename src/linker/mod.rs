@@ -1,6 +1,6 @@
-use crate::project::OutputKind;
 #[cfg(target_os = "macos")]
 use crate::cli::output::format_cli_path;
+use crate::project::OutputKind;
 use crate::shared::process_exit::command_failure_details;
 use colored::*;
 use std::env;
@@ -10,6 +10,8 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(target_os = "macos")]
+use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(unix)]
 use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 
@@ -87,18 +89,22 @@ fn is_executable_file(path: &Path) -> bool {
     path.is_file()
 }
 
+fn canonicalize_tool_path(path: PathBuf) -> PathBuf {
+    fs::canonicalize(&path).unwrap_or(path)
+}
+
 pub(crate) fn find_tool_in_path(tool: &str) -> Option<PathBuf> {
     env::var_os("PATH").and_then(|paths| {
         env::split_paths(&paths).find_map(|dir| {
             let candidate = dir.join(tool);
             if is_executable_file(&candidate) {
-                return Some(candidate);
+                return Some(canonicalize_tool_path(candidate));
             }
             #[cfg(windows)]
             {
                 let exe = dir.join(format!("{tool}.exe"));
                 if is_executable_file(&exe) {
-                    return Some(exe);
+                    return Some(canonicalize_tool_path(exe));
                 }
             }
             None
@@ -193,30 +199,32 @@ pub(crate) fn should_force_no_pie(link: &LinkConfig<'_>) -> bool {
     }
 }
 
-fn apply_fallback_current_dir(command: &mut Command) {
-    if let Ok(working_dir) = env::current_dir() {
-        command.current_dir(working_dir);
-        return;
+fn choose_command_working_dir(anchor_path: &Path) -> PathBuf {
+    if let Some(output_parent) = anchor_path.parent().filter(|dir| dir.is_dir()) {
+        return output_parent.to_path_buf();
+    }
+    if let Ok(current_dir) = env::current_dir() {
+        if current_dir.is_dir() {
+            return current_dir;
+        }
     }
     let temp_dir = env::temp_dir();
     if temp_dir.is_dir() {
-        command.current_dir(temp_dir);
+        return temp_dir;
     }
+    PathBuf::from(".")
 }
 
-fn apply_stable_command_dir(command: &mut Command, anchor_path: &Path) {
-    if let Some(working_dir) = anchor_path
-        .parent()
-        .filter(|dir| dir.is_dir())
-        .map(Path::to_path_buf)
-    {
-        command.current_dir(working_dir);
-        return;
+fn apply_command_working_dir(command: &mut Command, anchor_path: &Path) {
+    let working_dir = choose_command_working_dir(anchor_path);
+    if working_dir == env::temp_dir() {
+        eprintln!(
+            "{}: Linker working directory fell back to temp directory '{}'.",
+            "warning".yellow().bold(),
+            working_dir.display()
+        );
     }
-    let temp_dir = env::temp_dir();
-    if temp_dir.is_dir() {
-        command.current_dir(temp_dir);
-    }
+    command.current_dir(working_dir);
 }
 
 fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), LinkerCommandError> {
@@ -523,7 +531,7 @@ fn link_with_mold(
         })?;
     let context = linux_link_context(link)?;
     let mut command = Command::new(linker_path);
-    apply_fallback_current_dir(&mut command);
+    apply_command_working_dir(&mut command, output_path);
     let thread_count = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(1);
@@ -563,7 +571,6 @@ fn link_with_mold(
         command.arg(crtend);
     }
     command.arg(&context.crtn);
-    apply_stable_command_dir(&mut command, output_path);
 
     run_link_command(command, "mold")
 }
@@ -599,7 +606,7 @@ fn macos_sdk_root() -> Result<PathBuf, LinkerCommandError> {
     let xcrun_path = find_tool_in_path("xcrun").unwrap_or_else(|| PathBuf::from("/usr/bin/xcrun"));
     let mut command = Command::new(&xcrun_path);
     command.arg("--sdk").arg("macosx").arg("--show-sdk-path");
-    apply_fallback_current_dir(&mut command);
+    apply_command_working_dir(&mut command, &xcrun_path);
     let output = command.output().map_err(|error| {
         LinkerCommandError::LinkExecution(format!(
             "{}: Failed to launch xcrun '{}' to resolve the macOS SDK path: {}",
@@ -640,7 +647,7 @@ fn macos_sdk_version() -> Result<String, LinkerCommandError> {
     let xcrun_path = find_tool_in_path("xcrun").unwrap_or_else(|| PathBuf::from("/usr/bin/xcrun"));
     let mut command = Command::new(&xcrun_path);
     command.arg("--sdk").arg("macosx").arg("--show-sdk-version");
-    apply_fallback_current_dir(&mut command);
+    apply_command_working_dir(&mut command, &xcrun_path);
     let output = command.output().map_err(|error| {
         LinkerCommandError::LinkExecution(format!(
             "{}: Failed to launch xcrun '{}' to resolve the macOS SDK version: {}",
@@ -679,6 +686,17 @@ pub(crate) fn escape_response_file_arg(arg: &str) -> String {
         .replace('\n', "\\n")
         .replace('\r', "\\r");
     format!("\"{}\"", escaped)
+}
+
+#[cfg(target_os = "macos")]
+fn unique_link_response_path(output_path: &Path) -> PathBuf {
+    let pid = std::process::id();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let suffix = format!("link-{pid}-{nanos}.rsp");
+    output_path.with_extension(suffix)
 }
 
 #[cfg(target_os = "macos")]
@@ -808,7 +826,7 @@ fn link_with_lld_link(
         ))
     })?;
     let mut command = Command::new(linker_path);
-    apply_fallback_current_dir(&mut command);
+    apply_command_working_dir(&mut command, output_path);
     let thread_count = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(1);
@@ -861,7 +879,6 @@ fn link_with_lld_link(
     for arg in link.link_args {
         command.arg(arg);
     }
-    apply_stable_command_dir(&mut command, output_path);
 
     run_link_command(command, "lld-link")
 }
@@ -884,7 +901,7 @@ fn link_with_macos_lld(
     let target_arch = macos_target_arch(link.target)?;
     let sdk_root = macos_sdk_root()?;
     let sdk_version = macos_sdk_version()?;
-    let response_path = output_path.with_extension("link.rsp");
+    let response_path = unique_link_response_path(output_path);
     let mut response_args = vec![
         "-arch".to_string(),
         target_arch.to_string(),
@@ -924,11 +941,10 @@ fn link_with_macos_lld(
 
     write_link_response_file(&response_path, &response_args)?;
     let mut command = Command::new(linker_path);
-    apply_fallback_current_dir(&mut command);
+    apply_command_working_dir(&mut command, output_path);
     let mut response_arg = OsString::from("@");
     response_arg.push(response_path.as_os_str());
     command.arg(response_arg);
-    apply_stable_command_dir(&mut command, output_path);
     let result = run_link_command(command, "ld64.lld");
     if let Err(err) = fs::remove_file(&response_path) {
         if err.kind() != std::io::ErrorKind::NotFound {
@@ -964,9 +980,15 @@ fn link_objects_impl(
 
     match link.output_kind {
         OutputKind::Static => {
-            let mut command = Command::new("ar");
+            let ar_path = find_tool_in_path("ar").ok_or_else(|| {
+                LinkerCommandError::LinkerDetection(format!(
+                    "{}: Required archiver 'ar' not found in PATH.",
+                    "error".red().bold()
+                ))
+            })?;
+            let mut command = Command::new(ar_path);
             command.arg("rcs").arg(output_path).args(objects);
-            apply_fallback_current_dir(&mut command);
+            apply_command_working_dir(&mut command, output_path);
             run_link_command(command, "ar")
         }
         OutputKind::Bin | OutputKind::Shared => {

@@ -65,14 +65,23 @@ fn run_binary_impl(exe_path: &Path, args: &[String]) -> Result<(), RunCommandErr
             format_cli_path(exe_path)
         )));
     }
-    let status = Command::new(exe_path).args(args).status().map_err(|e| {
-        RunCommandError::ProcessLaunch(format!(
-            "{}: Failed to run '{}': {}",
-            "error".red().bold(),
-            format_cli_path(exe_path),
-            e
-        ))
-    })?;
+    let working_dir = exe_path
+        .parent()
+        .filter(|dir| dir.is_dir())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(std::env::temp_dir);
+    let status = Command::new(exe_path)
+        .args(args)
+        .current_dir(working_dir)
+        .status()
+        .map_err(|e| {
+            RunCommandError::ProcessLaunch(format!(
+                "{}: Failed to run '{}': {}",
+                "error".red().bold(),
+                format_cli_path(exe_path),
+                e
+            ))
+        })?;
     if !status.success() {
         return Err(RunCommandError::ProcessExit(format!(
             "{}: process '{}' {}",

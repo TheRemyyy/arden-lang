@@ -8,6 +8,22 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  security-events: write
+  attestations: write
+
+env:
+  COSIGN_YES: "true"
+  SBOM_FILE: all-artifacts/arden-sbom.json
+  PROVENANCE_FILE: all-artifacts/provenance.intoto.jsonl
+  SIGNATURE_FILE: all-artifacts/SHA256SUMS.txt.sig
+  CERTIFICATE_FILE: all-artifacts/SHA256SUMS.txt.pem
+  BUNDLE_FILE: all-artifacts/SHA256SUMS.txt.bundle
+  SLSA_PROVENANCE_FILE: all-artifacts/slsa-provenance.jsonl
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -193,6 +209,12 @@ jobs:
           cargo fmt -- --check
           cargo clippy --locked --all-targets --all-features -- -D warnings
 
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Dependency audit gate
+        run: cargo audit
+
       - name: Coverage gate
         run: cargo llvm-cov --locked --workspace --all-features --fail-under-lines 55
 
@@ -235,6 +257,59 @@ jobs:
       - name: Generate checksums
         run: python3 scripts/release/write_checksums.py all-artifacts
 
+      - name: Generate SBOM (CycloneDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          path: all-artifacts
+          format: cyclonedx-json
+          output-file: ${{ env.SBOM_FILE }}
+
+      - name: Generate local provenance manifest
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+
+          root = Path("all-artifacts")
+          subjects = []
+          for path in sorted(root.glob("*")):
+              if path.is_file():
+                  digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                  subjects.append({"name": path.name, "digest": {"sha256": digest}})
+
+          provenance = {
+              "_type": "https://in-toto.io/Statement/v1",
+              "subject": subjects,
+              "predicateType": "https://slsa.dev/provenance/v1",
+              "predicate": {
+                  "buildType": "https://github.com/anthropics/arden-compiler/release-workflow",
+                  "builder": {"id": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"},
+                  "invocation": {
+                      "configSource": {
+                          "uri": "git+https://github.com/${{ github.repository }}@${{ github.sha }}"
+                      }
+                  }
+              }
+          }
+
+          out = Path("${{ env.PROVENANCE_FILE }}")
+          out.write_text(json.dumps(provenance, separators=(",", ":")) + "\n", encoding="utf-8")
+          PY
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign checksum manifest (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign-blob \
+            --bundle "${BUNDLE_FILE}" \
+            --output-signature "${SIGNATURE_FILE}" \
+            --output-certificate "${CERTIFICATE_FILE}" \
+            all-artifacts/SHA256SUMS.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -248,6 +323,11 @@ jobs:
             all-artifacts/arden-macos-arm64-portable.tar.gz
             all-artifacts/arden-macos-x64-portable.tar.gz
             all-artifacts/SHA256SUMS.txt
+            all-artifacts/arden-sbom.json
+            all-artifacts/provenance.intoto.jsonl
+            all-artifacts/SHA256SUMS.txt.sig
+            all-artifacts/SHA256SUMS.txt.pem
+            all-artifacts/SHA256SUMS.txt.bundle
           body: |
             ## Arden
             
