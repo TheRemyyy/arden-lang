@@ -68,10 +68,17 @@ _RUNTIME_STANDARD: tuple[str, ...] = (
     "matrix_mul",
     "fibonacci_recursive",
     "sort_heavy",
+    "collatz_batch",
+    "convolution_1d",
+    "histogram_heavy",
 )
 
 _COMPILE_STANDARD: tuple[str, ...] = (
     "compile_project_starter_graph",
+    "compile_project_flat_graph",
+    "compile_project_layered_graph",
+    "compile_project_dense_graph",
+    "compile_project_worst_case_graph",
     "compile_project_mega_graph",
 )
 
@@ -97,22 +104,46 @@ PRESETS: dict[str, list[CampaignStage]] = {
         CampaignStage(
             name="runtime_quick",
             description=(
-                "Quick runtime sanity check on two CPU-heavy benchmarks "
-                "(220×220 matrix multiply + recursive Fibonacci)"
+                "Quick runtime sanity check on a broader CPU/runtime mix "
+                "(heavy matrix, recursive Fibonacci, branchy Collatz, and random-access histogram)"
             ),
-            bench_names=("matrix_mul_heavy", "fibonacci_recursive"),
+            bench_names=("matrix_mul_heavy", "fibonacci_recursive", "collatz_batch", "histogram_heavy"),
             repeats=3,
             warmup=1,
             capture_profile=True,
             include_extreme=True,  # matrix_mul_heavy is opt-in
         ),
         CampaignStage(
+            name="compile_cold_quick",
+            description=(
+                "Quick realistic cold-build check across tiny, starter, and explicit "
+                "flat/layered/dense/worst-case graph shapes"
+            ),
+            bench_names=(
+                "compile_project_tiny_graph",
+                "compile_project_starter_graph",
+                "compile_project_flat_graph",
+                "compile_project_layered_graph",
+                "compile_project_dense_graph",
+                "compile_project_worst_case_graph",
+            ),
+            repeats=3,
+            warmup=0,
+            compile_mode="cold",
+        ),
+        CampaignStage(
             name="compile_hot_quick",
             description=(
-                "Quick hot-compile check on the starter project graph "
-                "with Arden per-phase timings"
+                "Quick hot-compile follow-up on starter plus flat/layered/dense/worst-case "
+                "graphs with Arden per-phase timings"
             ),
-            bench_names=("compile_project_starter_graph",),
+            bench_names=(
+                "compile_project_starter_graph",
+                "compile_project_flat_graph",
+                "compile_project_layered_graph",
+                "compile_project_dense_graph",
+                "compile_project_worst_case_graph",
+            ),
             repeats=3,
             warmup=1,
             compile_mode="hot",
@@ -121,10 +152,14 @@ PRESETS: dict[str, list[CampaignStage]] = {
         CampaignStage(
             name="incremental_quick",
             description=(
-                "Quick incremental rebuild check — body-only single-file edit "
-                "and body-only shared-core edit on a 10-file project"
+                "Quick incremental rebuild check — body-only single-file edit, "
+                "shared-core edit, and API-surface cascade on a 10-file project"
             ),
-            bench_names=("incremental_rebuild_single_file", "incremental_rebuild_shared_core"),
+            bench_names=(
+                "incremental_rebuild_single_file",
+                "incremental_rebuild_shared_core",
+                "incremental_rebuild_api_surface_cascade",
+            ),
             repeats=3,
             warmup=1,
             arden_timings=True,
@@ -155,7 +190,7 @@ PRESETS: dict[str, list[CampaignStage]] = {
         CampaignStage(
             name="compile_hot",
             description=(
-                "Hot-compile benchmarks on starter and mega-graph projects "
+                "Hot-compile benchmarks on starter, explicit graph shapes, and mega-graph projects "
                 "with Arden per-phase timings"
             ),
             bench_names=_COMPILE_STANDARD,
@@ -167,7 +202,7 @@ PRESETS: dict[str, list[CampaignStage]] = {
         CampaignStage(
             name="compile_cold",
             description=(
-                "Cold-compile benchmarks on starter and mega-graph projects "
+                "Cold-compile benchmarks on starter, explicit graph shapes, and mega-graph projects "
                 "(build artifacts cleared between every timed run)"
             ),
             bench_names=_COMPILE_STANDARD,

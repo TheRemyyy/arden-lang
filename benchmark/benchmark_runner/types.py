@@ -19,6 +19,7 @@ class SyntheticGraphConfig:
     group_size: int
     mixed_leaf_edits: int
     mixed_group_edits: int
+    topology: str = "hybrid"
 
 
 @dataclass(frozen=True)

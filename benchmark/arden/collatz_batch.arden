@@ -1,0 +1,31 @@
+import std.io.*;
+
+function collatz_steps(n: Integer): Integer {
+    mut value: Integer = n;
+    mut steps: Integer = 0;
+
+    while (value != 1) {
+        if ((value % 2) == 0) {
+            value = value / 2;
+        } else {
+            value = value * 3 + 1;
+        }
+        steps = steps + 1;
+    }
+
+    return steps;
+}
+
+function main(): None {
+    limit: Integer = 120000;
+    mut checksum: Integer = 0;
+    mut n: Integer = 2;
+
+    while (n <= limit) {
+        checksum = checksum + collatz_steps(n) * ((n % 97) + 1);
+        n = n + 1;
+    }
+
+    println(to_string(checksum));
+    return None;
+}

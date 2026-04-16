@@ -4,7 +4,12 @@ from pathlib import Path
 
 from .execution import run_selected_benchmarks
 from .reporting import build_csv, build_markdown
-from .specs import BENCHMARKS, expand_default_suite, select_benchmarks
+from .specs import (
+    BENCHMARKS,
+    expand_default_suite,
+    filter_benchmarks_by_kinds,
+    select_benchmarks,
+)
 from .system import current_timestamp, detect_llvm_prefix, ensure_tool, run_cmd
 
 
@@ -48,6 +53,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-extreme",
         action="store_true",
         help="Include opt-in heavy runtime/compile benchmarks in the default suite.",
+    )
+    parser.add_argument(
+        "--kinds",
+        nargs="+",
+        choices=["runtime", "compile", "incremental", "incremental_api_surface_cascade", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph", "incremental_batch_extreme_graph", "incremental_mixed_extreme_graph"],
+        help=(
+            "Restrict the default benchmark selection to specific kinds. "
+            "Useful for fast CI passes such as `--kinds runtime compile`."
+        ),
     )
     parser.add_argument(
         "--arden-timings",
@@ -104,6 +118,7 @@ def main() -> int:
         print("Built target/release/arden", flush=True)
 
     selected = select_benchmarks(args.bench, args.include_extreme)
+    selected = filter_benchmarks_by_kinds(selected, tuple(args.kinds) if args.kinds else None)
     if args.bench is None:
         selected = expand_default_suite(selected)
     print(

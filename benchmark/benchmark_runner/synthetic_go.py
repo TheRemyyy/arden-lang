@@ -54,11 +54,12 @@ def write_go_part_files(
     funcs_per_file: int,
     max_deps: int,
     group_size: int,
+    topology: str,
     group_plans: list[dict],
 ) -> list[Path]:
     part_files: list[Path] = []
     for index, part_name in enumerate(part_names):
-        deps = synthetic_graph_dependency_indices(index, max_deps)
+        deps = synthetic_graph_dependency_indices(index, max_deps, topology, group_size)
         group_index = index // group_size
         group_name = group_names[group_index]
         group_salt = 1000 + group_index * 37

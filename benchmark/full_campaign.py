@@ -7,9 +7,10 @@ timestamped results directory.
 
 Presets
 -------
-quick       Fast sanity check — ~2–5 min. Three stages covering a heavy runtime
-            benchmark, a hot-compile check, and two incremental rebuild checks.
-            Good for verifying the harness works before a full run.
+quick       Fast sanity check — ~4–8 min. Four stages covering a broader
+            runtime mix, realistic cold builds across several graph shapes,
+            hot-compile follow-up timings, and small-project incremental
+            rebuild checks. Good for verifying the harness works before a full run.
 
 full        Publication-grade default — ~15–30 min. Six stages: standard
             runtime benchmarks, heavy runtime with profile capture, hot-compile,
@@ -78,7 +79,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default="full",
         help=(
             "Campaign preset. "
-            "quick: fast sanity check (~2–5 min). "
+            "quick: fast sanity check (~4–8 min). "
             "full: publication-grade default (~15–30 min). "
             "exhaustive: full matrix with stress benchmarks (~60+ min). "
             "[default: full]"

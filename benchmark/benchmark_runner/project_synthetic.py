@@ -44,11 +44,29 @@ def generate_compile_project_synthetic_graph(
         config.funcs_per_file,
         config.max_deps,
         config.group_size,
+        config.topology,
         arden_files,
         arden_group_plans,
     )
     write_arden_main_and_config(arden_dir, arden_src, bench_name, part_names, arden_files)
 
+    rust_bin_name = f"{bench_name}_rust"
+    (rust_dir / "Cargo.toml").write_text(
+        "\n".join(
+            [
+                "[package]",
+                f'name = "{rust_bin_name}"',
+                'version = "0.1.0"',
+                'edition = "2021"',
+                "",
+                "[[bin]]",
+                f'name = "{rust_bin_name}"',
+                'path = "main.rs"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     write_rust_core(rust_dir)
     rust_group_plans = write_rust_group_files(rust_dir, group_names)
     rust_part_files = write_rust_part_files(
@@ -58,6 +76,7 @@ def generate_compile_project_synthetic_graph(
         config.funcs_per_file,
         config.max_deps,
         config.group_size,
+        config.topology,
         rust_group_plans,
     )
     write_rust_main(rust_dir, part_names, group_names)
@@ -71,6 +90,7 @@ def generate_compile_project_synthetic_graph(
         config.funcs_per_file,
         config.max_deps,
         config.group_size,
+        config.topology,
         go_group_plans,
     )
     write_go_main(go_dir, part_names)
@@ -90,7 +110,7 @@ def generate_compile_project_synthetic_graph(
         },
         "rust": {
             "project_dir": rust_dir,
-            "binary": rust_dir / f"{bench_name}_rust",
+            "binary": rust_dir / "target" / "release" / rust_bin_name,
             "mutate_source": rust_mutate_sources[0],
             "mutate_sources": rust_mutate_sources,
             "mixed_leaf_sources": pick_mutation_targets(rust_part_files, config.mixed_leaf_edits, "batch_spread"),

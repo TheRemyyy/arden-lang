@@ -126,8 +126,15 @@ def run_compile_benchmark(spec, root: Path, build_env: dict[str, str], arden_tim
         effective_mode = "cold"
         base_name = spec.name[: -len("_cold")]
 
-    if "mega_graph" in base_name or "extreme_graph" in base_name:
-        compile_projects = generate_compile_project_synthetic_graph(root, base_name, select_synthetic_graph_config(base_name))
+    if any(
+        marker in base_name
+        for marker in ("flat_graph", "layered_graph", "dense_graph", "worst_case_graph", "mega_graph", "extreme_graph")
+    ):
+        compile_projects = generate_compile_project_synthetic_graph(
+            root,
+            base_name,
+            select_synthetic_graph_config(base_name),
+        )
     elif "tiny_graph" in base_name:
         compile_projects = generate_compile_project_tiny_graph(root, base_name)
     else:

@@ -11,7 +11,7 @@ If a result matters, it should be reproducible from the commands in this file.
 | Goal | Command | Output |
 | :--- | :--- | :--- |
 | **Smoke test** — does the harness work at all? | `python3 benchmark/run.py --bench matrix_mul_heavy --repeats 1 --warmup 0 --no-build` | `results/latest.{json,md}` |
-| **Quick check** — sanity pass across several benchmarks | `python3 benchmark/full_campaign.py --preset quick --no-build` | `results/campaign_<ts>/` |
+| **Quick check** — CI-style runtime + compile pass without incremental rebuilds | `python3 benchmark/run.py --kinds runtime compile --repeats 3 --warmup 1 --arden-timings --output-csv --no-build` | `results/latest.{json,md,csv}` |
 | **Full campaign** — publication-grade data collection | `python3 benchmark/full_campaign.py --preset full --no-build` | `results/campaign_<ts>/` |
 | **Article-grade / exhaustive** — full matrix + stress benchmarks | `python3 benchmark/full_campaign.py --preset exhaustive --no-build` | `results/campaign_<ts>/` |
 | **Single benchmark with phase breakdowns** | `python3 benchmark/run.py --bench compile_project_starter_graph --compile-mode hot --arden-timings --repeats 5 --warmup 2 --no-build` | `results/latest.{json,md}` |
@@ -57,6 +57,14 @@ python3 benchmark/run.py \
 
 # Full default suite with CSV export
 python3 benchmark/run.py --repeats 5 --warmup 2 --output-csv --no-build
+
+# CI-style quick suite: all runtime benches + non-extreme compile benches
+python3 benchmark/run.py \
+  --kinds runtime compile \
+  --repeats 3 --warmup 1 \
+  --arden-timings \
+  --output-csv \
+  --no-build
 ```
 
 ### `benchmark/full_campaign.py` — Multi-stage campaigns
@@ -67,7 +75,7 @@ Orchestrates multiple benchmark stages across all groups, writes a timestamped r
 # Preview the plan without running anything
 python3 benchmark/full_campaign.py --preset full --dry-run
 
-# Quick sanity check (~2–5 min, 3 stages)
+# Quick sanity check (~4–8 min, 4 stages)
 python3 benchmark/full_campaign.py --preset quick --no-build
 
 # Full publication-grade campaign (~15–30 min, 6 stages)
@@ -79,7 +87,7 @@ python3 benchmark/full_campaign.py --preset exhaustive --no-build
 
 | Preset | Stages | Estimated time | Use case |
 | :--- | ---: | :--- | :--- |
-| `quick` | 3 | ~2–5 min | Harness validation / sanity check |
+| `quick` | 4 | ~4–8 min | Harness validation / local sanity check |
 | `full` | 6 | ~15–30 min | Publication-grade data collection |
 | `exhaustive` | 9 | ~60+ min | Full matrix + extreme stress benchmarks |
 
@@ -87,10 +95,10 @@ python3 benchmark/full_campaign.py --preset exhaustive --no-build
 
 | Stage | Benchmarks | Repeats | Warmup | Extras |
 | :--- | :--- | ---: | ---: | :--- |
-| `runtime` | sum_loop, prime_count, matrix_mul, fibonacci_recursive, sort_heavy | 5 | 2 | — |
+| `runtime` | sum_loop, prime_count, matrix_mul, fibonacci_recursive, sort_heavy, collatz_batch, convolution_1d, histogram_heavy | 5 | 2 | — |
 | `runtime_heavy` | matrix_mul_heavy (220×220) | 5 | 2 | `--capture-profile` |
-| `compile_hot` | starter graph, mega-graph | 5 | 2 | `--arden-timings` |
-| `compile_cold` | starter graph, mega-graph | 5 | 2 | — |
+| `compile_hot` | starter, flat, layered, dense, worst-case, mega-graph | 5 | 2 | `--arden-timings` |
+| `compile_cold` | starter, flat, layered, dense, worst-case, mega-graph | 5 | 2 | — |
 | `incremental_small` | single-file, shared-core, API-surface cascade | 5 | 2 | `--arden-timings` |
 | `incremental_large` | large-batch, mega-graph-batch, mega-graph-mixed | 5 | 2 | `--arden-timings` |
 
@@ -110,6 +118,9 @@ Measure generated code quality and runtime overhead. Arden, Rust, and Go compile
 | `matrix_mul_heavy` | Dense 220×220 matrix multiply (heavier, opt-in) |
 | `fibonacci_recursive` | Naive recursive fib(38) — ~126 M function calls |
 | `sort_heavy` | Insertion sort on 20 000 pseudo-random integers |
+| `collatz_batch` | Branch-heavy Collatz sweep over a large integer range |
+| `convolution_1d` | Sliding-window integer convolution over a large buffer |
+| `histogram_heavy` | Random-access histogram updates stressing list get/set |
 
 All three languages use the same algorithm so the comparison reflects code quality, not algorithm choice. A checksum is verified to confirm equivalent output.
 
@@ -124,6 +135,10 @@ Measure the full frontend-to-native-binary pipeline cost.
 | :--- | :--- |
 | `compile_project_tiny_graph` | 1-file micro baseline |
 | `compile_project_starter_graph` | 10-file starter graph |
+| `compile_project_flat_graph` | ~220-file flat graph with no inter-leaf imports |
+| `compile_project_layered_graph` | ~240-file layered dependency graph |
+| `compile_project_dense_graph` | ~180-file dense local fan-in graph |
+| `compile_project_worst_case_graph` | ~200-file worst-case import/reference stress graph |
 | `compile_project_mega_graph` | 1 400-file synthetic dependency graph |
 | `compile_project_extreme_graph` | 2 200-file extreme graph (opt-in) |
 
@@ -172,6 +187,8 @@ python3 benchmark/run.py --bench incremental_rebuild_api_surface_cascade --repea
 ### `--arden-timings` — per-phase breakdown
 
 Pass `--arden-timings` to any `run.py` command (or to full_campaign.py stages that set it automatically). The flag forwards `--timings` to `arden build` and records lex / parse / type-check / borrow-check / specialization / codegen / link time per run. Results are averaged over the measured repeats and appear in both the markdown and JSON report.
+
+`run.py --kinds runtime compile` is the shortest way to reproduce the CI quick suite: it includes all default runtime benchmarks plus hot/cold compile coverage for the non-extreme graph set, while intentionally skipping incremental rebuild benchmarks to keep wall-clock time under control.
 
 Example report table produced:
 
@@ -338,17 +355,17 @@ python3 benchmark/run.py --bench matrix_mul_heavy --repeats 1 --warmup 0 --no-bu
 python3 benchmark/run.py --bench incremental_rebuild_large_project_batch --repeats 1 --warmup 0 --no-build
 ```
 
-The synthetic and extreme graph compile benchmarks are available in the harness but were excluded from this snapshot because the Go side was killed during quick runs on this machine. They are useful stress tests, not clean three-way headline numbers.
+The larger synthetic graph compile benchmarks are useful stress tests, not clean three-way headline numbers. Use the starter/tiny/flat/layered/dense/worst-case set for quicker directional checks, and the mega/extreme set when you specifically want invalidation pressure or graph-shape stress.
 
 ---
 
 ## Methodology Caveats
 
-- **Toolchain defaults differ.** Rust uses `rustc -C opt-level=3 -C target-cpu=native` (single-file, no Cargo). Go uses `go build -trimpath`. Arden uses `opt_level = "3"` via `arden.toml`. Linkers differ per platform (mold/lld). These are the defaults each language recommends for optimised builds.
+- **Toolchain defaults differ.** Runtime benchmarks compile Rust with `rustc -C opt-level=3` and Go with `go build -trimpath`. Compile benchmarks use `cargo build --release --offline` for Rust, `go build -trimpath` for Go, and Arden `opt_level = "3"` via `arden.toml`. Linkers differ per platform (mold/lld).
 
-- **Rust incremental is conservative here.** Rust incremental benchmarks use `rustc main.rs` (no Cargo), which recompiles from scratch on every change. Cargo with incremental compilation would be faster. The Arden vs Rust incremental comparison is therefore generous to Arden. Adapt the harness to use `cargo build` with a `Cargo.toml` for a fairer comparison.
+- **Rust compile numbers are more realistic than before, but still synthetic.** Rust compile and incremental benchmarks now run through Cargo release builds so tiny-project numbers look more like real-world `cargo build --release`. The generated projects are still synthetic and dependency-free, so do not treat them as a proxy for a typical application workspace.
 
-- **Synthetic graphs are not realistic production workloads.** The mega-graph and extreme-graph compile benchmarks use auto-generated projects with dense dependency chains. They are stress tests, not claims about typical large codebases.
+- **Synthetic graphs are not realistic production workloads.** The flat/layered/dense/worst-case/mega/extreme compile benchmarks use auto-generated projects to isolate graph shape and invalidation behavior. They are stress tests, not claims about typical large codebases.
 
 - **Wall-clock vs CPU time.** All timings are wall-clock. On a loaded machine, variance increases. Use `--warmup 2` or higher and run on a quiet machine for publication numbers.
 

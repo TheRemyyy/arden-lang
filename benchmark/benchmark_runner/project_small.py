@@ -101,6 +101,23 @@ def generate_compile_project_starter_graph(
     rust_dir = generated_root / "rust"
     rust_dir.mkdir(parents=True, exist_ok=True)
     rust_part_files: list[Path] = []
+    rust_bin_name = f"{bench_name}_rust"
+    (rust_dir / "Cargo.toml").write_text(
+        "\n".join(
+            [
+                "[package]",
+                f'name = "{rust_bin_name}"',
+                'version = "0.1.0"',
+                'edition = "2021"',
+                "",
+                "[[bin]]",
+                f'name = "{rust_bin_name}"',
+                'path = "main.rs"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     rust_main = ["mod core;"]
     for index in range(file_count):
         rust_main.append(f"mod part_{index:02d};")
@@ -165,7 +182,7 @@ def generate_compile_project_starter_graph(
         },
         "rust": {
             "project_dir": rust_dir,
-            "binary": rust_dir / f"{bench_name}_rust",
+            "binary": rust_dir / "target" / "release" / rust_bin_name,
             "mutate_source": rust_mutate_sources[0],
             "mutate_sources": rust_mutate_sources,
         },

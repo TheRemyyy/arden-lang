@@ -1,0 +1,32 @@
+import std.io.*;
+
+function main(): None {
+    bucket_count: Integer = 4096;
+    samples: Integer = 8000000;
+
+    buckets: List<Integer> = List<Integer>();
+    mut bucket_index: Integer = 0;
+    while (bucket_index < bucket_count) {
+        buckets.push(0);
+        bucket_index = bucket_index + 1;
+    }
+
+    mut x: Integer = 1;
+    mut i: Integer = 0;
+    while (i < samples) {
+        x = (x * 1664525 + 1013904223) % 2147483647;
+        bucket_index = x % bucket_count;
+        buckets.set(bucket_index, buckets.get(bucket_index) + 1);
+        i = i + 1;
+    }
+
+    mut checksum: Integer = 0;
+    bucket_index = 0;
+    while (bucket_index < bucket_count) {
+        checksum = checksum + buckets.get(bucket_index) * (bucket_index + 1);
+        bucket_index = bucket_index + 1;
+    }
+
+    println(to_string(checksum));
+    return None;
+}

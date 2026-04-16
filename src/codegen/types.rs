@@ -3,7 +3,7 @@ use crate::ast::{Expr, Spanned, Type};
 use inkwell::targets::{
     CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
 };
-use inkwell::types::BasicType;
+use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 use std::collections::HashSet;
@@ -45,76 +45,86 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(());
         }
 
-        let current_fn = self
-            .current_function
-            .ok_or_else(|| CodegenError::new(format!("{context_name} used outside function")))?;
-        let i64_type = self.context.i64_type();
-        let i8_type = self.context.i8_type();
-        let index_ptr = self
-            .builder
-            .build_alloca(i64_type, "zero_init_idx")
-            .map_err(|_| CodegenError::new("failed to allocate zero-init index"))?;
+        let byte_count = self.pointer_sized_int_type().const_int(byte_len, false);
         self.builder
-            .build_store(index_ptr, i64_type.const_zero())
-            .map_err(|_| CodegenError::new("failed to initialize zero-init index"))?;
-
-        let cond_bb = self
-            .context
-            .append_basic_block(current_fn, "zero_init_cond");
-        let body_bb = self
-            .context
-            .append_basic_block(current_fn, "zero_init_body");
-        let done_bb = self
-            .context
-            .append_basic_block(current_fn, "zero_init_done");
-
-        self.builder
-            .build_unconditional_branch(cond_bb)
-            .map_err(|_| CodegenError::new("failed to branch into zero-init loop"))?;
-
-        self.builder.position_at_end(cond_bb);
-        let index = self
-            .builder
-            .build_load(i64_type, index_ptr, "zero_init_index")
-            .map_err(|_| CodegenError::new("failed to load zero-init index"))?
-            .into_int_value();
-        let keep_zeroing = self
-            .builder
-            .build_int_compare(
-                IntPredicate::ULT,
-                index,
-                i64_type.const_int(byte_len, false),
-                "zero_init_continue",
+            .build_memset(
+                buffer_ptr,
+                1,
+                self.context.i8_type().const_zero(),
+                byte_count,
             )
-            .map_err(|_| CodegenError::new("failed to compare zero-init index"))?;
-        self.builder
-            .build_conditional_branch(keep_zeroing, body_bb, done_bb)
-            .map_err(|_| CodegenError::new("failed to branch inside zero-init loop"))?;
-
-        self.builder.position_at_end(body_bb);
-        let byte_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-            self.builder
-                .build_gep(i8_type, buffer_ptr, &[index], "zero_init_byte_ptr")
-                .map_err(|_| CodegenError::new("failed to compute zero-init byte pointer"))?
-        };
-        self.builder
-            .build_store(byte_ptr, i8_type.const_zero())
-            .map_err(|_| CodegenError::new("failed to store zero-init byte"))?;
-        let next_index = self
-            .builder
-            .build_int_add(index, i64_type.const_int(1, false), "zero_init_next")
-            .map_err(|_| CodegenError::new("failed to increment zero-init index"))?;
-        self.builder
-            .build_store(index_ptr, next_index)
-            .map_err(|_| CodegenError::new("failed to store zero-init index"))?;
-        self.builder
-            .build_unconditional_branch(cond_bb)
-            .map_err(|_| CodegenError::new("failed to continue zero-init loop"))?;
-
-        self.builder.position_at_end(done_bb);
+            .map_err(|_| {
+                CodegenError::new(format!(
+                    "failed to emit memset for zero-initialized {context_name}"
+                ))
+            })?;
         Ok(())
+    }
+
+    fn build_indexed_element_ptr(
+        &mut self,
+        data_ptr: PointerValue<'ctx>,
+        elem_llvm_ty: BasicTypeEnum<'ctx>,
+        index: IntValue<'ctx>,
+        context_name: &str,
+    ) -> Result<PointerValue<'ctx>> {
+        let typed_data_ptr = self
+            .builder
+            .build_pointer_cast(
+                data_ptr,
+                self.context.ptr_type(AddressSpace::default()),
+                &format!("{context_name}_typed_data_ptr"),
+            )
+            .map_err(|_| {
+                CodegenError::new(format!(
+                    "failed to cast {context_name} data pointer to element pointer"
+                ))
+            })?;
+        // SAFETY: This GEP indexes into a contiguous heap allocation sized for `elem_llvm_ty`
+        // elements. Bounds are checked by surrounding control flow before use where required.
+        unsafe {
+            self.builder
+                .build_gep(
+                    elem_llvm_ty,
+                    typed_data_ptr,
+                    &[index],
+                    &format!("{context_name}_elem_ptr"),
+                )
+                .map_err(|_| {
+                    CodegenError::new(format!("failed to compute {context_name} element pointer"))
+                })
+        }
+    }
+
+    fn build_memcmp_equality(
+        &mut self,
+        lhs_ptr: PointerValue<'ctx>,
+        rhs_ptr: PointerValue<'ctx>,
+        byte_len: u64,
+        name: &str,
+        missing_value_context: &str,
+    ) -> Result<IntValue<'ctx>> {
+        let memcmp = self.get_or_declare_memcmp();
+        let size = self.context.i64_type().const_int(byte_len, false);
+        let cmp = self
+            .builder
+            .build_call(
+                memcmp,
+                &[lhs_ptr.into(), rhs_ptr.into(), size.into()],
+                &format!("{name}_memcmp"),
+            )
+            .map_err(|_| CodegenError::new("failed to emit memcmp call"))?;
+        let cmp_value = self
+            .extract_call_value_with_context(cmp, missing_value_context)?
+            .into_int_value();
+        self.builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                cmp_value,
+                self.context.i32_type().const_zero(),
+                name,
+            )
+            .map_err(|_| CodegenError::new("failed to compare memcmp result"))
     }
 
     fn init_codegen_target_data_layout() -> Option<String> {
@@ -548,8 +558,7 @@ unsafe {
                     )
                     .map_err(|_| CodegenError::new("failed to compare enum tags"))?;
 
-                for slot in 0..payload_slots {
-                    let field_index = i32_type.const_int((slot + 1) as u64, false);
+                if payload_slots > 0 {
                     let lhs_payload_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
 // alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
 unsafe {
@@ -557,8 +566,8 @@ unsafe {
                             .build_gep(
                                 enum_struct_type.as_basic_type_enum(),
                                 lhs_ptr,
-                                &[zero, field_index],
-                                &format!("{name}_lhs_payload_ptr_{slot}"),
+                                &[zero, i32_type.const_int(1, false)],
+                                &format!("{name}_lhs_payload_ptr"),
                             )
                             .map_err(|_| {
                                 CodegenError::new("failed to compute enum lhs payload pointer")
@@ -571,43 +580,23 @@ unsafe {
                             .build_gep(
                                 enum_struct_type.as_basic_type_enum(),
                                 rhs_ptr,
-                                &[zero, field_index],
-                                &format!("{name}_rhs_payload_ptr_{slot}"),
+                                &[zero, i32_type.const_int(1, false)],
+                                &format!("{name}_rhs_payload_ptr"),
                             )
                             .map_err(|_| {
                                 CodegenError::new("failed to compute enum rhs payload pointer")
                             })?
                     };
-                    let lhs_payload = self
-                        .builder
-                        .build_load(
-                            self.context.i64_type(),
-                            lhs_payload_ptr,
-                            &format!("{name}_lhs_payload_{slot}"),
-                        )
-                        .map_err(|_| CodegenError::new("failed to load enum lhs payload"))?
-                        .into_int_value();
-                    let rhs_payload = self
-                        .builder
-                        .build_load(
-                            self.context.i64_type(),
-                            rhs_payload_ptr,
-                            &format!("{name}_rhs_payload_{slot}"),
-                        )
-                        .map_err(|_| CodegenError::new("failed to load enum rhs payload"))?
-                        .into_int_value();
-                    let payload_eq = self
-                        .builder
-                        .build_int_compare(
-                            IntPredicate::EQ,
-                            lhs_payload,
-                            rhs_payload,
-                            &format!("{name}_payload_eq_{slot}"),
-                        )
-                        .map_err(|_| CodegenError::new("failed to compare enum payloads"))?;
+                    let payload_eq = self.build_memcmp_equality(
+                        lhs_payload_ptr,
+                        rhs_payload_ptr,
+                        (payload_slots as u64) * 8,
+                        &format!("{name}_payload_eq"),
+                        "memcmp did not produce a value during enum equality lowering",
+                    )?;
                     eq = self
                         .builder
-                        .build_and(eq, payload_eq, &format!("{name}_eq_{slot}"))
+                        .build_and(eq, payload_eq, &format!("{name}_payload_and"))
                         .map_err(|_| CodegenError::new("failed to combine enum equality"))?;
                 }
 
@@ -745,34 +734,13 @@ unsafe {
                 self.materialize_value_pointer_for_type(lhs, ty, &format!("{name}_lhs_tmp"))?;
             let rhs_ptr =
                 self.materialize_value_pointer_for_type(rhs, ty, &format!("{name}_rhs_tmp"))?;
-            let memcmp = self.get_or_declare_memcmp();
-            let size = self
-                .context
-                .i64_type()
-                .const_int(self.storage_size_of_llvm_type(llvm_ty), false);
-            let cmp = self
-                .builder
-                .build_call(
-                    memcmp,
-                    &[lhs_ptr.into(), rhs_ptr.into(), size.into()],
-                    &format!("{name}_memcmp"),
-                )
-                .map_err(|_| CodegenError::new("failed to emit memcmp call"))?;
-            let cmp_v = self
-                .extract_call_value_with_context(
-                    cmp,
-                    "memcmp did not produce a value during structural equality lowering",
-                )?
-                .into_int_value();
-            return self
-                .builder
-                .build_int_compare(
-                    IntPredicate::EQ,
-                    cmp_v,
-                    self.context.i32_type().const_zero(),
-                    name,
-                )
-                .map_err(|_| CodegenError::new("failed to compare memcmp result"));
+            return self.build_memcmp_equality(
+                lhs_ptr,
+                rhs_ptr,
+                self.storage_size_of_llvm_type(llvm_ty),
+                name,
+                "memcmp did not produce a value during structural equality lowering",
+            );
         }
 
         Ok(self.context.bool_type().const_zero())
@@ -1209,11 +1177,6 @@ unsafe {
                                 "set_append_typed_ptr",
                             )
                             .map_err(|_| CodegenError::new("failed to cast Set append pointer"))?;
-                        if elem_llvm_ty.is_struct_type() || elem_llvm_ty.is_array_type() {
-                            self.builder
-                                .build_store(typed_elem_ptr, elem_llvm_ty.const_zero())
-                                .map_err(|_| CodegenError::new("failed to zero Set append slot"))?;
-                        }
                         self.builder
                             .build_store(typed_elem_ptr, needle)
                             .map_err(|_| {
@@ -2494,75 +2457,24 @@ unsafe {
                 "has_copy_bytes",
             )
             .map_err(|_| CodegenError::new("failed to compare List copy byte count"))?;
-
-        let copy_cond_bb = self.context.append_basic_block(function, "list_copy_cond");
         let copy_body_bb = self.context.append_basic_block(function, "list_copy_body");
         let copy_done_bb = self.context.append_basic_block(function, "list_copy_done");
         self.builder
-            .build_conditional_branch(has_bytes, copy_cond_bb, copy_done_bb)
+            .build_conditional_branch(has_bytes, copy_body_bb, copy_done_bb)
             .map_err(|_| CodegenError::new("failed to branch for List copy"))?;
 
-        self.builder.position_at_end(copy_cond_bb);
-        let idx_ptr = self
-            .builder
-            .build_alloca(i64_type, "copy_idx")
-            .map_err(|_| CodegenError::new("failed to allocate List copy index"))?;
-        self.builder
-            .build_store(idx_ptr, i64_type.const_zero())
-            .map_err(|_| CodegenError::new("failed to initialize List copy index"))?;
-        let cond_bb = self
-            .context
-            .append_basic_block(function, "list_copy_loop_cond");
-        self.builder
-            .build_unconditional_branch(cond_bb)
-            .map_err(|_| CodegenError::new("failed to enter List copy loop"))?;
-
-        self.builder.position_at_end(cond_bb);
-        let idx = self
-            .builder
-            .build_load(i64_type, idx_ptr, "copy_idx_val")
-            .map_err(|_| CodegenError::new("failed to load List copy index"))?
-            .into_int_value();
-        let keep_copying = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, idx, bytes_to_copy, "copy_continue")
-            .map_err(|_| CodegenError::new("failed to compare List copy loop bound"))?;
-        self.builder
-            .build_conditional_branch(keep_copying, copy_body_bb, copy_done_bb)
-            .map_err(|_| CodegenError::new("failed to branch in List copy loop"))?;
-
         self.builder.position_at_end(copy_body_bb);
-        let src = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), old_data, &[idx], "copy_src")
-                .map_err(|_| CodegenError::new("failed to compute List copy source pointer"))?
-        };
-        let dst = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), grown_data, &[idx], "copy_dst")
-                .map_err(|_| CodegenError::new("failed to compute List copy destination pointer"))?
-        };
-        let byte = self
+        let copy_size = self.pointer_sized_int_type().const_int(elem_size, false);
+        let copy_bytes = self
             .builder
-            .build_load(self.context.i8_type(), src, "copy_byte")
-            .map_err(|_| CodegenError::new("failed to load copied List byte"))?;
+            .build_int_mul(length, copy_size, "copy_size")
+            .map_err(|_| CodegenError::new("failed to compute List memcpy byte count"))?;
         self.builder
-            .build_store(dst, byte)
-            .map_err(|_| CodegenError::new("failed to store copied List byte"))?;
-        let next_idx = self
-            .builder
-            .build_int_add(idx, i64_type.const_int(1, false), "copy_next_idx")
-            .map_err(|_| CodegenError::new("failed to increment List copy index"))?;
+            .build_memcpy(grown_data, 1, old_data, 1, copy_bytes)
+            .map_err(|_| CodegenError::new("failed to emit List memcpy"))?;
         self.builder
-            .build_store(idx_ptr, next_idx)
-            .map_err(|_| CodegenError::new("failed to store List copy index"))?;
-        self.builder
-            .build_unconditional_branch(cond_bb)
-            .map_err(|_| CodegenError::new("failed to continue List copy loop"))?;
+            .build_unconditional_branch(copy_done_bb)
+            .map_err(|_| CodegenError::new("failed to finish List copy"))?;
 
         self.builder.position_at_end(copy_done_bb);
         self.builder
@@ -3090,7 +3002,6 @@ unsafe {
                 let i64_type = self.context.i64_type();
                 let zero = i32_type.const_int(0, false);
                 let one_i64 = i64_type.const_int(1, false);
-                let elem_size_i64 = i64_type.const_int(elem_size, false);
 
                 // Get current capacity/length/data pointers.
                 let capacity_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
@@ -3179,26 +3090,8 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to load List data pointer"))?
                     .into_pointer_value();
 
-                // Calculate element pointer: data + length * 8
-                let offset = self
-                    .builder
-                    .build_int_mul(length, elem_size_i64, "offset")
-                    .map_err(|_| CodegenError::new("failed to compute List push offset"))?;
-                let elem_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-                    self.builder
-                        .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .map_err(|_| CodegenError::new("failed to compute List element pointer"))?
-                };
-                let typed_elem_ptr = self
-                    .builder
-                    .build_pointer_cast(
-                        elem_ptr,
-                        self.context.ptr_type(AddressSpace::default()),
-                        "typed_elem_ptr",
-                    )
-                    .map_err(|_| CodegenError::new("failed to cast List element pointer"))?;
+                let typed_elem_ptr =
+                    self.build_indexed_element_ptr(data_ptr, elem_llvm_ty, length, "list_push")?;
 
                 // Store the value
                 let inner_ty = match self.deref_codegen_type(list_ty) {
@@ -3298,31 +3191,8 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to load List data pointer"))?
                     .into_pointer_value();
 
-                let offset = self
-                    .builder
-                    .build_int_mul(
-                        index,
-                        self.context.i64_type().const_int(elem_size, false),
-                        "offset",
-                    )
-                    .map_err(|_| CodegenError::new("failed to compute List.get offset"))?;
-                let elem_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-                    self.builder
-                        .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .map_err(|_| {
-                            CodegenError::new("failed to compute List.get element pointer")
-                        })?
-                };
-                let typed_elem_ptr = self
-                    .builder
-                    .build_pointer_cast(
-                        elem_ptr,
-                        self.context.ptr_type(AddressSpace::default()),
-                        "typed_elem_ptr",
-                    )
-                    .map_err(|_| CodegenError::new("failed to cast List.get element pointer"))?;
+                let typed_elem_ptr =
+                    self.build_indexed_element_ptr(data_ptr, elem_llvm_ty, index, "list_get")?;
 
                 // Load and return the value
                 let val = self
@@ -3434,31 +3304,8 @@ unsafe {
                     .into_pointer_value();
 
                 // Get value at new_length (the old last element)
-                let offset = self
-                    .builder
-                    .build_int_mul(
-                        new_length,
-                        self.context.i64_type().const_int(elem_size, false),
-                        "offset",
-                    )
-                    .map_err(|_| CodegenError::new("failed to compute List.pop offset"))?;
-                let elem_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-                    self.builder
-                        .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .map_err(|_| {
-                            CodegenError::new("failed to compute List.pop element pointer")
-                        })?
-                };
-                let typed_elem_ptr = self
-                    .builder
-                    .build_pointer_cast(
-                        elem_ptr,
-                        self.context.ptr_type(AddressSpace::default()),
-                        "typed_elem_ptr",
-                    )
-                    .map_err(|_| CodegenError::new("failed to cast List.pop element pointer"))?;
+                let typed_elem_ptr =
+                    self.build_indexed_element_ptr(data_ptr, elem_llvm_ty, new_length, "list_pop")?;
                 let val = self
                     .builder
                     .build_load(elem_llvm_ty, typed_elem_ptr, "val")
@@ -3541,31 +3388,8 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to load List data pointer"))?
                     .into_pointer_value();
 
-                let offset = self
-                    .builder
-                    .build_int_mul(
-                        index,
-                        self.context.i64_type().const_int(elem_size, false),
-                        "offset",
-                    )
-                    .map_err(|_| CodegenError::new("failed to compute List.set offset"))?;
-                let elem_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-                    self.builder
-                        .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .map_err(|_| {
-                            CodegenError::new("failed to compute List.set element pointer")
-                        })?
-                };
-                let typed_elem_ptr = self
-                    .builder
-                    .build_pointer_cast(
-                        elem_ptr,
-                        self.context.ptr_type(AddressSpace::default()),
-                        "typed_elem_ptr",
-                    )
-                    .map_err(|_| CodegenError::new("failed to cast List.set element pointer"))?;
+                let typed_elem_ptr =
+                    self.build_indexed_element_ptr(data_ptr, elem_llvm_ty, index, "list_set")?;
 
                 // Store the value
                 let inner_ty = match self.deref_codegen_type(list_ty) {
@@ -3618,7 +3442,6 @@ unsafe {
             "push" => {
                 let i64_type = self.context.i64_type();
                 let one_i64 = i64_type.const_int(1, false);
-                let elem_size_i64 = i64_type.const_int(elem_size, false);
 
                 let capacity_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
 // alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
@@ -3713,29 +3536,12 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to load List pointer data"))?
                     .into_pointer_value();
 
-                let offset = self
-                    .builder
-                    .build_int_mul(length, elem_size_i64, "offset")
-                    .map_err(|_| CodegenError::new("failed to compute List pointer push offset"))?;
-                let elem_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-                    self.builder
-                        .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .map_err(|_| {
-                            CodegenError::new("failed to compute List pointer element pointer")
-                        })?
-                };
-                let typed_elem_ptr = self
-                    .builder
-                    .build_pointer_cast(
-                        elem_ptr,
-                        self.context.ptr_type(AddressSpace::default()),
-                        "typed_elem_ptr",
-                    )
-                    .map_err(|_| {
-                        CodegenError::new("failed to cast List pointer element pointer")
-                    })?;
+                let typed_elem_ptr = self.build_indexed_element_ptr(
+                    data_ptr,
+                    elem_llvm_ty,
+                    length,
+                    "list_ptr_push",
+                )?;
 
                 let inner_ty = match self.deref_codegen_type(list_ty) {
                     Type::List(inner) => &**inner,
@@ -3864,33 +3670,8 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to load List pointer data"))?
                     .into_pointer_value();
 
-                let offset = self
-                    .builder
-                    .build_int_mul(
-                        index,
-                        self.context.i64_type().const_int(elem_size, false),
-                        "offset",
-                    )
-                    .map_err(|_| CodegenError::new("failed to compute List pointer get offset"))?;
-                let elem_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-                    self.builder
-                        .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .map_err(|_| {
-                            CodegenError::new("failed to compute List pointer get element pointer")
-                        })?
-                };
-                let typed_elem_ptr = self
-                    .builder
-                    .build_pointer_cast(
-                        elem_ptr,
-                        self.context.ptr_type(AddressSpace::default()),
-                        "typed_elem_ptr",
-                    )
-                    .map_err(|_| {
-                        CodegenError::new("failed to cast List pointer get element pointer")
-                    })?;
+                let typed_elem_ptr =
+                    self.build_indexed_element_ptr(data_ptr, elem_llvm_ty, index, "list_ptr_get")?;
 
                 let val = self
                     .builder
@@ -3984,33 +3765,8 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to load List pointer data"))?
                     .into_pointer_value();
 
-                let offset = self
-                    .builder
-                    .build_int_mul(
-                        index,
-                        self.context.i64_type().const_int(elem_size, false),
-                        "offset",
-                    )
-                    .map_err(|_| CodegenError::new("failed to compute List pointer set offset"))?;
-                let elem_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-                    self.builder
-                        .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .map_err(|_| {
-                            CodegenError::new("failed to compute List pointer set element pointer")
-                        })?
-                };
-                let typed_elem_ptr = self
-                    .builder
-                    .build_pointer_cast(
-                        elem_ptr,
-                        self.context.ptr_type(AddressSpace::default()),
-                        "typed_elem_ptr",
-                    )
-                    .map_err(|_| {
-                        CodegenError::new("failed to cast List pointer set element pointer")
-                    })?;
+                let typed_elem_ptr =
+                    self.build_indexed_element_ptr(data_ptr, elem_llvm_ty, index, "list_ptr_set")?;
 
                 // Store the value
                 let inner_ty = match self.deref_codegen_type(list_ty) {
@@ -4116,33 +3872,12 @@ unsafe {
                     .into_pointer_value();
 
                 // Get value at new_length (the old last element)
-                let offset = self
-                    .builder
-                    .build_int_mul(
-                        new_length,
-                        self.context.i64_type().const_int(elem_size, false),
-                        "offset",
-                    )
-                    .map_err(|_| CodegenError::new("failed to compute List pointer pop offset"))?;
-                let elem_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-                    self.builder
-                        .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .map_err(|_| {
-                            CodegenError::new("failed to compute List pointer pop element pointer")
-                        })?
-                };
-                let typed_elem_ptr = self
-                    .builder
-                    .build_pointer_cast(
-                        elem_ptr,
-                        self.context.ptr_type(AddressSpace::default()),
-                        "typed_elem_ptr",
-                    )
-                    .map_err(|_| {
-                        CodegenError::new("failed to cast List pointer pop element pointer")
-                    })?;
+                let typed_elem_ptr = self.build_indexed_element_ptr(
+                    data_ptr,
+                    elem_llvm_ty,
+                    new_length,
+                    "list_ptr_pop",
+                )?;
                 let val = self
                     .builder
                     .build_load(elem_llvm_ty, typed_elem_ptr, "val")
@@ -4752,11 +4487,6 @@ unsafe {
                 "typed_val_slot",
             )
             .map_err(|_| CodegenError::new("failed to cast Map.set value slot"))?;
-        if val_llvm.is_struct_type() || val_llvm.is_array_type() {
-            self.builder
-                .build_store(typed_val_slot, val_llvm.const_zero())
-                .map_err(|_| CodegenError::new("failed to clear existing Map.set value slot"))?;
-        }
         self.builder
             .build_store(typed_val_slot, value)
             .map_err(|_| CodegenError::new("failed to store updated Map value"))?;
@@ -4897,11 +4627,6 @@ unsafe {
                 "typed_key_slot_new",
             )
             .map_err(|_| CodegenError::new("failed to cast Map append key slot"))?;
-        if key_llvm.is_struct_type() || key_llvm.is_array_type() {
-            self.builder
-                .build_store(typed_key_slot, key_llvm.const_zero())
-                .map_err(|_| CodegenError::new("failed to clear Map append key slot"))?;
-        }
         self.builder
             .build_store(typed_key_slot, key)
             .map_err(|_| CodegenError::new("failed to store appended Map key"))?;
@@ -4933,11 +4658,6 @@ unsafe {
                 "typed_val_slot_new",
             )
             .map_err(|_| CodegenError::new("failed to cast Map append value slot"))?;
-        if val_llvm.is_struct_type() || val_llvm.is_array_type() {
-            self.builder
-                .build_store(typed_val_slot, val_llvm.const_zero())
-                .map_err(|_| CodegenError::new("failed to clear Map append value slot"))?;
-        }
         self.builder
             .build_store(typed_val_slot, value)
             .map_err(|_| CodegenError::new("failed to store appended Map value"))?;

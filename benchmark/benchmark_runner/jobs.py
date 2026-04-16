@@ -44,7 +44,7 @@ def compile_rust(root: Path, bench: str, out: Path) -> None:
     out = exe_path(out)
     print(f"  [build] rust {bench}", flush=True)
     proc = run_cmd(
-        ["rustc", "-C", "opt-level=3", "-C", "target-cpu=native", str(src), "-o", str(out)],
+        ["rustc", "-C", "opt-level=3", str(src), "-o", str(out)],
         root,
     )
     if proc.returncode != 0:
@@ -120,18 +120,15 @@ def make_compile_jobs(
         },
         "rust": {
             "cmd": [
-                "rustc",
-                "-C",
-                "opt-level=3",
-                "-C",
-                "target-cpu=native",
-                "main.rs",
-                "-o",
-                str(exe_path(compile_projects["rust"]["binary"])),
+                "cargo",
+                "build",
+                "--release",
+                "--offline",
             ],
             "cwd": compile_projects["rust"]["project_dir"],
             "env": None,
             "binary": exe_path(compile_projects["rust"]["binary"]),
+            "cargo_target_dir": compile_projects["rust"]["project_dir"] / "target",
             "mutate_source": compile_projects["rust"]["mutate_source"],
             "mutate_sources": compile_projects["rust"].get("mutate_sources", []),
             "mixed_leaf_sources": compile_projects["rust"].get("mixed_leaf_sources", []),
@@ -189,6 +186,13 @@ def clean_compile_artifacts(lang: str, job: dict) -> None:
         cache_dir = Path(job["cwd"]) / ".ardencache"
         if cache_dir.exists():
             shutil.rmtree(cache_dir)
+
+    if lang == "rust":
+        target_dir = job.get("cargo_target_dir")
+        if target_dir is not None:
+            target_path = Path(target_dir)
+            if target_path.exists():
+                shutil.rmtree(target_path)
 
     if lang == "go":
         cache_dir = job.get("go_cache_dir")

@@ -497,38 +497,28 @@ jobs:
         run: |
           export "${{ matrix.linker_env_name }}=${{ matrix.linker_env_value }}"
           cargo build --release
-      - name: Run quick compile benchmark
+      - name: Run quick benchmark suite
         shell: bash
         env:
           RUSTFLAGS: ${{ runner.os == 'Windows' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
         run: |
           export "${{ matrix.linker_env_name }}=${{ matrix.linker_env_value }}"
-
-          python3 benchmark/run.py \
-            --bench compile_project_tiny_graph \
-            --compile-mode hot \
-            --arden-timings \
-            --repeats 5 \
-            --warmup 1 \
-            --no-build
           mkdir -p benchmark/results/ci/${{ matrix.name }}
-          cp benchmark/results/latest.json benchmark/results/ci/${{ matrix.name }}/tiny_hot.json
-          cp benchmark/results/latest.md benchmark/results/ci/${{ matrix.name }}/tiny_hot.md
 
           python3 benchmark/run.py \
-            --bench compile_project_starter_graph \
-            --compile-mode hot \
-            --arden-timings \
-            --repeats 5 \
+            --no-build \
+            --kinds runtime compile \
+            --repeats 3 \
             --warmup 1 \
-            --no-build
-          cp benchmark/results/latest.json benchmark/results/ci/${{ matrix.name }}/starter_hot.json
-          cp benchmark/results/latest.md benchmark/results/ci/${{ matrix.name }}/starter_hot.md
+            --arden-timings \
+            --output-csv
 
-          printf '\n%s\n' 'Tiny benchmark summary:'
-          cat benchmark/results/ci/${{ matrix.name }}/tiny_hot.md
-          printf '\n%s\n' 'Starter benchmark summary:'
-          cat benchmark/results/ci/${{ matrix.name }}/starter_hot.md
+          cp benchmark/results/latest.json benchmark/results/ci/${{ matrix.name }}/quick_suite.json
+          cp benchmark/results/latest.md benchmark/results/ci/${{ matrix.name }}/quick_suite.md
+          cp benchmark/results/latest.csv benchmark/results/ci/${{ matrix.name }}/quick_suite.csv
+
+          printf '\n%s\n' 'Quick benchmark suite summary:'
+          cat benchmark/results/ci/${{ matrix.name }}/quick_suite.md
       - uses: actions/upload-artifact@v7
         with:
           name: bench-quick-${{ matrix.name }}

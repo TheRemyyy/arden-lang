@@ -14,6 +14,7 @@ Runs:
 - Rust checks (`check`, `test`, `fmt`, `clippy`)
 - CLI smoke tests
 - example sweeps
+- cross-platform quick benchmark suite artifacts (`benchmark/run.py --kinds runtime compile --repeats 3 --warmup 1 --arden-timings --output-csv`)
 
 This is the first place to inspect if you changed:
 
@@ -21,6 +22,7 @@ This is the first place to inspect if you changed:
 - LLVM installation assumptions
 - platform-specific linker behavior
 - any CLI smoke expectation
+- benchmark preset names, output layout, or CI quick-benchmark expectations
 
 ### `workflows/release.yml`
 

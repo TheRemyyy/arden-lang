@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### ♻️ Changed
+
+- Benchmark harness: expanded runtime coverage with additional branch-heavy and memory-heavy workloads, added explicit flat/layered/dense/worst-case synthetic graph compile benchmarks, and switched Rust project compile benchmarks to Cargo release builds for more realistic cold-build numbers.
+- Benchmark presets/docs/CI: reworked the quick benchmark path to cover all default runtime workloads plus the non-extreme hot/cold compile graph set, updated benchmark docs accordingly, and made CI upload a direct `run.py` quick-suite artifact instead of going through the heavier multi-stage campaign flow.
+- LLVM/codegen throughput: tightened hot runtime lowering by switching enum payload equality to block `memcmp`, removing redundant full-slot zero stores before overwrite in Map/Set updates, and lowering List element access through typed indexed pointers so LLVM sees cleaner element-address arithmetic in matrix/list-heavy loops.
+
 ### 🐛 Fixed
 
 - LSP and diagnostics: fixed span-boundary/end-exclusive lookup, CRLF position mapping/clamping, lexer-offset overflow fallback, Unicode underline width, and EOF rendering edge cases.
@@ -21,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Deep-expression stability: replaced recursive parser/import/type/borrow hot paths with iterative handling and added deep unary/parenthesized regression coverage.
 - Runtime/process diagnostics: unified richer crash decoding (signals/NTSTATUS), improved missing/non-file executable failures, and added safe truncation for oversized subprocess output.
 - ABI portability: fixed cross-platform C ABI mismatches (`size_t`/`long`/`time_t`/`pthread_t`) and normalized remaining `malloc`/`realloc`/`snprintf` size casting.
+- Collection codegen throughput: replaced byte-at-a-time zero-init/list-growth copy loops with LLVM `memset`/`memcpy` intrinsics to reduce avoidable runtime overhead without changing semantics or requiring `cpu=native`.
 - Type and diagnostics correctness: fixed async-block return-type inference for explicit `return`, and unified parser/type/borrow/import + CLI/project path rendering (including Windows prefix cleanup).
 - Tooling/path hardening: tightened bindgen/cache/object/linker path handling and release smoke script guards/timeouts.
 - Web polish: restored large-screen hero centering and improved ultra-wide readability scaling.

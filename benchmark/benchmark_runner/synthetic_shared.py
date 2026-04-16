@@ -1,9 +1,64 @@
 from pathlib import Path
 
 
-def synthetic_graph_dependency_indices(index: int, max_deps: int) -> list[int]:
+def _unique_dependency_candidates(candidates: list[int], index: int, max_deps: int) -> list[int]:
+    deps: list[int] = []
+    for candidate in candidates:
+        if 0 <= candidate < index and candidate not in deps:
+            deps.append(candidate)
+        if len(deps) == max_deps:
+            break
+    return deps
+
+
+def synthetic_graph_dependency_indices(
+    index: int,
+    max_deps: int,
+    topology: str,
+    group_size: int,
+) -> list[int]:
     if index <= 0:
         return []
+
+    if topology == "flat":
+        return []
+
+    if topology == "layered":
+        layer_width = max(8, group_size)
+        layer_index = index // layer_width
+        if layer_index == 0:
+            return []
+        prev_layer_start = (layer_index - 1) * layer_width
+        prev_layer_end = min(index, layer_index * layer_width)
+        prev_layer = list(range(prev_layer_start, prev_layer_end))
+        if not prev_layer:
+            return []
+        if len(prev_layer) <= max_deps:
+            return prev_layer
+        step = (len(prev_layer) - 1) / (max_deps - 1)
+        sampled = [prev_layer[round(step * dep_index)] for dep_index in range(max_deps)]
+        return _unique_dependency_candidates(sampled, index, max_deps)
+
+    if topology == "dense":
+        return list(range(max(0, index - max_deps), index))
+
+    if topology == "worst_case":
+        return _unique_dependency_candidates(
+            [
+                0,
+                1,
+                index - 1,
+                index - 2,
+                index - 3,
+                index - 5,
+                index - 8,
+                index // 2,
+                (index * 3) // 4,
+                (index * 7) // 8,
+            ],
+            index,
+            max_deps,
+        )
 
     candidates = [
         index - 1,
@@ -17,13 +72,7 @@ def synthetic_graph_dependency_indices(index: int, max_deps: int) -> list[int]:
         (index * 5) // 8,
         (index * 3) // 5,
     ]
-    deps: list[int] = []
-    for candidate in candidates:
-        if 0 <= candidate < index and candidate not in deps:
-            deps.append(candidate)
-        if len(deps) == max_deps:
-            break
-    return deps
+    return _unique_dependency_candidates(candidates, index, max_deps)
 
 
 def spread_group_plans(plans: list[dict], count: int) -> list[dict]:
