@@ -942,6 +942,7 @@ fn link_with_macos_lld(
     write_link_response_file(&response_path, &response_args)?;
     let mut command = Command::new(linker_path);
     apply_command_working_dir(&mut command, output_path);
+    command.arg("-flavor").arg("darwin");
     let mut response_arg = OsString::from("@");
     response_arg.push(response_path.as_os_str());
     command.arg(response_arg);
