@@ -10988,11 +10988,13 @@ unsafe {
             loop_block: cond_bb,
             after_block: after_bb,
         });
-        self.with_variable_scope(|this| {
-            for stmt in body {
-                this.compile_stmt(&stmt.node)?;
-            }
-            Ok(())
+        self.with_condition_non_negative_facts(&cond.node, |this| {
+            this.with_variable_scope(|this| {
+                for stmt in body {
+                    this.compile_stmt(&stmt.node)?;
+                }
+                Ok(())
+            })
         })?;
         self.loop_stack.pop();
         if self.needs_terminator() {
@@ -13355,6 +13357,76 @@ unsafe {
             &self.non_negative_locals,
             &self.non_negative_functions,
         )
+    }
+
+    fn collect_condition_non_negative_facts(expr: &Expr, names: &mut HashSet<String>) {
+        match expr {
+            Expr::Binary {
+                op: BinOp::And,
+                left,
+                right,
+            } => {
+                Self::collect_condition_non_negative_facts(&left.node, names);
+                Self::collect_condition_non_negative_facts(&right.node, names);
+            }
+            Expr::Binary {
+                op: BinOp::GtEq,
+                left,
+                right,
+            } => {
+                if let Expr::Ident(name) = &left.node {
+                    if matches!(
+                        TypeChecker::eval_numeric_const_expr(&right.node),
+                        Some(NumericConst::Integer(0))
+                    ) {
+                        names.insert(name.clone());
+                    }
+                }
+                if let Expr::Ident(name) = &right.node {
+                    if matches!(
+                        TypeChecker::eval_numeric_const_expr(&left.node),
+                        Some(NumericConst::Integer(0))
+                    ) {
+                        names.insert(name.clone());
+                    }
+                }
+            }
+            Expr::Binary {
+                op: BinOp::Gt,
+                left,
+                right,
+            } => {
+                if let Expr::Ident(name) = &left.node {
+                    if matches!(
+                        TypeChecker::eval_numeric_const_expr(&right.node),
+                        Some(NumericConst::Integer(-1))
+                    ) {
+                        names.insert(name.clone());
+                    }
+                }
+                if let Expr::Ident(name) = &right.node {
+                    if matches!(
+                        TypeChecker::eval_numeric_const_expr(&left.node),
+                        Some(NumericConst::Integer(-1))
+                    ) {
+                        names.insert(name.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn with_condition_non_negative_facts<T>(
+        &mut self,
+        condition: &Expr,
+        f: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<T> {
+        let saved = self.non_negative_locals.clone();
+        Self::collect_condition_non_negative_facts(condition, &mut self.non_negative_locals);
+        let result = f(self);
+        self.non_negative_locals = saved;
+        result
     }
 
     fn update_binding_non_negative_fact(&mut self, name: &str, ty: &Type, value: &Expr) {

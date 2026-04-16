@@ -1617,7 +1617,12 @@ fn compile_program_ast_impl(
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
         codegen
-            .write_ir(&ll_path)
+            .write_optimized_ir_with_config(
+                &ll_path,
+                link.opt_level,
+                link.target,
+                &link.output_kind,
+            )
             .map_err(CompilePipelineError::IrWrite)?;
         println!("{} {}", cli_success("Wrote LLVM IR"), cli_path(&ll_path));
     } else {
@@ -1909,7 +1914,7 @@ fn compile_source_impl(
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
         codegen
-            .write_ir(&ll_path)
+            .write_optimized_ir_with_config(&ll_path, opt_level, target, &OutputKind::Bin)
             .map_err(CompilePipelineError::IrWrite)?;
         println!("{} {}", cli_success("Wrote LLVM IR"), cli_path(&ll_path));
     } else {

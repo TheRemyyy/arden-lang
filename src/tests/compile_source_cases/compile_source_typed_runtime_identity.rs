@@ -1,6 +1,14 @@
 use super::*;
 use std::fs;
 
+fn ir_contains_declaration_with_fragments(ir: &str, fragments: &[&str]) -> bool {
+    ir.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed.starts_with("declare ")
+            && fragments.iter().all(|fragment| trimmed.contains(fragment))
+    })
+}
+
 #[test]
 fn compile_source_runs_typed_option_constructor_through_function_return() {
     let temp_root = make_temp_project_root("typed-option-constructor-runtime");
@@ -78,12 +86,23 @@ fn compile_source_uses_typed_heap_sizes_for_builtin_smart_pointer_constructors()
         "#;
 
     fs::write(&source_path, source).must("write source");
-    compile_source(source, &source_path, &output_path, true, true, None, None)
-        .must("typed smart pointer constructors should codegen");
+    compile_source(
+        source,
+        &source_path,
+        &output_path,
+        true,
+        true,
+        Some("0"),
+        None,
+    )
+    .must("typed smart pointer constructors should codegen");
 
     let ir_path = output_path.with_extension("ll");
     let ir = fs::read_to_string(&ir_path).must("read generated llvm ir");
-    let malloc_24_count = ir.matches("call ptr @malloc(i64 24)").count();
+    let malloc_24_count = ir
+        .lines()
+        .filter(|line| line.contains("@malloc(i64 24)"))
+        .count();
     assert!(
         malloc_24_count >= 3,
         "expected Box/Rc/Arc constructors to allocate 24-byte List<Option<Integer>> payloads, found {malloc_24_count} matching malloc calls in {}",
@@ -311,43 +330,43 @@ fn compile_source_emits_platform_correct_libc_signatures() {
     #[cfg(not(windows))]
     let time_ty = long_ty;
 
-    let malloc_sig = format!("declare ptr @malloc({size_t_ty})");
     assert!(
-        ir.contains(&malloc_sig),
-        "expected platform-correct malloc signature `{malloc_sig}` in {}",
+        ir_contains_declaration_with_fragments(&ir, &["@malloc(", &format!("({size_t_ty}")]),
+        "expected platform-correct malloc signature using `{size_t_ty}` in {}",
         ir_path.display()
     );
-    let snprintf_sig = format!("declare i32 @snprintf(ptr, {size_t_ty}, ptr, ...)");
     assert!(
-        ir.contains(&snprintf_sig),
-        "expected platform-correct snprintf signature `{snprintf_sig}` in {}",
+        ir_contains_declaration_with_fragments(&ir, &["@snprintf(", size_t_ty, "..."]),
+        "expected platform-correct snprintf signature using `{size_t_ty}` in {}",
         ir_path.display()
     );
-    let fseek_sig = format!("declare i32 @fseek(ptr, {long_ty}, i32)");
     assert!(
-        ir.contains(&fseek_sig),
-        "expected platform-correct fseek signature `{fseek_sig}` in {}",
+        ir_contains_declaration_with_fragments(&ir, &["@fseek(", long_ty, "i32"]),
+        "expected platform-correct fseek signature using `{long_ty}` in {}",
         ir_path.display()
     );
-    let ftell_sig = format!("declare {long_ty} @ftell(ptr)");
     assert!(
-        ir.contains(&ftell_sig),
-        "expected platform-correct ftell signature `{ftell_sig}` in {}",
+        ir_contains_declaration_with_fragments(&ir, &["@ftell(", &format!("{long_ty} @ftell(ptr")]),
+        "expected platform-correct ftell signature using `{long_ty}` in {}",
         ir_path.display()
     );
-    let time_sig = format!("declare {time_ty} @time(ptr)");
     assert!(
-        ir.contains(&time_sig),
-        "expected platform-correct time signature `{time_sig}` in {}",
+        ir_contains_declaration_with_fragments(&ir, &["@time(", &format!("{time_ty} @time(ptr")]),
+        "expected platform-correct time signature using `{time_ty}` in {}",
         ir_path.display()
     );
 
     #[cfg(not(windows))]
     {
-        let pthread_join_sig = format!("declare i32 @pthread_join({long_ty}, ptr)");
         assert!(
-            ir.contains(&pthread_join_sig),
-            "expected platform-correct pthread_join signature `{pthread_join_sig}` in {}",
+            ir_contains_declaration_with_fragments(
+                &ir,
+                &[
+                    "@pthread_join(",
+                    &format!("i32 @pthread_join({long_ty}, ptr)")
+                ]
+            ),
+            "expected platform-correct pthread_join signature using `{long_ty}` in {}",
             ir_path.display()
         );
     }

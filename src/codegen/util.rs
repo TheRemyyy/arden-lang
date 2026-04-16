@@ -7,8 +7,9 @@ use crate::cache::elapsed_nanos_u64;
 use crate::parser::parse_type_source;
 use crate::project::OutputKind;
 
+use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::basic_block::BasicBlock;
-use inkwell::module::Linkage;
+use inkwell::module::{Linkage, Module};
 use inkwell::passes::PassBuilderOptions;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
@@ -977,7 +978,7 @@ impl<'ctx> Codegen<'ctx> {
         if let Some(f) = self.module.get_function(name) {
             return f;
         }
-        if single_arg {
+        let function = if single_arg {
             let fn_type = self
                 .context
                 .f64_type()
@@ -992,7 +993,9 @@ impl<'ctx> Codegen<'ctx> {
                 false,
             );
             self.module.add_function(name, fn_type, None)
-        }
+        };
+        self.add_standard_nonthrowing_attrs(function);
+        function
     }
 
     pub fn get_or_declare_math_func2(&mut self, name: &str) -> FunctionValue<'ctx> {
@@ -1008,7 +1011,11 @@ impl<'ctx> Codegen<'ctx> {
             &[self.context.ptr_type(AddressSpace::default()).into()],
             false,
         );
-        self.module.add_function(name, fn_type, None)
+        let function = self.module.add_function(name, fn_type, None);
+        self.add_standard_nonthrowing_attrs(function);
+        self.add_enum_attribute(function, AttributeLoc::Function, "readonly");
+        self.mark_libc_pure_readonly_pointer_param(function, 0);
+        function
     }
 
     pub fn get_or_declare_strcmp(&self) -> FunctionValue<'ctx> {
@@ -1023,7 +1030,12 @@ impl<'ctx> Codegen<'ctx> {
             ],
             false,
         );
-        self.module.add_function(name, fn_type, None)
+        let function = self.module.add_function(name, fn_type, None);
+        self.add_standard_nonthrowing_attrs(function);
+        self.add_enum_attribute(function, AttributeLoc::Function, "readonly");
+        self.mark_libc_pure_readonly_pointer_param(function, 0);
+        self.mark_libc_pure_readonly_pointer_param(function, 1);
+        function
     }
 
     pub fn get_or_declare_strtoll(&self) -> FunctionValue<'ctx> {
@@ -1052,7 +1064,12 @@ impl<'ctx> Codegen<'ctx> {
             ],
             false,
         );
-        self.module.add_function(name, fn_type, None)
+        let function = self.module.add_function(name, fn_type, None);
+        self.add_standard_nonthrowing_attrs(function);
+        self.add_enum_attribute(function, AttributeLoc::Function, "readonly");
+        self.mark_libc_pure_readonly_pointer_param(function, 0);
+        self.mark_libc_pure_readonly_pointer_param(function, 1);
+        function
     }
 
     pub fn get_or_declare_memcmp(&self) -> FunctionValue<'ctx> {
@@ -1065,7 +1082,12 @@ impl<'ctx> Codegen<'ctx> {
             &[ptr.into(), ptr.into(), self.libc_size_type().into()],
             false,
         );
-        self.module.add_function(name, fn_type, None)
+        let function = self.module.add_function(name, fn_type, None);
+        self.add_standard_nonthrowing_attrs(function);
+        self.add_enum_attribute(function, AttributeLoc::Function, "readonly");
+        self.mark_libc_pure_readonly_pointer_param(function, 0);
+        self.mark_libc_pure_readonly_pointer_param(function, 1);
+        function
     }
 
     pub fn get_or_declare_strcpy(&self) -> FunctionValue<'ctx> {
@@ -3288,8 +3310,18 @@ unsafe {
 
     // === Output ===
 
-    pub fn write_ir(&self, path: &Path) -> std::result::Result<(), String> {
-        self.module.print_to_file(path).map_err(|e| e.to_string())
+    pub fn write_optimized_ir_with_config(
+        &self,
+        path: &Path,
+        opt_level: Option<&str>,
+        target_triple: Option<&str>,
+        output_kind: &OutputKind,
+    ) -> std::result::Result<(), String> {
+        Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
+            Self::prepare_module_for_emission(&self.module, machine, triple);
+            Self::optimize_module_with_default_pipeline_impl(&self.module, machine, opt_level)?;
+            self.module.print_to_file(path).map_err(|e| e.to_string())
+        })
     }
 
     fn resolve_optimization_level(opt_level: Option<&str>) -> OptimizationLevel {
@@ -3459,6 +3491,28 @@ unsafe {
         machine
     }
 
+    fn add_enum_attribute(
+        &self,
+        function: FunctionValue<'ctx>,
+        loc: AttributeLoc,
+        attribute_name: &str,
+    ) {
+        let attr = self
+            .context
+            .create_enum_attribute(Attribute::get_named_enum_kind_id(attribute_name), 0);
+        function.add_attribute(loc, attr);
+    }
+
+    fn add_standard_nonthrowing_attrs(&self, function: FunctionValue<'ctx>) {
+        self.add_enum_attribute(function, AttributeLoc::Function, "nounwind");
+        self.add_enum_attribute(function, AttributeLoc::Function, "willreturn");
+    }
+
+    fn mark_libc_pure_readonly_pointer_param(&self, function: FunctionValue<'ctx>, index: u32) {
+        self.add_enum_attribute(function, AttributeLoc::Param(index), "nocapture");
+        self.add_enum_attribute(function, AttributeLoc::Param(index), "readonly");
+    }
+
     fn optimization_pipeline_for_level(opt_level: Option<&str>) -> Option<&'static str> {
         match Self::resolve_optimization_level(opt_level) {
             OptimizationLevel::None => None,
@@ -3470,6 +3524,14 @@ unsafe {
 
     fn optimize_module_with_default_pipeline(
         &self,
+        machine: &TargetMachine,
+        opt_level: Option<&str>,
+    ) -> std::result::Result<(), String> {
+        Self::optimize_module_with_default_pipeline_impl(&self.module, machine, opt_level)
+    }
+
+    fn optimize_module_with_default_pipeline_impl(
+        module: &Module<'ctx>,
         machine: &TargetMachine,
         opt_level: Option<&str>,
     ) -> std::result::Result<(), String> {
@@ -3486,9 +3548,18 @@ unsafe {
         pass_options.set_loop_unrolling(true);
         pass_options.set_merge_functions(true);
 
-        self.module
+        module
             .run_passes(pipeline, machine, pass_options)
             .map_err(|err| format!("failed to run LLVM optimization pipeline `{pipeline}`: {err}"))
+    }
+
+    fn prepare_module_for_emission(
+        module: &Module<'ctx>,
+        machine: &TargetMachine,
+        triple: &TargetTriple,
+    ) {
+        module.set_triple(triple);
+        module.set_data_layout(&machine.get_target_data().get_data_layout());
     }
 
     pub fn write_object_with_config(
@@ -3506,13 +3577,11 @@ unsafe {
             Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
                 let setup_started_at = Instant::now();
                 let set_triple_started_at = Instant::now();
-                self.module.set_triple(triple);
+                Self::prepare_module_for_emission(&self.module, machine, triple);
                 OBJECT_WRITE_TIMING_TOTALS
                     .module_set_triple_ns
                     .fetch_add(elapsed_nanos_u64(set_triple_started_at), Ordering::Relaxed);
                 let set_data_layout_started_at = Instant::now();
-                self.module
-                    .set_data_layout(&machine.get_target_data().get_data_layout());
                 OBJECT_WRITE_TIMING_TOTALS
                     .module_set_data_layout_ns
                     .fetch_add(
@@ -4166,7 +4235,10 @@ unsafe {
             .context
             .ptr_type(AddressSpace::default())
             .fn_type(&[self.libc_size_type().into()], false);
-        self.module.add_function(name, malloc_type, None)
+        let function = self.module.add_function(name, malloc_type, None);
+        self.add_standard_nonthrowing_attrs(function);
+        self.add_enum_attribute(function, AttributeLoc::Return, "noalias");
+        function
     }
 
     pub fn get_or_declare_realloc(&self) -> FunctionValue<'ctx> {
@@ -4182,7 +4254,9 @@ unsafe {
             ],
             false,
         );
-        self.module.add_function(name, realloc_type, None)
+        let function = self.module.add_function(name, realloc_type, None);
+        self.add_standard_nonthrowing_attrs(function);
+        function
     }
 
     #[cfg(not(windows))]

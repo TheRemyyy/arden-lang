@@ -519,12 +519,26 @@ unsafe {
             loop_block: inc_bb,
             after_block: after_bb,
         });
+        let saved_non_negative_locals = self.non_negative_locals.clone();
+        if self.expr_is_provably_non_negative(&iterable.node)
+            || matches!(&iterable.node, Expr::Range { start: None, .. })
+            || matches!(
+                &iterable.node,
+                Expr::Range {
+                    start: Some(start),
+                    ..
+                } if self.expr_is_provably_non_negative(&start.node)
+            )
+        {
+            self.non_negative_locals.insert(var.to_string());
+        }
         self.with_variable_scope(|this| {
             for stmt in body {
                 this.compile_stmt(&stmt.node)?;
             }
             Ok(())
         })?;
+        self.non_negative_locals = saved_non_negative_locals;
         self.loop_stack.pop();
         if self.needs_terminator() {
             self.builder
