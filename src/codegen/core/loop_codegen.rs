@@ -906,33 +906,29 @@ unsafe {
             self.builder.position_at_end(arm_bb);
             self.with_variable_scope(|this| {
                 match &arm.pattern {
-                    Pattern::Ident(binding) => {
-                        if imported_unit_variant(this, binding).is_none() {
-                            let alloca = this
-                                .builder
-                                .build_alloca(val.get_type(), binding)
-                                .map_err(|_| {
-                                    CodegenError::new(format!(
-                                        "failed to allocate match binding '{}'",
-                                        binding
-                                    ))
-                                })?;
-                            this.builder.build_store(alloca, val).map_err(|_| {
+                    Pattern::Ident(binding) if imported_unit_variant(this, binding).is_none() => {
+                        let alloca = this
+                            .builder
+                            .build_alloca(val.get_type(), binding)
+                            .map_err(|_| {
                                 CodegenError::new(format!(
-                                    "failed to store match binding '{}'",
+                                    "failed to allocate match binding '{}'",
                                     binding
                                 ))
                             })?;
-                            this.variables.insert(
-                                binding.clone(),
-                                Variable {
-                                    ptr: alloca,
-                                    ty: match_ty.clone(),
-                                    mutable: false,
-                                },
-                            );
-                        }
+                        this.builder.build_store(alloca, val).map_err(|_| {
+                            CodegenError::new(format!("failed to store match binding '{}'", binding))
+                        })?;
+                        this.variables.insert(
+                            binding.clone(),
+                            Variable {
+                                ptr: alloca,
+                                ty: match_ty.clone(),
+                                mutable: false,
+                            },
+                        );
                     }
+                    Pattern::Ident(_) => {}
                     Pattern::Variant(variant_name, bindings) => {
                         let resolved_variant = if !variant_name.contains('.') {
                             imported_variant(this, variant_name)

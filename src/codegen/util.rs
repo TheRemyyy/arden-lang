@@ -2023,33 +2023,28 @@ unsafe {
             self.builder.position_at_end(arm_bb);
             let arm_result = self.with_variable_scope(|this| {
                 match &arm.pattern {
-                    Pattern::Ident(binding) => {
-                        if imported_unit_variant(this, binding).is_none() {
-                            let alloca = this
-                                .builder
-                                .build_alloca(val.get_type(), binding)
-                                .map_err(|_| {
-                                    CodegenError::new(format!(
-                                        "failed to allocate binding slot for '{binding}'"
-                                    ))
-                                })?;
-                            this.builder
-                                .build_store(alloca, val)
-                                .map_err(|_| {
-                                    CodegenError::new(format!(
-                                        "failed to store match binding '{binding}'"
-                                    ))
-                                })?;
-                            this.variables.insert(
-                                binding.clone(),
-                                Variable {
-                                    ptr: alloca,
-                                    ty: match_ty.clone(),
-                                    mutable: false,
-                                },
-                            );
-                        }
+                    Pattern::Ident(binding) if imported_unit_variant(this, binding).is_none() => {
+                        let alloca = this
+                            .builder
+                            .build_alloca(val.get_type(), binding)
+                            .map_err(|_| {
+                                CodegenError::new(format!(
+                                    "failed to allocate binding slot for '{binding}'"
+                                ))
+                            })?;
+                        this.builder.build_store(alloca, val).map_err(|_| {
+                            CodegenError::new(format!("failed to store match binding '{binding}'"))
+                        })?;
+                        this.variables.insert(
+                            binding.clone(),
+                            Variable {
+                                ptr: alloca,
+                                ty: match_ty.clone(),
+                                mutable: false,
+                            },
+                        );
                     }
+                    Pattern::Ident(_) => {}
                     Pattern::Variant(variant_name, bindings) => {
                         let resolved_variant = if !variant_name.contains('.') {
                             imported_variant(this, variant_name)
@@ -3561,22 +3556,19 @@ unsafe {
         seen: &mut std::collections::HashSet<String>,
     ) {
         match expr {
-            Expr::This => {
-                if !local_names.contains("this") && !seen.contains("this") {
-                    if let Some(var) = self.variables.get("this") {
-                        seen.insert("this".to_string());
-                        captures.push(("this".to_string(), var.ty.clone()));
-                    }
+            Expr::This if !local_names.contains("this") && !seen.contains("this") => {
+                if let Some(var) = self.variables.get("this") {
+                    seen.insert("this".to_string());
+                    captures.push(("this".to_string(), var.ty.clone()));
                 }
             }
-            Expr::Ident(name) => {
-                if !local_names.contains(name) && !seen.contains(name) {
-                    if let Some(var) = self.variables.get(name) {
-                        seen.insert(name.clone());
-                        captures.push((name.clone(), var.ty.clone()));
-                    }
+            Expr::Ident(name) if !local_names.contains(name) && !seen.contains(name) => {
+                if let Some(var) = self.variables.get(name) {
+                    seen.insert(name.clone());
+                    captures.push((name.clone(), var.ty.clone()));
                 }
             }
+            Expr::This | Expr::Ident(_) => {}
             Expr::Binary { left, right, .. } => {
                 self.walk_expr_for_captures(&left.node, local_names, captures, seen);
                 self.walk_expr_for_captures(&right.node, local_names, captures, seen);

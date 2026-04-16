@@ -10,16 +10,20 @@ if [[ -z "$sdk_version" ]]; then
   sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
 fi
 
-linker_bin="$(command -v ld64.lld || command -v lld || true)"
-if [[ -z "$linker_bin" ]]; then
-  printf '%s\n' "error: neither ld64.lld nor lld found in PATH" >&2
-  exit 1
-fi
-
+linker_bin=""
 linker_prefix=()
-linker_version_output="$("$linker_bin" --version 2>&1 || true)"
-if [[ "$linker_version_output" == *"generic driver"* ]]; then
+if linker_path="$(command -v lld 2>/dev/null)"; then
+  linker_bin="$linker_path"
   linker_prefix=("-flavor" "darwin")
+elif linker_path="$(command -v ld64.lld 2>/dev/null)"; then
+  linker_bin="$linker_path"
+  if "$linker_bin" -flavor darwin --version >/dev/null 2>&1; then
+    linker_prefix=("-flavor" "darwin")
+  fi
+fi
+if [[ -z "$linker_bin" ]]; then
+  printf '%s\n' "error: neither lld nor ld64.lld found in PATH" >&2
+  exit 1
 fi
 
 append_driver_payload() {
