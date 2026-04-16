@@ -264,26 +264,6 @@ Full documentation, command map, output layout, instrumentation flags, and metho
 
 The benchmark harness is intentionally part of the repository instead of an external gist so numbers can be regenerated, challenged, and updated. If benchmark results are published, they should always be tied to a command, machine, and date rather than presented as timeless marketing.
 
-### Local Snapshot
-
-Verified locally on `2026-04-07` with `target/release/arden` built from this repository and single-sample runs (`--repeats 1 --warmup 0`):
-
-| Benchmark | Arden | Rust | Go |
-| :--- | ---: | ---: | ---: |
-| `matrix_mul_heavy` runtime | `0.012186s` | `0.027221s` | `0.041095s` |
-| `incremental_rebuild_large_project_batch` hot rebuild after 10 edits | `0.060284s` | `1.012121s` | `0.891075s` |
-
-Commands used:
-
-```bash
-python3 benchmark/run.py --bench matrix_mul_heavy --repeats 1 --warmup 0 --no-build
-python3 benchmark/run.py --bench incremental_rebuild_large_project_batch --repeats 1 --warmup 0 --no-build
-```
-
-Treat this as a repository snapshot, not a publication-grade claim. For stable reporting, rerun with more repeats on a quieter machine.
-
-On this machine, the even larger synthetic and extreme graph compile benchmarks were available in the harness but the Go side was killed during quick snapshot runs, so they are better treated as stress tests than as a clean three-way headline comparison.
-
 ## Repository Map
 
 - [docs/](docs/) - language, stdlib, project, and compiler documentation
