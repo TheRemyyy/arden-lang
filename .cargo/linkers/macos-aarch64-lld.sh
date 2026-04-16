@@ -67,4 +67,8 @@ for arg in "$@"; do
 done
 forwarded_args+=("-lSystem")
 
-exec "$linker_bin" "${linker_prefix[@]}" "${forwarded_args[@]}"
+if (( ${#linker_prefix[@]} )); then
+  exec "$linker_bin" "${linker_prefix[@]}" "${forwarded_args[@]}"
+fi
+
+exec "$linker_bin" "${forwarded_args[@]}"

@@ -120,14 +120,14 @@ fn skip_line_comment<'src>(lex: &mut logos::Lexer<'src, Token<'src>>) -> logos::
     logos::Skip
 }
 
-fn skip_block_comment<'src>(lex: &mut logos::Lexer<'src, Token<'src>>) -> logos::Skip {
+fn skip_block_comment<'src>(lex: &mut logos::Lexer<'src, Token<'src>>) -> Result<logos::Skip, ()> {
     let remainder = lex.remainder();
     let block_len = match remainder.find("*/") {
         Some(index) => index + 2,
-        None => remainder.len(),
+        None => return Err(()),
     };
     lex.bump(block_len);
-    logos::Skip
+    Ok(logos::Skip)
 }
 
 #[derive(Logos, Debug, Clone, PartialEq)]
