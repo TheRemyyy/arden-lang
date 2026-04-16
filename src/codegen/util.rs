@@ -9,6 +9,7 @@ use crate::project::OutputKind;
 
 use inkwell::basic_block::BasicBlock;
 use inkwell::module::Linkage;
+use inkwell::passes::PassBuilderOptions;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
@@ -3458,6 +3459,38 @@ unsafe {
         machine
     }
 
+    fn optimization_pipeline_for_level(opt_level: Option<&str>) -> Option<&'static str> {
+        match Self::resolve_optimization_level(opt_level) {
+            OptimizationLevel::None => None,
+            OptimizationLevel::Less => Some("default<O1>"),
+            OptimizationLevel::Default => Some("default<O2>"),
+            OptimizationLevel::Aggressive => Some("default<O3>"),
+        }
+    }
+
+    fn optimize_module_with_default_pipeline(
+        &self,
+        machine: &TargetMachine,
+        opt_level: Option<&str>,
+    ) -> std::result::Result<(), String> {
+        let Some(pipeline) = Self::optimization_pipeline_for_level(opt_level) else {
+            return Ok(());
+        };
+
+        let pass_options = PassBuilderOptions::create();
+        pass_options.set_verify_each(false);
+        pass_options.set_debug_logging(false);
+        pass_options.set_loop_interleaving(true);
+        pass_options.set_loop_vectorization(true);
+        pass_options.set_loop_slp_vectorization(true);
+        pass_options.set_loop_unrolling(true);
+        pass_options.set_merge_functions(true);
+
+        self.module
+            .run_passes(pipeline, machine, pass_options)
+            .map_err(|err| format!("failed to run LLVM optimization pipeline `{pipeline}`: {err}"))
+    }
+
     pub fn write_object_with_config(
         &self,
         path: &Path,
@@ -3489,6 +3522,7 @@ unsafe {
                 OBJECT_WRITE_TIMING_TOTALS
                     .target_machine_setup_ns
                     .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
+                self.optimize_module_with_default_pipeline(machine, opt_level)?;
                 let direct_write_started_at = Instant::now();
                 let result = machine
                     .write_to_file(&self.module, FileType::Object, path)
