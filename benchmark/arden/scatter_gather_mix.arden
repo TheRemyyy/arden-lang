@@ -1,0 +1,49 @@
+import std.io.*;
+
+function main(): None {
+    size: Integer = 131072;
+    rounds: Integer = 7;
+
+    values: List<Integer> = List<Integer>();
+    indices: List<Integer> = List<Integer>();
+    scratch: List<Integer> = List<Integer>();
+
+    mut i: Integer = 0;
+    while (i < size) {
+        values.push(((i * 1103515245 + 12345) % 2147483647) - 1073741824);
+        indices.push((i * 8191 + 127) % size);
+        scratch.push(0);
+        i = i + 1;
+    }
+
+    mut round: Integer = 0;
+    while (round < rounds) {
+        i = 0;
+        while (i < size) {
+            src: Integer = indices.get(i);
+            left: Integer = values.get(src);
+            right: Integer = values.get((src + 1) % size);
+            scratch.set(i, left + right + round);
+            i = i + 1;
+        }
+
+        i = 0;
+        while (i < size) {
+            target: Integer = indices.get((i * 13 + round) % size);
+            mixed: Integer = (scratch.get(i) * 31) + (i * 17) + round;
+            values.set(target, mixed % 2147483647);
+            i = i + 1;
+        }
+        round = round + 1;
+    }
+
+    mut checksum: Integer = 0;
+    i = 0;
+    while (i < size) {
+        checksum = checksum + values.get(i) * ((i % 29) + 1);
+        i = i + 1;
+    }
+
+    println(to_string(checksum));
+    return None;
+}

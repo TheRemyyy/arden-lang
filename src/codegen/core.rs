@@ -547,7 +547,9 @@ pub struct Codegen<'ctx> {
     pub module: Module<'ctx>,
     pub builder: Builder<'ctx>,
     pub variables: HashMap<String, Variable<'ctx>>,
+    pub(crate) non_negative_locals: HashSet<String>,
     pub functions: HashMap<String, (FunctionValue<'ctx>, Type)>,
+    pub(crate) non_negative_functions: HashSet<String>,
     pub function_param_modes: HashMap<String, Vec<ParamMode>>,
     pub classes: HashMap<String, ClassInfo<'ctx>>,
     pub enums: HashMap<String, EnumInfo<'ctx>>,
@@ -6849,7 +6851,9 @@ impl<'ctx> Codegen<'ctx> {
             module,
             builder,
             variables: HashMap::new(),
+            non_negative_locals: HashSet::new(),
             functions: HashMap::new(),
+            non_negative_functions: HashSet::new(),
             function_param_modes: HashMap::new(),
             classes: HashMap::new(),
             enums: HashMap::new(),
@@ -9517,6 +9521,7 @@ impl<'ctx> Codegen<'ctx> {
         let entry = self.context.append_basic_block(func, "entry");
         self.builder.position_at_end(entry);
         self.variables.clear();
+        self.non_negative_locals.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&class.generic_params);
 
@@ -9624,6 +9629,7 @@ impl<'ctx> Codegen<'ctx> {
         let entry = self.context.append_basic_block(func, "entry");
         self.builder.position_at_end(entry);
         self.variables.clear();
+        self.non_negative_locals.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&class.generic_params);
         self.extend_current_generic_bounds(&method.generic_params);
@@ -9783,6 +9789,9 @@ impl<'ctx> Codegen<'ctx> {
         let function = self.module.add_function(&func.name, fn_type, None);
         if func.name.contains("__spec__") {
             function.set_linkage(Linkage::Internal);
+        }
+        if Self::function_returns_provably_non_negative(func) {
+            self.non_negative_functions.insert(func.name.clone());
         }
 
         // Add optimization attributes
@@ -10403,6 +10412,7 @@ unsafe {
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
         self.variables.clear();
+        self.non_negative_locals.clear();
         self.loop_stack.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&func.generic_params);
@@ -10595,6 +10605,7 @@ unsafe {
                         mutable: *mutable,
                     },
                 );
+                self.update_binding_non_negative_fact(name, ty, &value.node);
                 CODEGEN_PHASE_TIMING_TOTALS
                     .body_stmt_let_ns
                     .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
@@ -10635,6 +10646,9 @@ unsafe {
                         self.builder.build_store(ptr, result).map_err(|_| {
                             CodegenError::new("failed to store compound assignment result")
                         })?;
+                        if let Expr::Ident(name) = &target.node {
+                            self.update_binding_non_negative_fact(name, &target_ty, &value.node);
+                        }
                         CODEGEN_PHASE_TIMING_TOTALS
                             .body_stmt_assign_ns
                             .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
@@ -10740,6 +10754,9 @@ unsafe {
                 self.builder
                     .build_store(ptr, val)
                     .map_err(|_| CodegenError::new("failed to store assignment value"))?;
+                if let Expr::Ident(name) = &target.node {
+                    self.update_binding_non_negative_fact(name, &target_ty, &value.node);
+                }
                 CODEGEN_PHASE_TIMING_TOTALS
                     .body_stmt_assign_ns
                     .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
@@ -12148,10 +12165,12 @@ unsafe {
             let saved_return_type = self.current_return_type.clone();
             let saved_insert_block = self.builder.get_insert_block();
             let saved_variables = self.variables.clone();
+            let saved_non_negative_locals = self.non_negative_locals.clone();
 
             self.current_function = Some(wrapper_fn);
             self.current_return_type = Some(function_ty.clone());
             self.variables.clear();
+            self.non_negative_locals.clear();
 
             let entry = self.context.append_basic_block(wrapper_fn, "entry");
             self.builder.position_at_end(entry);
@@ -12261,6 +12280,7 @@ unsafe {
             self.current_function = saved_function;
             self.current_return_type = saved_return_type;
             self.variables = saved_variables;
+            self.non_negative_locals = saved_non_negative_locals;
             if let Some(block) = saved_insert_block {
                 self.builder.position_at_end(block);
             }
@@ -12958,8 +12978,10 @@ unsafe {
         f: impl FnOnce(&mut Self) -> Result<T>,
     ) -> Result<T> {
         let saved_variables = self.variables.clone();
+        let saved_non_negative_locals = self.non_negative_locals.clone();
         let result = f(self);
         self.variables = saved_variables;
+        self.non_negative_locals = saved_non_negative_locals;
         result
     }
 
@@ -13213,18 +13235,183 @@ unsafe {
             .into_int_value())
     }
 
-    pub(crate) fn compile_non_negative_integer_index_expr(
+    fn expr_is_provably_positive_in_scope(
+        expr: &Expr,
+        non_negative_names: &HashSet<String>,
+        call_non_negative: &HashSet<String>,
+    ) -> bool {
+        matches!(
+            TypeChecker::eval_numeric_const_expr(expr),
+            Some(NumericConst::Integer(value)) if value > 0
+        ) || match expr {
+            Expr::Binary {
+                op: BinOp::Add,
+                left,
+                right,
+            } => {
+                Self::expr_is_provably_positive_in_scope(
+                    &left.node,
+                    non_negative_names,
+                    call_non_negative,
+                ) && Self::expr_is_provably_non_negative_in_scope(
+                    &right.node,
+                    non_negative_names,
+                    call_non_negative,
+                ) || Self::expr_is_provably_non_negative_in_scope(
+                    &left.node,
+                    non_negative_names,
+                    call_non_negative,
+                ) && Self::expr_is_provably_positive_in_scope(
+                    &right.node,
+                    non_negative_names,
+                    call_non_negative,
+                )
+            }
+            Expr::Binary {
+                op: BinOp::Mul,
+                left,
+                right,
+            } => {
+                Self::expr_is_provably_positive_in_scope(
+                    &left.node,
+                    non_negative_names,
+                    call_non_negative,
+                ) && Self::expr_is_provably_positive_in_scope(
+                    &right.node,
+                    non_negative_names,
+                    call_non_negative,
+                )
+            }
+            _ => false,
+        }
+    }
+
+    fn expr_is_provably_non_negative_in_scope(
+        expr: &Expr,
+        non_negative_names: &HashSet<String>,
+        call_non_negative: &HashSet<String>,
+    ) -> bool {
+        if matches!(
+            TypeChecker::eval_numeric_const_expr(expr),
+            Some(NumericConst::Integer(value)) if value >= 0
+        ) {
+            return true;
+        }
+
+        match expr {
+            Expr::Ident(name) => non_negative_names.contains(name),
+            Expr::Binary { op, left, right } => match op {
+                BinOp::Add | BinOp::Mul => {
+                    Self::expr_is_provably_non_negative_in_scope(
+                        &left.node,
+                        non_negative_names,
+                        call_non_negative,
+                    ) && Self::expr_is_provably_non_negative_in_scope(
+                        &right.node,
+                        non_negative_names,
+                        call_non_negative,
+                    )
+                }
+                BinOp::Sub => {
+                    Self::expr_is_provably_non_negative_in_scope(
+                        &left.node,
+                        non_negative_names,
+                        call_non_negative,
+                    ) && matches!(
+                        TypeChecker::eval_numeric_const_expr(&right.node),
+                        Some(NumericConst::Integer(0))
+                    )
+                }
+                BinOp::Div | BinOp::Mod => {
+                    Self::expr_is_provably_non_negative_in_scope(
+                        &left.node,
+                        non_negative_names,
+                        call_non_negative,
+                    ) && Self::expr_is_provably_positive_in_scope(
+                        &right.node,
+                        non_negative_names,
+                        call_non_negative,
+                    )
+                }
+                _ => false,
+            },
+            Expr::Call { callee, args, .. } => match &callee.node {
+                Expr::Ident(name) if call_non_negative.contains(name) => args.iter().all(|arg| {
+                    Self::expr_is_provably_non_negative_in_scope(
+                        &arg.node,
+                        non_negative_names,
+                        call_non_negative,
+                    )
+                }),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    fn expr_is_provably_non_negative(&self, expr: &Expr) -> bool {
+        Self::expr_is_provably_non_negative_in_scope(
+            expr,
+            &self.non_negative_locals,
+            &self.non_negative_functions,
+        )
+    }
+
+    fn update_binding_non_negative_fact(&mut self, name: &str, ty: &Type, value: &Expr) {
+        if matches!(ty, Type::Integer) && self.expr_is_provably_non_negative(value) {
+            self.non_negative_locals.insert(name.to_string());
+        } else {
+            self.non_negative_locals.remove(name);
+        }
+    }
+
+    fn function_returns_provably_non_negative(func: &FunctionDecl) -> bool {
+        if !matches!(func.return_type, Type::Integer) {
+            return false;
+        }
+
+        let non_negative_params = func
+            .params
+            .iter()
+            .filter(|param| matches!(param.ty, Type::Integer))
+            .map(|param| param.name.clone())
+            .collect::<HashSet<_>>();
+
+        let return_expr = match func.body.as_slice() {
+            [Spanned {
+                node: Stmt::Return(Some(expr)),
+                ..
+            }] => &expr.node,
+            [Spanned {
+                node: Stmt::Expr(expr),
+                ..
+            }] => &expr.node,
+            _ => return false,
+        };
+
+        Self::expr_is_provably_non_negative_in_scope(
+            return_expr,
+            &non_negative_params,
+            &HashSet::new(),
+        )
+    }
+
+    pub(crate) fn compile_non_negative_integer_index_expr_with_proof(
         &mut self,
         expr: &Expr,
         negative_diagnostic: &str,
-    ) -> Result<IntValue<'ctx>> {
+    ) -> Result<(IntValue<'ctx>, bool)> {
         if matches!(
             TypeChecker::eval_numeric_const_expr(expr),
             Some(NumericConst::Integer(value)) if value < 0
         ) {
             return Err(CodegenError::new(negative_diagnostic));
         }
-        self.compile_integer_index_expr(expr)
+        let provably_non_negative = self.expr_is_provably_non_negative(expr);
+        Ok((
+            self.compile_integer_index_expr(expr)?,
+            provably_non_negative,
+        ))
     }
 
     fn compile_integer_iteration_bound(&mut self, expr: &Expr) -> Result<IntValue<'ctx>> {
@@ -14795,7 +14982,8 @@ unsafe {
         } else {
             "Index cannot be negative"
         };
-        let idx = self.compile_non_negative_integer_index_expr(index, negative_diagnostic)?;
+        let (idx, index_provably_non_negative) =
+            self.compile_non_negative_integer_index_expr_with_proof(index, negative_diagnostic)?;
 
         if matches!(deref_object_ty, Some(Type::String)) {
             if let Expr::Literal(Literal::String(text)) = object {
@@ -14815,17 +15003,6 @@ unsafe {
                 }
 
                 let i64_type = self.context.i64_type();
-                let non_negative = self
-                    .builder
-                    .build_int_compare(
-                        IntPredicate::SGE,
-                        idx,
-                        i64_type.const_zero(),
-                        "string_literal_index_non_negative",
-                    )
-                    .map_err(|_| {
-                        CodegenError::new("failed to validate string literal index lower bound")
-                    })?;
                 let length = i64_type.const_int(char_values.len() as u64, false);
                 let in_bounds = self
                     .builder
@@ -14838,12 +15015,6 @@ unsafe {
                     .map_err(|_| {
                         CodegenError::new("failed to validate string literal index upper bound")
                     })?;
-                let valid = self
-                    .builder
-                    .build_and(non_negative, in_bounds, "string_literal_index_valid")
-                    .map_err(|_| {
-                        CodegenError::new("failed to combine string literal index bounds")
-                    })?;
                 let current_fn = self.current_function.ok_or_else(|| {
                     CodegenError::new("string literal index used outside function")
                 })?;
@@ -14853,11 +15024,38 @@ unsafe {
                 let fail_bb = self
                     .context
                     .append_basic_block(current_fn, "string_literal_index_fail");
-                self.builder
-                    .build_conditional_branch(valid, ok_bb, fail_bb)
-                    .map_err(|_| {
-                        CodegenError::new("failed to branch for string literal index bounds")
-                    })?;
+                if index_provably_non_negative {
+                    self.builder
+                        .build_conditional_branch(in_bounds, ok_bb, fail_bb)
+                        .map_err(|_| {
+                            CodegenError::new(
+                                "failed to branch for string literal upper-bound check",
+                            )
+                        })?;
+                } else {
+                    let non_negative = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::SGE,
+                            idx,
+                            i64_type.const_zero(),
+                            "string_literal_index_non_negative",
+                        )
+                        .map_err(|_| {
+                            CodegenError::new("failed to validate string literal index lower bound")
+                        })?;
+                    let valid = self
+                        .builder
+                        .build_and(non_negative, in_bounds, "string_literal_index_valid")
+                        .map_err(|_| {
+                            CodegenError::new("failed to combine string literal index bounds")
+                        })?;
+                    self.builder
+                        .build_conditional_branch(valid, ok_bb, fail_bb)
+                        .map_err(|_| {
+                            CodegenError::new("failed to branch for string literal index bounds")
+                        })?;
+                }
 
                 self.builder.position_at_end(fail_bb);
                 self.emit_runtime_error("String index out of bounds", "string_literal_index_oob")?;
@@ -14931,16 +15129,6 @@ unsafe {
 
         if let Some(Type::List(_)) = &deref_object_ty {
             let i64_type = self.context.i64_type();
-            let non_negative = self
-                .builder
-                .build_int_compare(
-                    IntPredicate::SGE,
-                    idx,
-                    i64_type.const_zero(),
-                    "index_non_negative",
-                )
-                .map_err(|_| CodegenError::new("failed to validate list index lower bound"))?;
-
             let (length, data_ptr, elem_ty) =
                 if let BasicValueEnum::StructValue(list_struct) = obj_val {
                     let length = self
@@ -15025,18 +15213,35 @@ unsafe {
                 .builder
                 .build_int_compare(IntPredicate::SLT, idx, length, "index_in_bounds")
                 .map_err(|_| CodegenError::new("failed to validate list index upper bound"))?;
-            let valid = self
-                .builder
-                .build_and(non_negative, in_bounds, "index_valid")
-                .map_err(|_| CodegenError::new("failed to combine list index bounds"))?;
             let current_fn = self
                 .current_function
                 .ok_or_else(|| CodegenError::new("list index used outside function"))?;
             let ok_bb = self.context.append_basic_block(current_fn, "index_ok");
             let fail_bb = self.context.append_basic_block(current_fn, "index_fail");
-            self.builder
-                .build_conditional_branch(valid, ok_bb, fail_bb)
-                .map_err(|_| CodegenError::new("failed to branch for list index bounds"))?;
+            if index_provably_non_negative {
+                self.builder
+                    .build_conditional_branch(in_bounds, ok_bb, fail_bb)
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch for list index upper-bound check")
+                    })?;
+            } else {
+                let non_negative = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::SGE,
+                        idx,
+                        i64_type.const_zero(),
+                        "index_non_negative",
+                    )
+                    .map_err(|_| CodegenError::new("failed to validate list index lower bound"))?;
+                let valid = self
+                    .builder
+                    .build_and(non_negative, in_bounds, "index_valid")
+                    .map_err(|_| CodegenError::new("failed to combine list index bounds"))?;
+                self.builder
+                    .build_conditional_branch(valid, ok_bb, fail_bb)
+                    .map_err(|_| CodegenError::new("failed to branch for list index bounds"))?;
+            }
 
             self.builder.position_at_end(fail_bb);
             self.emit_runtime_error("List index out of bounds", "list_index_oob")?;

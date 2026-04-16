@@ -111,6 +111,18 @@ BENCHMARKS = [
         "Random-access histogram updates over many samples — stresses list get/set hot paths",
     ),
     BenchmarkSpec(
+        "prefix_sum_stream",
+        "Streaming multi-pass prefix-sum over a large integer buffer",
+    ),
+    BenchmarkSpec(
+        "scatter_gather_mix",
+        "Pseudo-random scatter/gather update mix over large integer arrays",
+    ),
+    BenchmarkSpec(
+        "stencil_2d",
+        "Five-point 2D stencil over a flat integer grid",
+    ),
+    BenchmarkSpec(
         "compile_project_tiny_graph",
         "Compile micro project baseline (1-file tiny graph) per language",
         kind="compile",

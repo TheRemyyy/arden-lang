@@ -1,0 +1,57 @@
+import std.io.*;
+
+function idx(x: Integer, y: Integer, width: Integer): Integer {
+    return y * width + x;
+}
+
+function main(): None {
+    width: Integer = 256;
+    height: Integer = 256;
+    steps: Integer = 5;
+    total: Integer = width * height;
+
+    current: List<Integer> = List<Integer>();
+    next: List<Integer> = List<Integer>();
+
+    mut i: Integer = 0;
+    while (i < total) {
+        current.push(((i * 48271 + 97) % 131071) - 65535);
+        next.push(0);
+        i = i + 1;
+    }
+
+    mut step: Integer = 0;
+    while (step < steps) {
+        mut y: Integer = 1;
+        while (y < height - 1) {
+            mut x: Integer = 1;
+            while (x < width - 1) {
+                center: Integer = current.get(idx(x, y, width));
+                north: Integer = current.get(idx(x, y - 1, width));
+                south: Integer = current.get(idx(x, y + 1, width));
+                west: Integer = current.get(idx(x - 1, y, width));
+                east: Integer = current.get(idx(x + 1, y, width));
+                next.set(idx(x, y, width), center * 4 + north + south + west + east);
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+
+        i = 0;
+        while (i < total) {
+            current.set(i, next.get(i) % 104729);
+            i = i + 1;
+        }
+        step = step + 1;
+    }
+
+    mut checksum: Integer = 0;
+    i = 0;
+    while (i < total) {
+        checksum = checksum + current.get(i) * ((i % 31) + 1);
+        i = i + 1;
+    }
+
+    println(to_string(checksum));
+    return None;
+}

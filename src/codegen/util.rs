@@ -2381,10 +2381,11 @@ unsafe {
                 if let Some(name) = self.member_root_undefined_variable(&object.node) {
                     return Err(Self::undefined_variable_error(&name));
                 }
-                let idx_val = self.compile_non_negative_integer_index_expr(
-                    &index.node,
-                    "List index cannot be negative",
-                )?;
+                let (idx_val, index_provably_non_negative) = self
+                    .compile_non_negative_integer_index_expr_with_proof(
+                        &index.node,
+                        "List index cannot be negative",
+                    )?;
                 let inferred_object_ty = self.infer_object_type(&object.node);
                 let object_ty = inferred_object_ty
                     .clone()
@@ -2503,17 +2504,6 @@ unsafe {
                             .into_pointer_value();
                         (length, data_ptr)
                     };
-                    let non_negative = self
-                        .builder
-                        .build_int_compare(
-                            IntPredicate::SGE,
-                            idx_val,
-                            self.context.i64_type().const_zero(),
-                            "list_assign_non_negative",
-                        )
-                        .map_err(|_| {
-                            CodegenError::new("failed to check list assignment index sign")
-                        })?;
                     let in_bounds = self
                         .builder
                         .build_int_compare(
@@ -2525,12 +2515,6 @@ unsafe {
                         .map_err(|_| {
                             CodegenError::new("failed to check list assignment index bounds")
                         })?;
-                    let valid = self
-                        .builder
-                        .build_and(non_negative, in_bounds, "list_assign_valid")
-                        .map_err(|_| {
-                            CodegenError::new("failed to combine list assignment index checks")
-                        })?;
                     let current_fn = self.current_function.ok_or_else(|| {
                         CodegenError::new("list assignment used outside function")
                     })?;
@@ -2540,11 +2524,40 @@ unsafe {
                     let fail_bb = self
                         .context
                         .append_basic_block(current_fn, "list_assign_fail");
-                    self.builder
-                        .build_conditional_branch(valid, ok_bb, fail_bb)
-                        .map_err(|_| {
-                            CodegenError::new("failed to branch for list assignment bounds check")
-                        })?;
+                    if index_provably_non_negative {
+                        self.builder
+                            .build_conditional_branch(in_bounds, ok_bb, fail_bb)
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to branch for list assignment upper-bound check",
+                                )
+                            })?;
+                    } else {
+                        let non_negative = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::SGE,
+                                idx_val,
+                                self.context.i64_type().const_zero(),
+                                "list_assign_non_negative",
+                            )
+                            .map_err(|_| {
+                                CodegenError::new("failed to check list assignment index sign")
+                            })?;
+                        let valid = self
+                            .builder
+                            .build_and(non_negative, in_bounds, "list_assign_valid")
+                            .map_err(|_| {
+                                CodegenError::new("failed to combine list assignment index checks")
+                            })?;
+                        self.builder
+                            .build_conditional_branch(valid, ok_bb, fail_bb)
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to branch for list assignment bounds check",
+                                )
+                            })?;
+                    }
 
                     self.builder.position_at_end(fail_bb);
                     self.emit_runtime_error(

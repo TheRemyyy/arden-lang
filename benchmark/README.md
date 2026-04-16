@@ -95,7 +95,7 @@ python3 benchmark/full_campaign.py --preset exhaustive --no-build
 
 | Stage | Benchmarks | Repeats | Warmup | Extras |
 | :--- | :--- | ---: | ---: | :--- |
-| `runtime` | sum_loop, prime_count, matrix_mul, fibonacci_recursive, sort_heavy, collatz_batch, convolution_1d, histogram_heavy | 5 | 2 | — |
+| `runtime` | sum_loop, prime_count, matrix_mul, fibonacci_recursive, sort_heavy, collatz_batch, convolution_1d, histogram_heavy, prefix_sum_stream, scatter_gather_mix, stencil_2d | 5 | 2 | — |
 | `runtime_heavy` | matrix_mul_heavy (220×220) | 5 | 2 | `--capture-profile` |
 | `compile_hot` | starter, flat, layered, dense, worst-case, mega-graph | 5 | 2 | `--arden-timings` |
 | `compile_cold` | starter, flat, layered, dense, worst-case, mega-graph | 5 | 2 | — |
@@ -121,6 +121,9 @@ Measure generated code quality and runtime overhead. Arden, Rust, and Go compile
 | `collatz_batch` | Branch-heavy Collatz sweep over a large integer range |
 | `convolution_1d` | Sliding-window integer convolution over a large buffer |
 | `histogram_heavy` | Random-access histogram updates stressing list get/set |
+| `prefix_sum_stream` | Multi-pass streaming prefix-sum over a large integer buffer |
+| `scatter_gather_mix` | Pseudo-random scatter/gather updates over large integer arrays |
+| `stencil_2d` | Flat-buffer 2D five-point stencil workload |
 
 All three languages use the same algorithm so the comparison reflects code quality, not algorithm choice. A checksum is verified to confirm equivalent output.
 

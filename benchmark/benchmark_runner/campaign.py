@@ -71,6 +71,9 @@ _RUNTIME_STANDARD: tuple[str, ...] = (
     "collatz_batch",
     "convolution_1d",
     "histogram_heavy",
+    "prefix_sum_stream",
+    "scatter_gather_mix",
+    "stencil_2d",
 )
 
 _COMPILE_STANDARD: tuple[str, ...] = (
@@ -104,10 +107,10 @@ PRESETS: dict[str, list[CampaignStage]] = {
         CampaignStage(
             name="runtime_quick",
             description=(
-                "Quick runtime sanity check on a broader CPU/runtime mix "
-                "(heavy matrix, recursive Fibonacci, branchy Collatz, and random-access histogram)"
+                "Quick runtime sanity check across the full standard runtime suite "
+                "plus the heavy matrix stressor"
             ),
-            bench_names=("matrix_mul_heavy", "fibonacci_recursive", "collatz_batch", "histogram_heavy"),
+            bench_names=(*_RUNTIME_STANDARD, "matrix_mul_heavy"),
             repeats=3,
             warmup=1,
             capture_profile=True,

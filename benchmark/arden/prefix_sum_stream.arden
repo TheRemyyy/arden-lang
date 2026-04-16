@@ -1,0 +1,44 @@
+import std.io.*;
+
+function main(): None {
+    size: Integer = 262144;
+    passes: Integer = 4;
+
+    input: List<Integer> = List<Integer>();
+    output: List<Integer> = List<Integer>();
+
+    mut i: Integer = 0;
+    while (i < size) {
+        input.push(((i * 48271 + 13) % 65521) - 32760);
+        output.push(0);
+        i = i + 1;
+    }
+
+    mut pass: Integer = 0;
+    while (pass < passes) {
+        mut running: Integer = 0;
+        i = 0;
+        while (i < size) {
+            running = running + input.get(i);
+            output.set(i, running);
+            i = i + 1;
+        }
+
+        i = 0;
+        while (i < size) {
+            input.set(i, output.get(i) % 104729);
+            i = i + 1;
+        }
+        pass = pass + 1;
+    }
+
+    mut checksum: Integer = 0;
+    i = 0;
+    while (i < size) {
+        checksum = checksum + output.get(i) * ((i % 17) + 1);
+        i = i + 1;
+    }
+
+    println(to_string(checksum));
+    return None;
+}
