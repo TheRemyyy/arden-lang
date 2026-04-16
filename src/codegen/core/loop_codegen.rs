@@ -907,17 +907,20 @@ unsafe {
             self.with_variable_scope(|this| {
                 match &arm.pattern {
                     Pattern::Ident(binding) if imported_unit_variant(this, binding).is_none() => {
-                        let alloca = this
-                            .builder
-                            .build_alloca(val.get_type(), binding)
-                            .map_err(|_| {
-                                CodegenError::new(format!(
-                                    "failed to allocate match binding '{}'",
-                                    binding
-                                ))
-                            })?;
+                        let alloca =
+                            this.builder
+                                .build_alloca(val.get_type(), binding)
+                                .map_err(|_| {
+                                    CodegenError::new(format!(
+                                        "failed to allocate match binding '{}'",
+                                        binding
+                                    ))
+                                })?;
                         this.builder.build_store(alloca, val).map_err(|_| {
-                            CodegenError::new(format!("failed to store match binding '{}'", binding))
+                            CodegenError::new(format!(
+                                "failed to store match binding '{}'",
+                                binding
+                            ))
                         })?;
                         this.variables.insert(
                             binding.clone(),

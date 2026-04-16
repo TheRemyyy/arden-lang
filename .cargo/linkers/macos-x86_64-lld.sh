@@ -11,15 +11,10 @@ if [[ -z "$sdk_version" ]]; then
 fi
 
 linker_bin=""
-linker_prefix=()
 if linker_path="$(command -v lld 2>/dev/null)"; then
   linker_bin="$linker_path"
-  linker_prefix=("-flavor" "darwin")
 elif linker_path="$(command -v ld64.lld 2>/dev/null)"; then
   linker_bin="$linker_path"
-  if "$linker_bin" -flavor darwin --version >/dev/null 2>&1; then
-    linker_prefix=("-flavor" "darwin")
-  fi
 fi
 if [[ -z "$linker_bin" ]]; then
   printf '%s\n' "error: neither lld nor ld64.lld found in PATH" >&2
@@ -71,8 +66,4 @@ for arg in "$@"; do
 done
 forwarded_args+=("-lSystem")
 
-if (( ${#linker_prefix[@]} )); then
-  exec "$linker_bin" "${linker_prefix[@]}" "${forwarded_args[@]}"
-fi
-
-exec "$linker_bin" "${forwarded_args[@]}"
+exec "$linker_bin" -flavor darwin "${forwarded_args[@]}"
