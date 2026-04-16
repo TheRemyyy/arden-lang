@@ -71,7 +71,7 @@ function extractHeadingsFromHtml(html: string): PageHeading[] {
     return Array.from(html.matchAll(/<(h[23]) id="([^"]+)">([\s\S]*?)<\/h[23]>/g)).map((match) => ({
         level: match[1] === 'h2' ? 2 : 3,
         id: match[2],
-        text: match[3].replace(/<[^>]+>/g, '').trim(),
+        text: match[3].replace(/[<>]/g, '').trim(),
     }));
 }
 
