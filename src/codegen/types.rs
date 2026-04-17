@@ -4,7 +4,7 @@ use inkwell::targets::{
     CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
 };
 use inkwell::types::{BasicType, BasicTypeEnum};
-use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue};
+use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -2404,11 +2404,9 @@ unsafe {
 
     fn grow_list_data_with_copy(
         &mut self,
-        function: FunctionValue<'ctx>,
         data_ptr_ptr: PointerValue<'ctx>,
         capacity_ptr: PointerValue<'ctx>,
         capacity: IntValue<'ctx>,
-        length: IntValue<'ctx>,
         elem_size: u64,
     ) -> Result<()> {
         let i64_type = self.context.i64_type();
@@ -2433,50 +2431,14 @@ unsafe {
             )
             .map_err(|_| CodegenError::new("failed to load old List data pointer"))?
             .into_pointer_value();
-
-        let grown_call = self.build_malloc_call(
+        let grown_call = self.build_realloc_call(
+            old_data,
             new_size,
             "grown_data",
-            "failed to emit List growth malloc call",
+            "failed to emit List realloc call",
         )?;
-        let grown_data = self.extract_call_pointer_value(
-            grown_call,
-            "malloc did not produce a pointer while growing list storage",
-        )?;
-
-        let bytes_to_copy = self
-            .builder
-            .build_int_mul(length, i64_type.const_int(elem_size, false), "copy_bytes")
-            .map_err(|_| CodegenError::new("failed to compute List copy byte count"))?;
-        let has_bytes = self
-            .builder
-            .build_int_compare(
-                IntPredicate::SGT,
-                bytes_to_copy,
-                i64_type.const_zero(),
-                "has_copy_bytes",
-            )
-            .map_err(|_| CodegenError::new("failed to compare List copy byte count"))?;
-        let copy_body_bb = self.context.append_basic_block(function, "list_copy_body");
-        let copy_done_bb = self.context.append_basic_block(function, "list_copy_done");
-        self.builder
-            .build_conditional_branch(has_bytes, copy_body_bb, copy_done_bb)
-            .map_err(|_| CodegenError::new("failed to branch for List copy"))?;
-
-        self.builder.position_at_end(copy_body_bb);
-        let copy_size = self.pointer_sized_int_type().const_int(elem_size, false);
-        let copy_bytes = self
-            .builder
-            .build_int_mul(length, copy_size, "copy_size")
-            .map_err(|_| CodegenError::new("failed to compute List memcpy byte count"))?;
-        self.builder
-            .build_memcpy(grown_data, 1, old_data, 1, copy_bytes)
-            .map_err(|_| CodegenError::new("failed to emit List memcpy"))?;
-        self.builder
-            .build_unconditional_branch(copy_done_bb)
-            .map_err(|_| CodegenError::new("failed to finish List copy"))?;
-
-        self.builder.position_at_end(copy_done_bb);
+        let grown_data =
+            self.extract_call_pointer_value(grown_call, "realloc failed for List growth")?;
         self.builder
             .build_store(data_ptr_ptr, grown_data)
             .map_err(|_| CodegenError::new("failed to store grown List data pointer"))?;
@@ -3067,14 +3029,7 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to branch for List growth"))?;
 
                 self.builder.position_at_end(grow_bb);
-                self.grow_list_data_with_copy(
-                    function,
-                    data_ptr_ptr,
-                    capacity_ptr,
-                    capacity,
-                    length,
-                    elem_size,
-                )?;
+                self.grow_list_data_with_copy(data_ptr_ptr, capacity_ptr, capacity, elem_size)?;
                 self.builder
                     .build_unconditional_branch(cont_bb)
                     .map_err(|_| CodegenError::new("failed to continue List push after growth"))?;
@@ -3533,14 +3488,7 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to branch for List pointer growth"))?;
 
                 self.builder.position_at_end(grow_bb);
-                self.grow_list_data_with_copy(
-                    function,
-                    data_ptr_ptr,
-                    capacity_ptr,
-                    capacity,
-                    length,
-                    elem_size,
-                )?;
+                self.grow_list_data_with_copy(data_ptr_ptr, capacity_ptr, capacity, elem_size)?;
                 self.builder
                     .build_unconditional_branch(cont_bb)
                     .map_err(|_| {

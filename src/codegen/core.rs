@@ -548,6 +548,7 @@ pub struct Codegen<'ctx> {
     pub builder: Builder<'ctx>,
     pub variables: HashMap<String, Variable<'ctx>>,
     pub(crate) non_negative_locals: HashSet<String>,
+    pub(crate) non_zero_locals: HashSet<String>,
     pub functions: HashMap<String, (FunctionValue<'ctx>, Type)>,
     pub(crate) non_negative_functions: HashSet<String>,
     pub function_param_modes: HashMap<String, Vec<ParamMode>>,
@@ -6852,6 +6853,7 @@ impl<'ctx> Codegen<'ctx> {
             builder,
             variables: HashMap::new(),
             non_negative_locals: HashSet::new(),
+            non_zero_locals: HashSet::new(),
             functions: HashMap::new(),
             non_negative_functions: HashSet::new(),
             function_param_modes: HashMap::new(),
@@ -9522,6 +9524,7 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(entry);
         self.variables.clear();
         self.non_negative_locals.clear();
+        self.non_zero_locals.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&class.generic_params);
 
@@ -9630,6 +9633,7 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(entry);
         self.variables.clear();
         self.non_negative_locals.clear();
+        self.non_zero_locals.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&class.generic_params);
         self.extend_current_generic_bounds(&method.generic_params);
@@ -10413,6 +10417,7 @@ unsafe {
         self.builder.position_at_end(entry);
         self.variables.clear();
         self.non_negative_locals.clear();
+        self.non_zero_locals.clear();
         self.loop_stack.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&func.generic_params);
@@ -12168,11 +12173,13 @@ unsafe {
             let saved_insert_block = self.builder.get_insert_block();
             let saved_variables = self.variables.clone();
             let saved_non_negative_locals = self.non_negative_locals.clone();
+            let saved_non_zero_locals = self.non_zero_locals.clone();
 
             self.current_function = Some(wrapper_fn);
             self.current_return_type = Some(function_ty.clone());
             self.variables.clear();
             self.non_negative_locals.clear();
+            self.non_zero_locals.clear();
 
             let entry = self.context.append_basic_block(wrapper_fn, "entry");
             self.builder.position_at_end(entry);
@@ -12283,6 +12290,7 @@ unsafe {
             self.current_return_type = saved_return_type;
             self.variables = saved_variables;
             self.non_negative_locals = saved_non_negative_locals;
+            self.non_zero_locals = saved_non_zero_locals;
             if let Some(block) = saved_insert_block {
                 self.builder.position_at_end(block);
             }
@@ -12981,9 +12989,11 @@ unsafe {
     ) -> Result<T> {
         let saved_variables = self.variables.clone();
         let saved_non_negative_locals = self.non_negative_locals.clone();
+        let saved_non_zero_locals = self.non_zero_locals.clone();
         let result = f(self);
         self.variables = saved_variables;
         self.non_negative_locals = saved_non_negative_locals;
+        self.non_zero_locals = saved_non_zero_locals;
         result
     }
 
@@ -13359,6 +13369,28 @@ unsafe {
         )
     }
 
+    fn expr_is_provably_non_zero_in_scope(
+        expr: &Expr,
+        non_negative_names: &HashSet<String>,
+        non_zero_names: &HashSet<String>,
+        call_non_negative: &HashSet<String>,
+    ) -> bool {
+        matches!(
+            TypeChecker::eval_numeric_const_expr(expr),
+            Some(NumericConst::Integer(value)) if value != 0
+        ) || matches!(expr, Expr::Ident(name) if non_zero_names.contains(name))
+            || Self::expr_is_provably_positive_in_scope(expr, non_negative_names, call_non_negative)
+    }
+
+    fn expr_is_provably_non_zero(&self, expr: &Expr) -> bool {
+        Self::expr_is_provably_non_zero_in_scope(
+            expr,
+            &self.non_negative_locals,
+            &self.non_zero_locals,
+            &self.non_negative_functions,
+        )
+    }
+
     fn collect_condition_non_negative_facts(expr: &Expr, names: &mut HashSet<String>) {
         match expr {
             Expr::Binary {
@@ -13430,10 +13462,21 @@ unsafe {
     }
 
     fn update_binding_non_negative_fact(&mut self, name: &str, ty: &Type, value: &Expr) {
-        if matches!(ty, Type::Integer) && self.expr_is_provably_non_negative(value) {
-            self.non_negative_locals.insert(name.to_string());
+        if matches!(ty, Type::Integer) {
+            if self.expr_is_provably_non_negative(value) {
+                self.non_negative_locals.insert(name.to_string());
+            } else {
+                self.non_negative_locals.remove(name);
+            }
+
+            if self.expr_is_provably_non_zero(value) {
+                self.non_zero_locals.insert(name.to_string());
+            } else {
+                self.non_zero_locals.remove(name);
+            }
         } else {
             self.non_negative_locals.remove(name);
+            self.non_zero_locals.remove(name);
         }
     }
 
@@ -13652,7 +13695,14 @@ unsafe {
         self.ensure_binary_operator_supported(op, &left_ty, &right_ty)?;
         let lhs = self.compile_expr_with_expected_type(left, &left_ty)?;
         let rhs = self.compile_expr_with_expected_type(right, &right_ty)?;
-        self.compile_binary_values_unchecked(op, lhs, rhs, &left_ty, &right_ty)
+        self.compile_binary_values_unchecked_with_options(
+            op,
+            lhs,
+            rhs,
+            &left_ty,
+            &right_ty,
+            self.expr_is_provably_non_zero(right),
+        )
     }
 
     fn compile_binary_values(
@@ -13664,16 +13714,17 @@ unsafe {
         right_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
         self.ensure_binary_operator_supported(op, left_ty, right_ty)?;
-        self.compile_binary_values_unchecked(op, lhs, rhs, left_ty, right_ty)
+        self.compile_binary_values_unchecked_with_options(op, lhs, rhs, left_ty, right_ty, false)
     }
 
-    fn compile_binary_values_unchecked(
+    fn compile_binary_values_unchecked_with_options(
         &mut self,
         op: BinOp,
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
         left_ty: &Type,
         right_ty: &Type,
+        skip_nonzero_divisor_guard: bool,
     ) -> Result<BasicValueEnum<'ctx>> {
         if left_ty.is_numeric()
             && right_ty.is_numeric()
@@ -13770,7 +13821,9 @@ unsafe {
                 } else {
                     ("Integer modulo by zero", "int_mod_zero")
                 };
-                self.guard_nonzero_integer_divisor(r, message, global_name)?;
+                if !skip_nonzero_divisor_guard {
+                    self.guard_nonzero_integer_divisor(r, message, global_name)?;
+                }
                 let (overflow_message, overflow_prefix) = if matches!(op, BinOp::Div) {
                     ("Integer division overflow", "int_div_overflow")
                 } else {

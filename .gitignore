@@ -9,6 +9,8 @@ __pycache__/
 *.pyc
 
 # Benchmarks
+benchmark/bin/*
+!benchmark/bin/.gitkeep
 benchmark/bin/matrix_mul_arden
 benchmark/bin/matrix_mul_c
 benchmark/bin/matrix_mul_rust
