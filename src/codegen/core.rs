@@ -11100,7 +11100,6 @@ unsafe {
         self.builder.position_at_end(cond_bb);
         let loop_cond = self.compile_condition_expr(&cond.node)?;
 
-        // Branch prediction: likely to continue looping
         self.builder
             .build_conditional_branch(loop_cond, body_bb, after_bb)
             .map_err(|_| CodegenError::new("failed to branch on while loop condition"))?;

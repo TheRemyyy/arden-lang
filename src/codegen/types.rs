@@ -2317,7 +2317,7 @@ unsafe {
     }
 
     pub fn create_empty_list(&mut self, list_ty: Option<&Type>) -> Result<BasicValueEnum<'ctx>> {
-        let (_, elem_size) = if let Some(list_ty) = list_ty {
+        let _ = if let Some(list_ty) = list_ty {
             self.list_element_layout_from_list_type(list_ty)
         } else {
             self.list_element_layout_default()
@@ -2337,8 +2337,6 @@ unsafe {
             .build_alloca(list_type, "list")
             .map_err(|_| CodegenError::new("failed to allocate empty List storage"))?;
 
-        // Initial capacity = 8
-        let initial_capacity: u64 = 8;
         let i32_type = self.context.i32_type();
         let zero = i32_type.const_int(0, false);
         let capacity_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
@@ -2354,10 +2352,7 @@ unsafe {
                 .map_err(|_| CodegenError::new("failed to compute empty List capacity pointer"))?
         };
         self.builder
-            .build_store(
-                capacity_ptr,
-                self.context.i64_type().const_int(initial_capacity, false),
-            )
+            .build_store(capacity_ptr, self.context.i64_type().const_zero())
             .map_err(|_| CodegenError::new("failed to store empty List capacity"))?;
 
         // Length = 0
@@ -2377,18 +2372,6 @@ unsafe {
             .build_store(length_ptr, self.context.i64_type().const_int(0, false))
             .map_err(|_| CodegenError::new("failed to initialize empty List length"))?;
 
-        // Allocate data - malloc(capacity * 8) for i64 elements
-        let size = self
-            .context
-            .i64_type()
-            .const_int(initial_capacity * elem_size, false);
-        let call_result =
-            self.build_malloc_call(size, "data", "failed to emit empty List malloc call")?;
-        let data_ptr = self.extract_call_value_with_context(
-            call_result,
-            "malloc did not produce a value while allocating list storage",
-        )?;
-
         let data_ptr_field = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
 // alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
 unsafe {
@@ -2402,7 +2385,10 @@ unsafe {
                 .map_err(|_| CodegenError::new("failed to compute empty List data pointer field"))?
         };
         self.builder
-            .build_store(data_ptr_field, data_ptr)
+            .build_store(
+                data_ptr_field,
+                self.context.ptr_type(AddressSpace::default()).const_null(),
+            )
             .map_err(|_| CodegenError::new("failed to store empty List data pointer"))?;
 
         self.builder
@@ -2418,10 +2404,30 @@ unsafe {
         elem_size: u64,
     ) -> Result<()> {
         let i64_type = self.context.i64_type();
+        let default_capacity = i64_type.const_int(8, false);
+        let doubled_capacity = self
+            .builder
+            .build_int_mul(capacity, i64_type.const_int(2, false), "doubled_cap")
+            .map_err(|_| CodegenError::new("failed to compute grown List capacity"))?;
+        let use_default_capacity = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                capacity,
+                i64_type.const_zero(),
+                "list_grow_from_empty",
+            )
+            .map_err(|_| CodegenError::new("failed to compare empty List growth state"))?;
         let new_capacity = self
             .builder
-            .build_int_mul(capacity, i64_type.const_int(2, false), "new_cap")
-            .map_err(|_| CodegenError::new("failed to compute grown List capacity"))?;
+            .build_select(
+                use_default_capacity,
+                default_capacity,
+                doubled_capacity,
+                "new_cap",
+            )
+            .map_err(|_| CodegenError::new("failed to select grown List capacity"))?
+            .into_int_value();
         let new_size = self
             .builder
             .build_int_mul(
