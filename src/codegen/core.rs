@@ -10967,6 +10967,8 @@ unsafe {
             .current_function
             .ok_or_else(|| CodegenError::new("while loop used outside function"))?;
 
+        self.reserve_capacity_for_push_only_while_loop(&cond.node, body)?;
+
         // LOOP ROTATION OPTIMIZATION:
         // Instead of: while (cond) { body }
         // We generate: if (cond) { do { body } while (cond) }
@@ -11019,6 +11021,81 @@ unsafe {
 
         self.builder.position_at_end(after_bb);
         Ok(())
+    }
+
+    fn reserve_capacity_for_push_only_while_loop(
+        &mut self,
+        condition: &Expr,
+        body: &Block,
+    ) -> Result<()> {
+        let Some(bound_expr) = Self::simple_while_loop_upper_bound_expr(condition) else {
+            return Ok(());
+        };
+        if !matches!(self.infer_builtin_argument_type(bound_expr), Type::Integer) {
+            return Ok(());
+        }
+        if !matches!(
+            bound_expr,
+            Expr::Ident(_) | Expr::Literal(Literal::Integer(_))
+        ) {
+            return Ok(());
+        }
+        if !self.expr_is_provably_non_negative(bound_expr) {
+            return Ok(());
+        }
+
+        let pushed_lists = Self::collect_direct_local_list_push_targets(body);
+        if pushed_lists.is_empty() {
+            return Ok(());
+        }
+
+        let requested_capacity = self
+            .compile_expr_with_expected_type(bound_expr, &Type::Integer)?
+            .into_int_value();
+        for list_name in pushed_lists {
+            let Some(variable) = self.variables.get(&list_name).cloned() else {
+                continue;
+            };
+            if !matches!(self.deref_codegen_type(&variable.ty), Type::List(_)) {
+                continue;
+            }
+            self.ensure_list_capacity_ptr(variable.ptr, &variable.ty, requested_capacity)?;
+        }
+        Ok(())
+    }
+
+    fn simple_while_loop_upper_bound_expr(condition: &Expr) -> Option<&Expr> {
+        match condition {
+            Expr::Binary {
+                op: BinOp::Lt,
+                left,
+                right,
+            } if matches!(left.node, Expr::Ident(_)) => Some(&right.node),
+            _ => None,
+        }
+    }
+
+    fn collect_direct_local_list_push_targets(body: &Block) -> HashSet<String> {
+        let mut pushed_lists = HashSet::new();
+        for stmt in body {
+            let Stmt::Expr(expr) = &stmt.node else {
+                continue;
+            };
+            let Expr::Call { callee, .. } = &expr.node else {
+                continue;
+            };
+            let Expr::Field { object, field } = &callee.node else {
+                continue;
+            };
+            if field != "push" {
+                continue;
+            }
+            let Expr::Ident(name) = &object.node else {
+                continue;
+            };
+            pushed_lists.insert(name.clone());
+        }
+        pushed_lists
     }
 
     fn adapt_for_loop_binding_value(

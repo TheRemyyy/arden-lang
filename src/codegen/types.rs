@@ -2449,6 +2449,113 @@ unsafe {
         Ok(())
     }
 
+    pub fn ensure_list_capacity_ptr(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        list_ty: &Type,
+        requested_capacity: IntValue<'ctx>,
+    ) -> Result<()> {
+        let (_, elem_size) = self.list_element_layout_from_list_type(list_ty);
+        let list_type = self.context.struct_type(
+            &[
+                self.context.i64_type().into(),
+                self.context.i64_type().into(),
+                self.context.ptr_type(AddressSpace::default()).into(),
+            ],
+            false,
+        );
+        let i32_type = self.context.i32_type();
+        let zero = i32_type.const_zero();
+        let i64_type = self.context.i64_type();
+
+        let capacity_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    list_type.as_basic_type_enum(),
+                    list_ptr,
+                    &[zero, i32_type.const_int(0, false)],
+                    "list_reserve_cap_ptr",
+                )
+                .map_err(|_| CodegenError::new("failed to compute List reserve capacity pointer"))?
+        };
+        let data_ptr_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    list_type.as_basic_type_enum(),
+                    list_ptr,
+                    &[zero, i32_type.const_int(2, false)],
+                    "list_reserve_data_ptr_ptr",
+                )
+                .map_err(|_| CodegenError::new("failed to compute List reserve data pointer"))?
+        };
+
+        let current_capacity = self
+            .builder
+            .build_load(i64_type, capacity_ptr, "list_reserve_cap")
+            .map_err(|_| CodegenError::new("failed to load List reserve capacity"))?
+            .into_int_value();
+        let needs_growth = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SGT,
+                requested_capacity,
+                current_capacity,
+                "list_reserve_needs_growth",
+            )
+            .map_err(|_| CodegenError::new("failed to compare List reserve capacity"))?;
+        let current_fn = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("List reserve used outside function"))?;
+        let grow_bb = self
+            .context
+            .append_basic_block(current_fn, "list_reserve.grow");
+        let cont_bb = self
+            .context
+            .append_basic_block(current_fn, "list_reserve.cont");
+        self.builder
+            .build_conditional_branch(needs_growth, grow_bb, cont_bb)
+            .map_err(|_| CodegenError::new("failed to branch for List reserve"))?;
+
+        self.builder.position_at_end(grow_bb);
+        let new_size = self
+            .builder
+            .build_int_mul(
+                requested_capacity,
+                i64_type.const_int(elem_size, false),
+                "list_reserve_size",
+            )
+            .map_err(|_| CodegenError::new("failed to compute List reserve size"))?;
+        let old_data = self
+            .builder
+            .build_load(
+                self.context.ptr_type(AddressSpace::default()),
+                data_ptr_ptr,
+                "list_reserve_old_data",
+            )
+            .map_err(|_| CodegenError::new("failed to load List reserve old data pointer"))?
+            .into_pointer_value();
+        let grown_call = self.build_realloc_call(
+            old_data,
+            new_size,
+            "list_reserve_grown_data",
+            "failed to emit List reserve realloc call",
+        )?;
+        let grown_data =
+            self.extract_call_pointer_value(grown_call, "realloc failed for List reserve growth")?;
+        self.builder
+            .build_store(data_ptr_ptr, grown_data)
+            .map_err(|_| CodegenError::new("failed to store List reserve data pointer"))?;
+        self.builder
+            .build_store(capacity_ptr, requested_capacity)
+            .map_err(|_| CodegenError::new("failed to store List reserve capacity"))?;
+        self.builder
+            .build_unconditional_branch(cont_bb)
+            .map_err(|_| CodegenError::new("failed to continue after List reserve growth"))?;
+
+        self.builder.position_at_end(cont_bb);
+        Ok(())
+    }
+
     // === Map<K,V> helpers ===
 
     pub fn create_empty_map_for_type(
