@@ -61,7 +61,7 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
-    fn build_indexed_element_ptr(
+    pub(crate) fn build_indexed_element_ptr(
         &mut self,
         data_ptr: PointerValue<'ctx>,
         elem_llvm_ty: BasicTypeEnum<'ctx>,
@@ -3685,11 +3685,6 @@ unsafe {
                             CodegenError::new("failed to compute List pointer length pointer")
                         })?
                 };
-                let length = self
-                    .builder
-                    .build_load(self.context.i64_type(), length_ptr, "len")
-                    .map_err(|_| CodegenError::new("failed to load List pointer length"))?
-                    .into_int_value();
                 let (index, index_provably_non_negative) = self
                     .compile_non_negative_integer_index_expr_with_proof(
                         &args[0].node,
@@ -3701,10 +3696,24 @@ unsafe {
                             && self.expr_is_provably_below_exact_limit(&args[0].node, *length)
                     })
                 });
+                #[cfg(debug_assertions)]
+                if matches!(owner_name, Some("values") | Some("indices") | Some("scratch")) {
+                    eprintln!(
+                        "list_ptr_get owner={owner_name:?} in_bounds={:?} nonneg={} arg={:?}",
+                        index_provably_in_bounds,
+                        index_provably_non_negative,
+                        &args[0].node
+                    );
+                }
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("List.get used outside function"))?;
                 if index_provably_in_bounds.is_none() {
+                    let length = self
+                        .builder
+                        .build_load(self.context.i64_type(), length_ptr, "len")
+                        .map_err(|_| CodegenError::new("failed to load List pointer length"))?
+                        .into_int_value();
                     let ok_bb = self
                         .context
                         .append_basic_block(current_fn, "list_ptr_get.ok");
@@ -3810,11 +3819,6 @@ unsafe {
                             CodegenError::new("failed to compute List pointer length pointer")
                         })?
                 };
-                let length = self
-                    .builder
-                    .build_load(self.context.i64_type(), length_ptr, "len")
-                    .map_err(|_| CodegenError::new("failed to load List pointer length"))?
-                    .into_int_value();
                 let (index, index_provably_non_negative) = self
                     .compile_non_negative_integer_index_expr_with_proof(
                         &args[0].node,
@@ -3826,10 +3830,24 @@ unsafe {
                             && self.expr_is_provably_below_exact_limit(&args[0].node, *length)
                     })
                 });
+                #[cfg(debug_assertions)]
+                if matches!(owner_name, Some("values") | Some("indices") | Some("scratch")) {
+                    eprintln!(
+                        "list_ptr_set owner={owner_name:?} in_bounds={:?} nonneg={} arg={:?}",
+                        index_provably_in_bounds,
+                        index_provably_non_negative,
+                        &args[0].node
+                    );
+                }
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("List.set used outside function"))?;
                 if index_provably_in_bounds.is_none() {
+                    let length = self
+                        .builder
+                        .build_load(self.context.i64_type(), length_ptr, "len")
+                        .map_err(|_| CodegenError::new("failed to load List pointer length"))?
+                        .into_int_value();
                     let ok_bb = self
                         .context
                         .append_basic_block(current_fn, "list_ptr_set.ok");

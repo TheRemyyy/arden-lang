@@ -541,6 +541,8 @@ struct GenericRewriteOutputs<'a> {
     generated_methods: &'a mut HashMap<String, Vec<FunctionDecl>>,
 }
 
+type CountedPushLoopInfo = (String, i64, HashSet<String>, HashMap<String, i64>);
+
 /// Code generator
 pub struct Codegen<'ctx> {
     pub context: &'ctx Context,
@@ -552,6 +554,7 @@ pub struct Codegen<'ctx> {
     pub(crate) exact_integer_locals: HashMap<String, i64>,
     pub(crate) upper_bound_locals: HashMap<String, i64>,
     pub(crate) exact_list_lengths: HashMap<String, i64>,
+    pub(crate) list_element_upper_bounds: HashMap<String, i64>,
     pub functions: HashMap<String, (FunctionValue<'ctx>, Type)>,
     pub(crate) non_negative_functions: HashSet<String>,
     pub function_param_modes: HashMap<String, Vec<ParamMode>>,
@@ -6860,6 +6863,7 @@ impl<'ctx> Codegen<'ctx> {
             exact_integer_locals: HashMap::new(),
             upper_bound_locals: HashMap::new(),
             exact_list_lengths: HashMap::new(),
+            list_element_upper_bounds: HashMap::new(),
             functions: HashMap::new(),
             non_negative_functions: HashSet::new(),
             function_param_modes: HashMap::new(),
@@ -9534,6 +9538,7 @@ impl<'ctx> Codegen<'ctx> {
         self.exact_integer_locals.clear();
         self.upper_bound_locals.clear();
         self.exact_list_lengths.clear();
+        self.list_element_upper_bounds.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&class.generic_params);
 
@@ -9646,6 +9651,7 @@ impl<'ctx> Codegen<'ctx> {
         self.exact_integer_locals.clear();
         self.upper_bound_locals.clear();
         self.exact_list_lengths.clear();
+        self.list_element_upper_bounds.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&class.generic_params);
         self.extend_current_generic_bounds(&method.generic_params);
@@ -10438,6 +10444,7 @@ unsafe {
         self.exact_integer_locals.clear();
         self.upper_bound_locals.clear();
         self.exact_list_lengths.clear();
+        self.list_element_upper_bounds.clear();
         self.loop_stack.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&func.generic_params);
@@ -10633,8 +10640,23 @@ unsafe {
                 self.update_binding_non_negative_fact(name, ty, &value.node);
                 if self.expr_creates_empty_list(&value.node, ty) {
                     self.exact_list_lengths.insert(name.clone(), 0);
+                    self.list_element_upper_bounds.remove(name);
+                } else if let Expr::Ident(source_name) = &value.node {
+                    if matches!(self.deref_codegen_type(ty), Type::List(_)) {
+                        if let Some(upper_bound) =
+                            self.list_element_upper_bounds.get(source_name).copied()
+                        {
+                            self.list_element_upper_bounds
+                                .insert(name.clone(), upper_bound);
+                        } else {
+                            self.list_element_upper_bounds.remove(name);
+                        }
+                    } else {
+                        self.list_element_upper_bounds.remove(name);
+                    }
                 } else {
                     self.exact_list_lengths.remove(name);
+                    self.list_element_upper_bounds.remove(name);
                 }
                 CODEGEN_PHASE_TIMING_TOTALS
                     .body_stmt_let_ns
@@ -10679,6 +10701,7 @@ unsafe {
                         if let Expr::Ident(name) = &target.node {
                             self.update_binding_non_negative_fact(name, &target_ty, &value.node);
                             self.exact_list_lengths.remove(name);
+                            self.list_element_upper_bounds.remove(name);
                         }
                         CODEGEN_PHASE_TIMING_TOTALS
                             .body_stmt_assign_ns
@@ -10789,8 +10812,23 @@ unsafe {
                     self.update_binding_non_negative_fact(name, &target_ty, &value.node);
                     if self.expr_creates_empty_list(&value.node, &target_ty) {
                         self.exact_list_lengths.insert(name.clone(), 0);
+                        self.list_element_upper_bounds.remove(name);
+                    } else if let Expr::Ident(source_name) = &value.node {
+                        if matches!(self.deref_codegen_type(&target_ty), Type::List(_)) {
+                            if let Some(upper_bound) =
+                                self.list_element_upper_bounds.get(source_name).copied()
+                            {
+                                self.list_element_upper_bounds
+                                    .insert(name.clone(), upper_bound);
+                            } else {
+                                self.list_element_upper_bounds.remove(name);
+                            }
+                        } else {
+                            self.list_element_upper_bounds.remove(name);
+                        }
                     } else {
                         self.exact_list_lengths.remove(name);
+                        self.list_element_upper_bounds.remove(name);
                     }
                 }
                 CODEGEN_PHASE_TIMING_TOTALS
@@ -11052,10 +11090,16 @@ unsafe {
             .map_err(|_| CodegenError::new("failed to branch on while loop condition"))?;
 
         self.builder.position_at_end(after_bb);
-        if let Some((counter_name, exact_bound, pushed_lists)) = counted_push_loop_info {
+        if let Some((counter_name, exact_bound, pushed_lists, list_element_upper_bounds)) =
+            counted_push_loop_info
+        {
             self.exact_integer_locals.insert(counter_name, exact_bound);
             for list_name in pushed_lists {
                 self.exact_list_lengths.insert(list_name, exact_bound);
+            }
+            for (list_name, upper_bound) in list_element_upper_bounds {
+                self.list_element_upper_bounds
+                    .insert(list_name, upper_bound);
             }
         }
         Ok(())
@@ -11154,7 +11198,7 @@ unsafe {
         &self,
         condition: &Expr,
         body: &Block,
-    ) -> Option<(String, i64, HashSet<String>)> {
+    ) -> Option<CountedPushLoopInfo> {
         let counter_name = Self::simple_while_loop_counter_name(condition)?.to_string();
         let bound_expr = Self::simple_while_loop_upper_bound_expr(condition)?;
         let exact_bound = self.exact_integer_value(bound_expr)?;
@@ -11166,11 +11210,12 @@ unsafe {
         }
 
         let mut pushed_lists = HashSet::new();
+        let mut list_element_upper_bounds = HashMap::new();
         let mut saw_counter_increment = false;
         for stmt in body {
             match &stmt.node {
                 Stmt::Expr(expr) => {
-                    let Expr::Call { callee, .. } = &expr.node else {
+                    let Expr::Call { callee, args, .. } = &expr.node else {
                         return None;
                     };
                     let Expr::Field { object, field } = &callee.node else {
@@ -11184,6 +11229,11 @@ unsafe {
                     };
                     if self.exact_list_lengths.get(name).copied()? != 0 {
                         return None;
+                    }
+                    let push_value = args.first()?;
+                    if self.expr_is_provably_non_negative(&push_value.node) {
+                        let upper_bound = self.expr_upper_bound_exclusive(&push_value.node)?;
+                        list_element_upper_bounds.insert(name.clone(), upper_bound);
                     }
                     pushed_lists.insert(name.clone());
                 }
@@ -11219,6 +11269,7 @@ unsafe {
             counter_name,
             exact_bound,
             pushed_lists,
+            list_element_upper_bounds,
         ))
     }
 
@@ -12383,6 +12434,7 @@ unsafe {
             let saved_exact_integer_locals = self.exact_integer_locals.clone();
             let saved_upper_bound_locals = self.upper_bound_locals.clone();
             let saved_exact_list_lengths = self.exact_list_lengths.clone();
+            let saved_list_element_upper_bounds = self.list_element_upper_bounds.clone();
 
             self.current_function = Some(wrapper_fn);
             self.current_return_type = Some(function_ty.clone());
@@ -12392,6 +12444,7 @@ unsafe {
             self.exact_integer_locals.clear();
             self.upper_bound_locals.clear();
             self.exact_list_lengths.clear();
+            self.list_element_upper_bounds.clear();
 
             let entry = self.context.append_basic_block(wrapper_fn, "entry");
             self.builder.position_at_end(entry);
@@ -12506,6 +12559,7 @@ unsafe {
             self.exact_integer_locals = saved_exact_integer_locals;
             self.upper_bound_locals = saved_upper_bound_locals;
             self.exact_list_lengths = saved_exact_list_lengths;
+            self.list_element_upper_bounds = saved_list_element_upper_bounds;
             if let Some(block) = saved_insert_block {
                 self.builder.position_at_end(block);
             }
@@ -13208,6 +13262,7 @@ unsafe {
         let saved_exact_integer_locals = self.exact_integer_locals.clone();
         let saved_upper_bound_locals = self.upper_bound_locals.clone();
         let saved_exact_list_lengths = self.exact_list_lengths.clone();
+        let saved_list_element_upper_bounds = self.list_element_upper_bounds.clone();
         let result = f(self);
         self.variables = saved_variables;
         self.non_negative_locals = saved_non_negative_locals;
@@ -13215,6 +13270,7 @@ unsafe {
         self.exact_integer_locals = saved_exact_integer_locals;
         self.upper_bound_locals = saved_upper_bound_locals;
         self.exact_list_lengths = saved_exact_list_lengths;
+        self.list_element_upper_bounds = saved_list_element_upper_bounds;
         result
     }
 
@@ -13648,6 +13704,8 @@ unsafe {
         expr: &Expr,
         exact_integer_locals: &HashMap<String, i64>,
         upper_bound_locals: &HashMap<String, i64>,
+        non_negative_names: &HashSet<String>,
+        call_non_negative: &HashSet<String>,
     ) -> Option<i64> {
         if let Some(exact) = Self::exact_integer_value_in_scope(expr, exact_integer_locals) {
             return exact.checked_add(1);
@@ -13664,11 +13722,15 @@ unsafe {
                     &left.node,
                     exact_integer_locals,
                     upper_bound_locals,
+                    non_negative_names,
+                    call_non_negative,
                 )?;
                 let right_bound = Self::expr_upper_bound_exclusive_in_scope(
                     &right.node,
                     exact_integer_locals,
                     upper_bound_locals,
+                    non_negative_names,
+                    call_non_negative,
                 )?;
                 left_bound.checked_add(right_bound)
             }
@@ -13681,6 +13743,8 @@ unsafe {
                     &left.node,
                     exact_integer_locals,
                     upper_bound_locals,
+                    non_negative_names,
+                    call_non_negative,
                 )?;
                 let right_exact =
                     Self::exact_integer_value_in_scope(&right.node, exact_integer_locals)?;
@@ -13695,13 +13759,30 @@ unsafe {
                     &left.node,
                     exact_integer_locals,
                     upper_bound_locals,
+                    non_negative_names,
+                    call_non_negative,
                 )?;
                 let right_bound = Self::expr_upper_bound_exclusive_in_scope(
                     &right.node,
                     exact_integer_locals,
                     upper_bound_locals,
+                    non_negative_names,
+                    call_non_negative,
                 )?;
                 left_bound.checked_mul(right_bound)
+            }
+            Expr::Binary {
+                op: BinOp::Mod,
+                left,
+                right,
+            } if Self::expr_is_provably_non_negative_in_scope(
+                &left.node,
+                non_negative_names,
+                call_non_negative,
+            ) =>
+            {
+                Self::exact_integer_value_in_scope(&right.node, exact_integer_locals)
+                    .filter(|bound| *bound > 0)
             }
             _ => None,
         }
@@ -13712,6 +13793,8 @@ unsafe {
             expr,
             &self.exact_integer_locals,
             &self.upper_bound_locals,
+            &self.non_negative_locals,
+            &self.non_negative_functions,
         )
     }
 
@@ -13857,7 +13940,8 @@ unsafe {
 
     fn update_binding_non_negative_fact(&mut self, name: &str, ty: &Type, value: &Expr) {
         if matches!(ty, Type::Integer) {
-            if self.expr_is_provably_non_negative(value) {
+            let derived_list_bound = self.list_element_upper_bound_from_index_like_expr(value);
+            if self.expr_is_provably_non_negative(value) || derived_list_bound.is_some() {
                 self.non_negative_locals.insert(name.to_string());
             } else {
                 self.non_negative_locals.remove(name);
@@ -13874,12 +13958,49 @@ unsafe {
             } else {
                 self.exact_integer_locals.remove(name);
             }
-            self.upper_bound_locals.remove(name);
+            if let Some(upper_bound) =
+                derived_list_bound.or_else(|| self.expr_upper_bound_exclusive(value))
+            {
+                self.upper_bound_locals
+                    .insert(name.to_string(), upper_bound);
+            } else {
+                self.upper_bound_locals.remove(name);
+            }
         } else {
             self.non_negative_locals.remove(name);
             self.non_zero_locals.remove(name);
             self.exact_integer_locals.remove(name);
             self.upper_bound_locals.remove(name);
+        }
+    }
+
+    fn list_element_upper_bound_from_index_like_expr(&self, expr: &Expr) -> Option<i64> {
+        match expr {
+            Expr::Call { callee, args, .. } if args.len() == 1 => {
+                let Expr::Field { object, field } = &callee.node else {
+                    return None;
+                };
+                if field != "get" {
+                    return None;
+                }
+                let Expr::Ident(owner_name) = &object.node else {
+                    return None;
+                };
+                let upper_bound = self.list_element_upper_bounds.get(owner_name).copied()?;
+                let exact_length = self.exact_list_lengths.get(owner_name).copied()?;
+                self.expr_is_provably_below_exact_limit(&args[0].node, exact_length)
+                    .then_some(upper_bound)
+            }
+            Expr::Index { object, index } => {
+                let Expr::Ident(owner_name) = &object.node else {
+                    return None;
+                };
+                let upper_bound = self.list_element_upper_bounds.get(owner_name).copied()?;
+                let exact_length = self.exact_list_lengths.get(owner_name).copied()?;
+                self.expr_is_provably_below_exact_limit(&index.node, exact_length)
+                    .then_some(upper_bound)
+            }
+            _ => None,
         }
     }
 
@@ -14763,6 +14884,24 @@ unsafe {
                                             self.exact_list_lengths.remove(owner_name);
                                         }
                                     }
+                                    if let Some(push_value) = args.first() {
+                                        if self.expr_is_provably_non_negative(&push_value.node) {
+                                            if let Some(upper_bound) =
+                                                self.expr_upper_bound_exclusive(&push_value.node)
+                                            {
+                                                self.list_element_upper_bounds
+                                                    .entry(owner_name.to_string())
+                                                    .and_modify(|current| {
+                                                        *current = (*current).max(upper_bound)
+                                                    })
+                                                    .or_insert(upper_bound);
+                                            } else {
+                                                self.list_element_upper_bounds.remove(owner_name);
+                                            }
+                                        } else {
+                                            self.list_element_upper_bounds.remove(owner_name);
+                                        }
+                                    }
                                 }
                                 "pop" => {
                                     if let Some(length) =
@@ -14772,6 +14911,26 @@ unsafe {
                                             *length -= 1;
                                         } else {
                                             self.exact_list_lengths.remove(owner_name);
+                                        }
+                                    }
+                                }
+                                "set" => {
+                                    if let Some(set_value) = args.get(1) {
+                                        if self.expr_is_provably_non_negative(&set_value.node) {
+                                            if let Some(upper_bound) =
+                                                self.expr_upper_bound_exclusive(&set_value.node)
+                                            {
+                                                self.list_element_upper_bounds
+                                                    .entry(owner_name.to_string())
+                                                    .and_modify(|current| {
+                                                        *current = (*current).max(upper_bound)
+                                                    })
+                                                    .or_insert(upper_bound);
+                                            } else {
+                                                self.list_element_upper_bounds.remove(owner_name);
+                                            }
+                                        } else {
+                                            self.list_element_upper_bounds.remove(owner_name);
                                         }
                                     }
                                 }
@@ -15694,14 +15853,28 @@ unsafe {
         }
 
         if let Some(Type::List(_)) = &deref_object_ty {
+            let index_provably_in_bounds = if let Expr::Ident(owner_name) = object {
+                self.exact_list_lengths
+                    .get(owner_name)
+                    .copied()
+                    .filter(|length| {
+                        index_provably_non_negative
+                            && self.expr_is_provably_below_exact_limit(index, *length)
+                    })
+            } else {
+                None
+            };
             let i64_type = self.context.i64_type();
             let (length, data_ptr, elem_ty) =
                 if let BasicValueEnum::StructValue(list_struct) = obj_val {
-                    let length = self
-                        .builder
-                        .build_extract_value(list_struct, 1, "list_len")
-                        .map_err(|_| CodegenError::new("Invalid list value for index access"))?
-                        .into_int_value();
+                    let length = if index_provably_in_bounds.is_some() {
+                        i64_type.const_zero()
+                    } else {
+                        self.builder
+                            .build_extract_value(list_struct, 1, "list_len")
+                            .map_err(|_| CodegenError::new("Invalid list value for index access"))?
+                            .into_int_value()
+                    };
                     let data_ptr = self
                         .builder
                         .build_extract_value(list_struct, 2, "list_data")
@@ -15752,11 +15925,14 @@ unsafe {
                                 CodegenError::new("failed to access list data pointer field")
                             })?
                     };
-                    let length = self
-                        .builder
-                        .build_load(i64_type, len_ptr, "list_len")
-                        .map_err(|_| CodegenError::new("failed to load list length"))?
-                        .into_int_value();
+                    let length = if index_provably_in_bounds.is_some() {
+                        i64_type.const_zero()
+                    } else {
+                        self.builder
+                            .build_load(i64_type, len_ptr, "list_len")
+                            .map_err(|_| CodegenError::new("failed to load list length"))?
+                            .into_int_value()
+                    };
                     let data_ptr = self
                         .builder
                         .build_load(
@@ -15775,59 +15951,49 @@ unsafe {
                     (length, data_ptr, elem_ty)
                 };
 
-            let in_bounds = self
-                .builder
-                .build_int_compare(IntPredicate::SLT, idx, length, "index_in_bounds")
-                .map_err(|_| CodegenError::new("failed to validate list index upper bound"))?;
-            let current_fn = self
-                .current_function
-                .ok_or_else(|| CodegenError::new("list index used outside function"))?;
-            let ok_bb = self.context.append_basic_block(current_fn, "index_ok");
-            let fail_bb = self.context.append_basic_block(current_fn, "index_fail");
-            if index_provably_non_negative {
-                self.builder
-                    .build_conditional_branch(in_bounds, ok_bb, fail_bb)
-                    .map_err(|_| {
-                        CodegenError::new("failed to branch for list index upper-bound check")
-                    })?;
-            } else {
-                let non_negative = self
+            if index_provably_in_bounds.is_none() {
+                let in_bounds = self
                     .builder
-                    .build_int_compare(
-                        IntPredicate::SGE,
-                        idx,
-                        i64_type.const_zero(),
-                        "index_non_negative",
-                    )
-                    .map_err(|_| CodegenError::new("failed to validate list index lower bound"))?;
-                let valid = self
-                    .builder
-                    .build_and(non_negative, in_bounds, "index_valid")
-                    .map_err(|_| CodegenError::new("failed to combine list index bounds"))?;
-                self.builder
-                    .build_conditional_branch(valid, ok_bb, fail_bb)
-                    .map_err(|_| CodegenError::new("failed to branch for list index bounds"))?;
+                    .build_int_compare(IntPredicate::SLT, idx, length, "index_in_bounds")
+                    .map_err(|_| CodegenError::new("failed to validate list index upper bound"))?;
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("list index used outside function"))?;
+                let ok_bb = self.context.append_basic_block(current_fn, "index_ok");
+                let fail_bb = self.context.append_basic_block(current_fn, "index_fail");
+                if index_provably_non_negative {
+                    self.builder
+                        .build_conditional_branch(in_bounds, ok_bb, fail_bb)
+                        .map_err(|_| {
+                            CodegenError::new("failed to branch for list index upper-bound check")
+                        })?;
+                } else {
+                    let non_negative = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::SGE,
+                            idx,
+                            i64_type.const_zero(),
+                            "index_non_negative",
+                        )
+                        .map_err(|_| {
+                            CodegenError::new("failed to validate list index lower bound")
+                        })?;
+                    let valid = self
+                        .builder
+                        .build_and(non_negative, in_bounds, "index_valid")
+                        .map_err(|_| CodegenError::new("failed to combine list index bounds"))?;
+                    self.builder
+                        .build_conditional_branch(valid, ok_bb, fail_bb)
+                        .map_err(|_| CodegenError::new("failed to branch for list index bounds"))?;
+                }
+
+                self.builder.position_at_end(fail_bb);
+                self.emit_runtime_error("List index out of bounds", "list_index_oob")?;
+
+                self.builder.position_at_end(ok_bb);
             }
-
-            self.builder.position_at_end(fail_bb);
-            self.emit_runtime_error("List index out of bounds", "list_index_oob")?;
-
-            self.builder.position_at_end(ok_bb);
-            let typed_data_ptr = self
-                .builder
-                .build_pointer_cast(
-                    data_ptr,
-                    self.context.ptr_type(AddressSpace::default()),
-                    "list_typed_data",
-                )
-                .map_err(|_| CodegenError::new("failed to cast list data pointer for indexing"))?;
-            let elem_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-                self.builder
-                    .build_gep(elem_ty, typed_data_ptr, &[idx], "elem")
-                    .map_err(|_| CodegenError::new("failed to access indexed list element"))?
-            };
+            let elem_ptr = self.build_indexed_element_ptr(data_ptr, elem_ty, idx, "list_index")?;
             return self
                 .builder
                 .build_load(elem_ty, elem_ptr, "load")

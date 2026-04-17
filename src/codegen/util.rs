@@ -2437,6 +2437,17 @@ unsafe {
 
                 // Prefer typed list element pointer for List<T> index assignment.
                 if let Some(Type::List(inner)) = deref_object_ty {
+                    let index_provably_in_bounds = if let Expr::Ident(owner_name) = &object.node {
+                        self.exact_list_lengths
+                            .get(owner_name)
+                            .copied()
+                            .filter(|length| {
+                                index_provably_non_negative
+                                    && self.expr_is_provably_below_exact_limit(&index.node, *length)
+                            })
+                    } else {
+                        None
+                    };
                     let elem_ty = self.llvm_type(&inner);
                     let list_type = self.context.struct_type(
                         &[
@@ -2452,28 +2463,30 @@ unsafe {
                     } else {
                         self.compile_expr(&object.node)?
                     };
-                    let (length, data_ptr) = if let BasicValueEnum::StructValue(list_struct) =
-                        obj_val
-                    {
-                        let length = self
-                            .builder
-                            .build_extract_value(list_struct, 1, "list_len")
-                            .map_err(|_| {
-                                CodegenError::new("Invalid list value for index assignment")
-                            })?
-                            .into_int_value();
-                        let data_ptr = self
-                            .builder
-                            .build_extract_value(list_struct, 2, "list_data")
-                            .map_err(|_| {
-                                CodegenError::new("Invalid list value for index assignment")
-                            })?
-                            .into_pointer_value();
-                        (length, data_ptr)
-                    } else {
-                        let list_ptr = obj_val.into_pointer_value();
-                        let i32_type = self.context.i32_type();
-                        let len_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
+                    let (length, data_ptr) =
+                        if let BasicValueEnum::StructValue(list_struct) = obj_val {
+                            let length = if index_provably_in_bounds.is_some() {
+                                self.context.i64_type().const_zero()
+                            } else {
+                                self.builder
+                                    .build_extract_value(list_struct, 1, "list_len")
+                                    .map_err(|_| {
+                                        CodegenError::new("Invalid list value for index assignment")
+                                    })?
+                                    .into_int_value()
+                            };
+                            let data_ptr = self
+                                .builder
+                                .build_extract_value(list_struct, 2, "list_data")
+                                .map_err(|_| {
+                                    CodegenError::new("Invalid list value for index assignment")
+                                })?
+                                .into_pointer_value();
+                            (length, data_ptr)
+                        } else {
+                            let list_ptr = obj_val.into_pointer_value();
+                            let i32_type = self.context.i32_type();
+                            let len_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
 // alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
 unsafe {
                             self.builder
@@ -2489,7 +2502,7 @@ unsafe {
                                     )
                                 })?
                         };
-                        let data_ptr_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
+                            let data_ptr_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
 // alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
 unsafe {
                             self.builder
@@ -2505,109 +2518,101 @@ unsafe {
                                     )
                                 })?
                         };
-                        let length = self
-                            .builder
-                            .build_load(self.context.i64_type(), len_ptr, "list_len")
-                            .map_err(|_| {
-                                CodegenError::new("failed to load list length for index assignment")
-                            })?
-                            .into_int_value();
-                        let data_ptr = self
-                            .builder
-                            .build_load(
-                                self.context.ptr_type(AddressSpace::default()),
-                                data_ptr_ptr,
-                                "list_data",
-                            )
-                            .map_err(|_| {
-                                CodegenError::new(
-                                    "failed to load list data pointer for index assignment",
+                            let length = if index_provably_in_bounds.is_some() {
+                                self.context.i64_type().const_zero()
+                            } else {
+                                self.builder
+                                    .build_load(self.context.i64_type(), len_ptr, "list_len")
+                                    .map_err(|_| {
+                                        CodegenError::new(
+                                            "failed to load list length for index assignment",
+                                        )
+                                    })?
+                                    .into_int_value()
+                            };
+                            let data_ptr = self
+                                .builder
+                                .build_load(
+                                    self.context.ptr_type(AddressSpace::default()),
+                                    data_ptr_ptr,
+                                    "list_data",
                                 )
-                            })?
-                            .into_pointer_value();
-                        (length, data_ptr)
-                    };
-                    let in_bounds = self
-                        .builder
-                        .build_int_compare(
-                            IntPredicate::SLT,
-                            idx_val,
-                            length,
-                            "list_assign_in_bounds",
-                        )
-                        .map_err(|_| {
-                            CodegenError::new("failed to check list assignment index bounds")
-                        })?;
-                    let current_fn = self.current_function.ok_or_else(|| {
-                        CodegenError::new("list assignment used outside function")
-                    })?;
-                    let ok_bb = self
-                        .context
-                        .append_basic_block(current_fn, "list_assign_ok");
-                    let fail_bb = self
-                        .context
-                        .append_basic_block(current_fn, "list_assign_fail");
-                    if index_provably_non_negative {
-                        self.builder
-                            .build_conditional_branch(in_bounds, ok_bb, fail_bb)
-                            .map_err(|_| {
-                                CodegenError::new(
-                                    "failed to branch for list assignment upper-bound check",
-                                )
-                            })?;
-                    } else {
-                        let non_negative = self
+                                .map_err(|_| {
+                                    CodegenError::new(
+                                        "failed to load list data pointer for index assignment",
+                                    )
+                                })?
+                                .into_pointer_value();
+                            (length, data_ptr)
+                        };
+                    if index_provably_in_bounds.is_none() {
+                        let in_bounds = self
                             .builder
                             .build_int_compare(
-                                IntPredicate::SGE,
+                                IntPredicate::SLT,
                                 idx_val,
-                                self.context.i64_type().const_zero(),
-                                "list_assign_non_negative",
+                                length,
+                                "list_assign_in_bounds",
                             )
                             .map_err(|_| {
-                                CodegenError::new("failed to check list assignment index sign")
+                                CodegenError::new("failed to check list assignment index bounds")
                             })?;
-                        let valid = self
-                            .builder
-                            .build_and(non_negative, in_bounds, "list_assign_valid")
-                            .map_err(|_| {
-                                CodegenError::new("failed to combine list assignment index checks")
-                            })?;
-                        self.builder
-                            .build_conditional_branch(valid, ok_bb, fail_bb)
-                            .map_err(|_| {
-                                CodegenError::new(
-                                    "failed to branch for list assignment bounds check",
-                                )
-                            })?;
-                    }
-
-                    self.builder.position_at_end(fail_bb);
-                    self.emit_runtime_error(
-                        "List assignment index out of bounds",
-                        "list_assign_index_oob",
-                    )?;
-
-                    self.builder.position_at_end(ok_bb);
-                    let typed_data_ptr = self
-                        .builder
-                        .build_pointer_cast(
-                            data_ptr,
-                            self.context.ptr_type(AddressSpace::default()),
-                            "list_data_typed",
-                        )
-                        .map_err(|_| {
-                            CodegenError::new("failed to cast list data pointer for assignment")
+                        let current_fn = self.current_function.ok_or_else(|| {
+                            CodegenError::new("list assignment used outside function")
                         })?;
-                    let elem_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-                        self.builder
-                            .build_gep(elem_ty, typed_data_ptr, &[idx_val], "idx_elem_ptr")
-                            .map_err(|_| {
-                                CodegenError::new("failed to compute indexed list element pointer")
-                            })?
-                    };
+                        let ok_bb = self
+                            .context
+                            .append_basic_block(current_fn, "list_assign_ok");
+                        let fail_bb = self
+                            .context
+                            .append_basic_block(current_fn, "list_assign_fail");
+                        if index_provably_non_negative {
+                            self.builder
+                                .build_conditional_branch(in_bounds, ok_bb, fail_bb)
+                                .map_err(|_| {
+                                    CodegenError::new(
+                                        "failed to branch for list assignment upper-bound check",
+                                    )
+                                })?;
+                        } else {
+                            let non_negative = self
+                                .builder
+                                .build_int_compare(
+                                    IntPredicate::SGE,
+                                    idx_val,
+                                    self.context.i64_type().const_zero(),
+                                    "list_assign_non_negative",
+                                )
+                                .map_err(|_| {
+                                    CodegenError::new("failed to check list assignment index sign")
+                                })?;
+                            let valid = self
+                                .builder
+                                .build_and(non_negative, in_bounds, "list_assign_valid")
+                                .map_err(|_| {
+                                    CodegenError::new(
+                                        "failed to combine list assignment index checks",
+                                    )
+                                })?;
+                            self.builder
+                                .build_conditional_branch(valid, ok_bb, fail_bb)
+                                .map_err(|_| {
+                                    CodegenError::new(
+                                        "failed to branch for list assignment bounds check",
+                                    )
+                                })?;
+                        }
+
+                        self.builder.position_at_end(fail_bb);
+                        self.emit_runtime_error(
+                            "List assignment index out of bounds",
+                            "list_assign_index_oob",
+                        )?;
+
+                        self.builder.position_at_end(ok_bb);
+                    }
+                    let elem_ptr =
+                        self.build_indexed_element_ptr(data_ptr, elem_ty, idx_val, "list_assign")?;
                     return Ok(elem_ptr);
                 }
                 Err(CodegenError::new(
