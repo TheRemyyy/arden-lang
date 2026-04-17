@@ -3546,6 +3546,10 @@ unsafe {
         pass_options.set_loop_vectorization(true);
         pass_options.set_loop_slp_vectorization(true);
         pass_options.set_loop_unrolling(true);
+        pass_options.set_forget_all_scev_in_loop_unroll(true);
+        pass_options.set_licm_mssa_opt_cap(u32::MAX);
+        pass_options.set_licm_mssa_no_acc_for_promotion_cap(u32::MAX);
+        pass_options.set_call_graph_profile(true);
         pass_options.set_merge_functions(true);
 
         module
