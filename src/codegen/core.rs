@@ -543,6 +543,12 @@ struct GenericRewriteOutputs<'a> {
 
 type CountedPushLoopInfo = (String, i64, HashSet<String>, HashMap<String, i64>);
 
+#[derive(Clone, Copy, Default)]
+struct BinaryCodegenOptions {
+    skip_nonzero_divisor_guard: bool,
+    skip_signed_division_overflow_guard: bool,
+}
+
 /// Code generator
 pub struct Codegen<'ctx> {
     pub context: &'ctx Context,
@@ -13526,57 +13532,67 @@ unsafe {
 
     fn expr_is_provably_positive_in_scope(
         expr: &Expr,
+        exact_integer_locals: &HashMap<String, i64>,
         non_negative_names: &HashSet<String>,
         call_non_negative: &HashSet<String>,
     ) -> bool {
         matches!(
             TypeChecker::eval_numeric_const_expr(expr),
             Some(NumericConst::Integer(value)) if value > 0
-        ) || match expr {
-            Expr::Binary {
-                op: BinOp::Add,
-                left,
-                right,
-            } => {
-                Self::expr_is_provably_positive_in_scope(
-                    &left.node,
-                    non_negative_names,
-                    call_non_negative,
-                ) && Self::expr_is_provably_non_negative_in_scope(
-                    &right.node,
-                    non_negative_names,
-                    call_non_negative,
-                ) || Self::expr_is_provably_non_negative_in_scope(
-                    &left.node,
-                    non_negative_names,
-                    call_non_negative,
-                ) && Self::expr_is_provably_positive_in_scope(
-                    &right.node,
-                    non_negative_names,
-                    call_non_negative,
-                )
+        ) || Self::exact_integer_value_in_scope(expr, exact_integer_locals)
+            .is_some_and(|value| value > 0)
+            || match expr {
+                Expr::Binary {
+                    op: BinOp::Add,
+                    left,
+                    right,
+                } => {
+                    Self::expr_is_provably_positive_in_scope(
+                        &left.node,
+                        exact_integer_locals,
+                        non_negative_names,
+                        call_non_negative,
+                    ) && Self::expr_is_provably_non_negative_in_scope(
+                        &right.node,
+                        exact_integer_locals,
+                        non_negative_names,
+                        call_non_negative,
+                    ) || Self::expr_is_provably_non_negative_in_scope(
+                        &left.node,
+                        exact_integer_locals,
+                        non_negative_names,
+                        call_non_negative,
+                    ) && Self::expr_is_provably_positive_in_scope(
+                        &right.node,
+                        exact_integer_locals,
+                        non_negative_names,
+                        call_non_negative,
+                    )
+                }
+                Expr::Binary {
+                    op: BinOp::Mul,
+                    left,
+                    right,
+                } => {
+                    Self::expr_is_provably_positive_in_scope(
+                        &left.node,
+                        exact_integer_locals,
+                        non_negative_names,
+                        call_non_negative,
+                    ) && Self::expr_is_provably_positive_in_scope(
+                        &right.node,
+                        exact_integer_locals,
+                        non_negative_names,
+                        call_non_negative,
+                    )
+                }
+                _ => false,
             }
-            Expr::Binary {
-                op: BinOp::Mul,
-                left,
-                right,
-            } => {
-                Self::expr_is_provably_positive_in_scope(
-                    &left.node,
-                    non_negative_names,
-                    call_non_negative,
-                ) && Self::expr_is_provably_positive_in_scope(
-                    &right.node,
-                    non_negative_names,
-                    call_non_negative,
-                )
-            }
-            _ => false,
-        }
     }
 
     fn expr_is_provably_non_negative_in_scope(
         expr: &Expr,
+        exact_integer_locals: &HashMap<String, i64>,
         non_negative_names: &HashSet<String>,
         call_non_negative: &HashSet<String>,
     ) -> bool {
@@ -13593,10 +13609,12 @@ unsafe {
                 BinOp::Add | BinOp::Mul => {
                     Self::expr_is_provably_non_negative_in_scope(
                         &left.node,
+                        exact_integer_locals,
                         non_negative_names,
                         call_non_negative,
                     ) && Self::expr_is_provably_non_negative_in_scope(
                         &right.node,
+                        exact_integer_locals,
                         non_negative_names,
                         call_non_negative,
                     )
@@ -13604,6 +13622,7 @@ unsafe {
                 BinOp::Sub => {
                     Self::expr_is_provably_non_negative_in_scope(
                         &left.node,
+                        exact_integer_locals,
                         non_negative_names,
                         call_non_negative,
                     ) && matches!(
@@ -13614,10 +13633,12 @@ unsafe {
                 BinOp::Div | BinOp::Mod => {
                     Self::expr_is_provably_non_negative_in_scope(
                         &left.node,
+                        exact_integer_locals,
                         non_negative_names,
                         call_non_negative,
                     ) && Self::expr_is_provably_positive_in_scope(
                         &right.node,
+                        exact_integer_locals,
                         non_negative_names,
                         call_non_negative,
                     )
@@ -13628,6 +13649,7 @@ unsafe {
                 Expr::Ident(name) if call_non_negative.contains(name) => args.iter().all(|arg| {
                     Self::expr_is_provably_non_negative_in_scope(
                         &arg.node,
+                        exact_integer_locals,
                         non_negative_names,
                         call_non_negative,
                     )
@@ -13641,6 +13663,7 @@ unsafe {
     fn expr_is_provably_non_negative(&self, expr: &Expr) -> bool {
         Self::expr_is_provably_non_negative_in_scope(
             expr,
+            &self.exact_integer_locals,
             &self.non_negative_locals,
             &self.non_negative_functions,
         )
@@ -13648,6 +13671,7 @@ unsafe {
 
     fn expr_is_provably_non_zero_in_scope(
         expr: &Expr,
+        exact_integer_locals: &HashMap<String, i64>,
         non_negative_names: &HashSet<String>,
         non_zero_names: &HashSet<String>,
         call_non_negative: &HashSet<String>,
@@ -13656,16 +13680,28 @@ unsafe {
             TypeChecker::eval_numeric_const_expr(expr),
             Some(NumericConst::Integer(value)) if value != 0
         ) || matches!(expr, Expr::Ident(name) if non_zero_names.contains(name))
-            || Self::expr_is_provably_positive_in_scope(expr, non_negative_names, call_non_negative)
+            || Self::expr_is_provably_positive_in_scope(
+                expr,
+                exact_integer_locals,
+                non_negative_names,
+                call_non_negative,
+            )
     }
 
     fn expr_is_provably_non_zero(&self, expr: &Expr) -> bool {
         Self::expr_is_provably_non_zero_in_scope(
             expr,
+            &self.exact_integer_locals,
             &self.non_negative_locals,
             &self.non_zero_locals,
             &self.non_negative_functions,
         )
+    }
+
+    fn expr_is_provably_not_negative_one(&self, expr: &Expr) -> bool {
+        self.exact_integer_value(expr)
+            .is_some_and(|value| value != -1)
+            || self.expr_is_provably_non_negative(expr)
     }
 
     fn exact_integer_value_in_scope(
@@ -13777,6 +13813,7 @@ unsafe {
                 right,
             } if Self::expr_is_provably_non_negative_in_scope(
                 &left.node,
+                exact_integer_locals,
                 non_negative_names,
                 call_non_negative,
             ) =>
@@ -14030,6 +14067,7 @@ unsafe {
 
         Self::expr_is_provably_non_negative_in_scope(
             return_expr,
+            &HashMap::new(),
             &non_negative_params,
             &HashSet::new(),
         )
@@ -14219,13 +14257,15 @@ unsafe {
         self.ensure_binary_operator_supported(op, &left_ty, &right_ty)?;
         let lhs = self.compile_expr_with_expected_type(left, &left_ty)?;
         let rhs = self.compile_expr_with_expected_type(right, &right_ty)?;
+        let skip_signed_division_overflow_guard = matches!(op, BinOp::Div | BinOp::Mod)
+            && (self.expr_is_provably_non_negative(left)
+                || self.expr_is_provably_not_negative_one(right));
+        let options = BinaryCodegenOptions {
+            skip_nonzero_divisor_guard: self.expr_is_provably_non_zero(right),
+            skip_signed_division_overflow_guard,
+        };
         self.compile_binary_values_unchecked_with_options(
-            op,
-            lhs,
-            rhs,
-            &left_ty,
-            &right_ty,
-            self.expr_is_provably_non_zero(right),
+            op, lhs, rhs, &left_ty, &right_ty, options,
         )
     }
 
@@ -14238,7 +14278,14 @@ unsafe {
         right_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
         self.ensure_binary_operator_supported(op, left_ty, right_ty)?;
-        self.compile_binary_values_unchecked_with_options(op, lhs, rhs, left_ty, right_ty, false)
+        self.compile_binary_values_unchecked_with_options(
+            op,
+            lhs,
+            rhs,
+            left_ty,
+            right_ty,
+            BinaryCodegenOptions::default(),
+        )
     }
 
     fn compile_binary_values_unchecked_with_options(
@@ -14248,7 +14295,7 @@ unsafe {
         rhs: BasicValueEnum<'ctx>,
         left_ty: &Type,
         right_ty: &Type,
-        skip_nonzero_divisor_guard: bool,
+        options: BinaryCodegenOptions,
     ) -> Result<BasicValueEnum<'ctx>> {
         if left_ty.is_numeric()
             && right_ty.is_numeric()
@@ -14345,7 +14392,7 @@ unsafe {
                 } else {
                     ("Integer modulo by zero", "int_mod_zero")
                 };
-                if !skip_nonzero_divisor_guard {
+                if !options.skip_nonzero_divisor_guard {
                     self.guard_nonzero_integer_divisor(r, message, global_name)?;
                 }
                 let (overflow_message, overflow_prefix) = if matches!(op, BinOp::Div) {
@@ -14353,7 +14400,9 @@ unsafe {
                 } else {
                     ("Integer modulo overflow", "int_mod_overflow")
                 };
-                self.guard_signed_division_overflow(l, r, overflow_message, overflow_prefix)?;
+                if !options.skip_signed_division_overflow_guard {
+                    self.guard_signed_division_overflow(l, r, overflow_message, overflow_prefix)?;
+                }
             }
 
             let result = match op {

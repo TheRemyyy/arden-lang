@@ -3696,15 +3696,6 @@ unsafe {
                             && self.expr_is_provably_below_exact_limit(&args[0].node, *length)
                     })
                 });
-                #[cfg(debug_assertions)]
-                if matches!(owner_name, Some("values") | Some("indices") | Some("scratch")) {
-                    eprintln!(
-                        "list_ptr_get owner={owner_name:?} in_bounds={:?} nonneg={} arg={:?}",
-                        index_provably_in_bounds,
-                        index_provably_non_negative,
-                        &args[0].node
-                    );
-                }
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("List.get used outside function"))?;
@@ -3830,15 +3821,6 @@ unsafe {
                             && self.expr_is_provably_below_exact_limit(&args[0].node, *length)
                     })
                 });
-                #[cfg(debug_assertions)]
-                if matches!(owner_name, Some("values") | Some("indices") | Some("scratch")) {
-                    eprintln!(
-                        "list_ptr_set owner={owner_name:?} in_bounds={:?} nonneg={} arg={:?}",
-                        index_provably_in_bounds,
-                        index_provably_non_negative,
-                        &args[0].node
-                    );
-                }
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("List.set used outside function"))?;
