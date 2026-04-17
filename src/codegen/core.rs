@@ -17,8 +17,8 @@ use inkwell::module::{Linkage, Module};
 
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, GlobalValue, IntValue, PointerValue,
-    ValueKind,
+    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, GlobalValue, InstructionValue, IntValue,
+    MetadataValue, PointerValue, ValueKind,
 };
 use inkwell::{AddressSpace, AtomicOrdering, FloatPredicate, IntPredicate};
 use std::collections::{HashMap, HashSet};
@@ -561,6 +561,8 @@ pub struct Codegen<'ctx> {
     pub(crate) upper_bound_locals: HashMap<String, i64>,
     pub(crate) exact_list_lengths: HashMap<String, i64>,
     pub(crate) list_element_upper_bounds: HashMap<String, i64>,
+    pub(crate) distinct_list_alloc_ids: HashMap<String, u64>,
+    next_distinct_list_alloc_id: u64,
     pub functions: HashMap<String, (FunctionValue<'ctx>, Type)>,
     pub(crate) non_negative_functions: HashSet<String>,
     pub function_param_modes: HashMap<String, Vec<ParamMode>>,
@@ -6870,6 +6872,8 @@ impl<'ctx> Codegen<'ctx> {
             upper_bound_locals: HashMap::new(),
             exact_list_lengths: HashMap::new(),
             list_element_upper_bounds: HashMap::new(),
+            distinct_list_alloc_ids: HashMap::new(),
+            next_distinct_list_alloc_id: 1,
             functions: HashMap::new(),
             non_negative_functions: HashSet::new(),
             function_param_modes: HashMap::new(),
@@ -9545,6 +9549,7 @@ impl<'ctx> Codegen<'ctx> {
         self.upper_bound_locals.clear();
         self.exact_list_lengths.clear();
         self.list_element_upper_bounds.clear();
+        self.distinct_list_alloc_ids.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&class.generic_params);
 
@@ -9658,6 +9663,7 @@ impl<'ctx> Codegen<'ctx> {
         self.upper_bound_locals.clear();
         self.exact_list_lengths.clear();
         self.list_element_upper_bounds.clear();
+        self.distinct_list_alloc_ids.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&class.generic_params);
         self.extend_current_generic_bounds(&method.generic_params);
@@ -10451,6 +10457,7 @@ unsafe {
         self.upper_bound_locals.clear();
         self.exact_list_lengths.clear();
         self.list_element_upper_bounds.clear();
+        self.distinct_list_alloc_ids.clear();
         self.loop_stack.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&func.generic_params);
@@ -10644,6 +10651,7 @@ unsafe {
                     },
                 );
                 self.update_binding_non_negative_fact(name, ty, &value.node);
+                self.update_binding_list_alias_fact(name, ty, &value.node);
                 if self.expr_creates_empty_list(&value.node, ty) {
                     self.exact_list_lengths.insert(name.clone(), 0);
                     self.list_element_upper_bounds.remove(name);
@@ -10706,6 +10714,7 @@ unsafe {
                         })?;
                         if let Expr::Ident(name) = &target.node {
                             self.update_binding_non_negative_fact(name, &target_ty, &value.node);
+                            self.update_binding_list_alias_fact(name, &target_ty, &value.node);
                             self.exact_list_lengths.remove(name);
                             self.list_element_upper_bounds.remove(name);
                         }
@@ -10816,6 +10825,7 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to store assignment value"))?;
                 if let Expr::Ident(name) = &target.node {
                     self.update_binding_non_negative_fact(name, &target_ty, &value.node);
+                    self.update_binding_list_alias_fact(name, &target_ty, &value.node);
                     if self.expr_creates_empty_list(&value.node, &target_ty) {
                         self.exact_list_lengths.insert(name.clone(), 0);
                         self.list_element_upper_bounds.remove(name);
@@ -12441,6 +12451,7 @@ unsafe {
             let saved_upper_bound_locals = self.upper_bound_locals.clone();
             let saved_exact_list_lengths = self.exact_list_lengths.clone();
             let saved_list_element_upper_bounds = self.list_element_upper_bounds.clone();
+            let saved_distinct_list_alloc_ids = self.distinct_list_alloc_ids.clone();
 
             self.current_function = Some(wrapper_fn);
             self.current_return_type = Some(function_ty.clone());
@@ -12451,6 +12462,7 @@ unsafe {
             self.upper_bound_locals.clear();
             self.exact_list_lengths.clear();
             self.list_element_upper_bounds.clear();
+            self.distinct_list_alloc_ids.clear();
 
             let entry = self.context.append_basic_block(wrapper_fn, "entry");
             self.builder.position_at_end(entry);
@@ -12566,6 +12578,7 @@ unsafe {
             self.upper_bound_locals = saved_upper_bound_locals;
             self.exact_list_lengths = saved_exact_list_lengths;
             self.list_element_upper_bounds = saved_list_element_upper_bounds;
+            self.distinct_list_alloc_ids = saved_distinct_list_alloc_ids;
             if let Some(block) = saved_insert_block {
                 self.builder.position_at_end(block);
             }
@@ -13269,6 +13282,7 @@ unsafe {
         let saved_upper_bound_locals = self.upper_bound_locals.clone();
         let saved_exact_list_lengths = self.exact_list_lengths.clone();
         let saved_list_element_upper_bounds = self.list_element_upper_bounds.clone();
+        let saved_distinct_list_alloc_ids = self.distinct_list_alloc_ids.clone();
         let result = f(self);
         self.variables = saved_variables;
         self.non_negative_locals = saved_non_negative_locals;
@@ -13277,6 +13291,7 @@ unsafe {
         self.upper_bound_locals = saved_upper_bound_locals;
         self.exact_list_lengths = saved_exact_list_lengths;
         self.list_element_upper_bounds = saved_list_element_upper_bounds;
+        self.distinct_list_alloc_ids = saved_distinct_list_alloc_ids;
         result
     }
 
@@ -14009,6 +14024,115 @@ unsafe {
             self.exact_integer_locals.remove(name);
             self.upper_bound_locals.remove(name);
         }
+    }
+
+    fn next_distinct_list_alloc_id(&mut self) -> u64 {
+        let id = self.next_distinct_list_alloc_id;
+        self.next_distinct_list_alloc_id = self.next_distinct_list_alloc_id.saturating_add(1);
+        id
+    }
+
+    fn update_binding_list_alias_fact(&mut self, name: &str, ty: &Type, value: &Expr) {
+        if !matches!(self.deref_codegen_type(ty), Type::List(_)) {
+            self.distinct_list_alloc_ids.remove(name);
+            return;
+        }
+
+        if self.expr_creates_empty_list(value, ty) {
+            let alloc_id = self.next_distinct_list_alloc_id();
+            self.distinct_list_alloc_ids
+                .insert(name.to_string(), alloc_id);
+            return;
+        }
+
+        if let Expr::Ident(source_name) = value {
+            if let Some(existing_id) = self.distinct_list_alloc_ids.get(source_name).copied() {
+                self.distinct_list_alloc_ids
+                    .insert(name.to_string(), existing_id);
+                return;
+            }
+        }
+
+        self.distinct_list_alloc_ids.remove(name);
+    }
+
+    fn list_alias_domain_metadata(&self) -> Result<MetadataValue<'ctx>> {
+        let function_name = self
+            .current_function
+            .map(|function| function.get_name().to_string_lossy().into_owned())
+            .unwrap_or_else(|| "global".to_string());
+        Ok(self.context.metadata_node(&[self
+            .context
+            .metadata_string(&format!("arden.list.domain.{function_name}"))
+            .into()]))
+    }
+
+    fn list_alias_scope_metadata(
+        &self,
+        owner_name: &str,
+        alloc_id: u64,
+    ) -> Result<MetadataValue<'ctx>> {
+        let domain = self.list_alias_domain_metadata()?;
+        Ok(self.context.metadata_node(&[
+            self.context
+                .metadata_string(&format!("arden.list.scope.{owner_name}.{alloc_id}"))
+                .into(),
+            domain.into(),
+        ]))
+    }
+
+    fn list_alias_scope_list_metadata(
+        &self,
+        scopes: impl IntoIterator<Item = MetadataValue<'ctx>>,
+    ) -> MetadataValue<'ctx> {
+        let values = scopes.into_iter().map(Into::into).collect::<Vec<_>>();
+        self.context.metadata_node(&values)
+    }
+
+    fn list_alias_metadata_for_owner(
+        &self,
+        owner_name: &str,
+    ) -> Result<Option<(MetadataValue<'ctx>, MetadataValue<'ctx>)>> {
+        let Some(owner_alloc_id) = self.distinct_list_alloc_ids.get(owner_name).copied() else {
+            return Ok(None);
+        };
+
+        let mut disjoint_scopes = Vec::new();
+        for (other_name, other_alloc_id) in &self.distinct_list_alloc_ids {
+            if other_name != owner_name && *other_alloc_id != owner_alloc_id {
+                disjoint_scopes.push(self.list_alias_scope_metadata(other_name, *other_alloc_id)?);
+            }
+        }
+        if disjoint_scopes.is_empty() {
+            return Ok(None);
+        }
+
+        let owner_scope = self.list_alias_scope_metadata(owner_name, owner_alloc_id)?;
+        Ok(Some((
+            self.list_alias_scope_list_metadata([owner_scope]),
+            self.list_alias_scope_list_metadata(disjoint_scopes),
+        )))
+    }
+
+    pub(crate) fn apply_list_alias_metadata(
+        &self,
+        instruction: InstructionValue<'ctx>,
+        owner_name: Option<&str>,
+    ) -> Result<()> {
+        let Some(owner_name) = owner_name else {
+            return Ok(());
+        };
+        let Some((alias_scope, noalias)) = self.list_alias_metadata_for_owner(owner_name)? else {
+            return Ok(());
+        };
+
+        instruction
+            .set_metadata(alias_scope, self.context.get_kind_id("alias.scope"))
+            .map_err(|_| CodegenError::new("failed to attach alias.scope metadata"))?;
+        instruction
+            .set_metadata(noalias, self.context.get_kind_id("noalias"))
+            .map_err(|_| CodegenError::new("failed to attach noalias metadata"))?;
+        Ok(())
     }
 
     fn list_element_upper_bound_from_index_like_expr(&self, expr: &Expr) -> Option<i64> {

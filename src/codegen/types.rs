@@ -4,7 +4,7 @@ use inkwell::targets::{
     CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
 };
 use inkwell::types::{BasicType, BasicTypeEnum};
-use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
+use inkwell::values::{BasicValue, BasicValueEnum, IntValue, PointerValue};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -3793,6 +3793,9 @@ unsafe {
                     .builder
                     .build_load(elem_llvm_ty, typed_elem_ptr, "val")
                     .map_err(|_| CodegenError::new("failed to load List pointer get value"))?;
+                if let Some(instruction) = val.as_instruction_value() {
+                    self.apply_list_alias_metadata(instruction, owner_name)?;
+                }
                 Ok(val)
             }
             "set" => {
@@ -3922,9 +3925,11 @@ unsafe {
                 let actual_value_ty = self.infer_expr_type(&args[1].node, &[]);
                 let value = self.compile_expr_with_expected_type(&args[1].node, inner_ty)?;
                 self.reject_incompatible_expected_type_value(inner_ty, &actual_value_ty, value)?;
-                self.builder
+                let store = self
+                    .builder
                     .build_store(typed_elem_ptr, value)
                     .map_err(|_| CodegenError::new("failed to store List pointer set value"))?;
+                self.apply_list_alias_metadata(store, owner_name)?;
 
                 Ok(self.context.i8_type().const_int(0, false).into())
             }
