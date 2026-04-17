@@ -1,6 +1,122 @@
 use super::*;
 
 impl<'ctx> Codegen<'ctx> {
+    fn collect_direct_local_list_push_targets_for_loop(body: &Block) -> HashSet<String> {
+        let mut pushed_lists = HashSet::new();
+        for stmt in body {
+            let Stmt::Expr(expr) = &stmt.node else {
+                continue;
+            };
+            let Expr::Call { callee, .. } = &expr.node else {
+                continue;
+            };
+            let Expr::Field { object, field } = &callee.node else {
+                continue;
+            };
+            if field != "push" {
+                continue;
+            }
+            let Expr::Ident(name) = &object.node else {
+                continue;
+            };
+            pushed_lists.insert(name.clone());
+        }
+        pushed_lists
+    }
+
+    fn reserve_capacity_for_push_only_for_loop(
+        &mut self,
+        iterable: &Expr,
+        body: &Block,
+    ) -> Result<()> {
+        let (requested_capacity, exact_capacity) = match iterable {
+            Expr::Range {
+                start,
+                end: Some(end),
+                inclusive,
+            } => {
+                if start.as_ref().is_some_and(|start| {
+                    self.exact_integer_value(&start.node).is_none_or(|v| v != 0)
+                }) {
+                    return Ok(());
+                }
+                if !matches!(self.infer_builtin_argument_type(&end.node), Type::Integer) {
+                    return Ok(());
+                }
+                if !self.expr_is_provably_non_negative(&end.node) {
+                    return Ok(());
+                }
+                let exact_capacity = self
+                    .exact_integer_value(&end.node)
+                    .and_then(|end_value| end_value.checked_add(if *inclusive { 1 } else { 0 }));
+                let end_value = self.compile_expr_with_expected_type(&end.node, &Type::Integer)?;
+                if *inclusive {
+                    (
+                        self.builder
+                            .build_int_add(
+                                end_value.into_int_value(),
+                                self.context.i64_type().const_int(1, false),
+                                "for_loop_reserve_inclusive",
+                            )
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to compute inclusive for-loop reserve capacity",
+                                )
+                            })?,
+                        exact_capacity,
+                    )
+                } else {
+                    (end_value.into_int_value(), exact_capacity)
+                }
+            }
+            Expr::Range {
+                start: None,
+                end: None,
+                ..
+            } => return Ok(()),
+            Expr::Range {
+                start: Some(_),
+                end: None,
+                ..
+            } => return Ok(()),
+            _ => {
+                if !matches!(self.infer_builtin_argument_type(iterable), Type::Integer) {
+                    return Ok(());
+                }
+                if !self.expr_is_provably_non_negative(iterable) {
+                    return Ok(());
+                }
+                (
+                    self.compile_expr_with_expected_type(iterable, &Type::Integer)?
+                        .into_int_value(),
+                    self.exact_integer_value(iterable),
+                )
+            }
+        };
+
+        let pushed_lists = Self::collect_direct_local_list_push_targets_for_loop(body);
+        if pushed_lists.is_empty() {
+            return Ok(());
+        }
+
+        for list_name in pushed_lists {
+            let Some(variable) = self.variables.get(&list_name).cloned() else {
+                continue;
+            };
+            if !matches!(self.deref_codegen_type(&variable.ty), Type::List(_)) {
+                continue;
+            }
+            self.ensure_list_capacity_ptr(variable.ptr, &variable.ty, requested_capacity)?;
+            if let Some(exact_capacity) = exact_capacity {
+                self.exact_list_capacities
+                    .insert(list_name.clone(), exact_capacity);
+            } else {
+                self.exact_list_capacities.remove(&list_name);
+            }
+        }
+        Ok(())
+    }
+
     pub fn compile_for(
         &mut self,
         var: &str,
@@ -14,6 +130,8 @@ impl<'ctx> Codegen<'ctx> {
             .ok_or_else(|| CodegenError::new("for loop used outside function"))?;
         let iterable_ty = self.infer_builtin_argument_type(&iterable.node);
         let deref_iterable_ty = self.deref_codegen_type(&iterable_ty).clone();
+
+        self.reserve_capacity_for_push_only_for_loop(&iterable.node, body)?;
 
         if let Type::List(inner) = deref_iterable_ty.clone() {
             let iter_ty = var_type.cloned().unwrap_or((*inner).clone());

@@ -560,6 +560,7 @@ pub struct Codegen<'ctx> {
     pub(crate) exact_integer_locals: HashMap<String, i64>,
     pub(crate) upper_bound_locals: HashMap<String, i64>,
     pub(crate) exact_list_lengths: HashMap<String, i64>,
+    pub(crate) exact_list_capacities: HashMap<String, i64>,
     pub(crate) list_element_upper_bounds: HashMap<String, i64>,
     pub(crate) distinct_list_alloc_ids: HashMap<String, u64>,
     next_distinct_list_alloc_id: u64,
@@ -6871,6 +6872,7 @@ impl<'ctx> Codegen<'ctx> {
             exact_integer_locals: HashMap::new(),
             upper_bound_locals: HashMap::new(),
             exact_list_lengths: HashMap::new(),
+            exact_list_capacities: HashMap::new(),
             list_element_upper_bounds: HashMap::new(),
             distinct_list_alloc_ids: HashMap::new(),
             next_distinct_list_alloc_id: 1,
@@ -9548,6 +9550,7 @@ impl<'ctx> Codegen<'ctx> {
         self.exact_integer_locals.clear();
         self.upper_bound_locals.clear();
         self.exact_list_lengths.clear();
+        self.exact_list_capacities.clear();
         self.list_element_upper_bounds.clear();
         self.distinct_list_alloc_ids.clear();
         self.reset_current_generic_bounds();
@@ -9662,6 +9665,7 @@ impl<'ctx> Codegen<'ctx> {
         self.exact_integer_locals.clear();
         self.upper_bound_locals.clear();
         self.exact_list_lengths.clear();
+        self.exact_list_capacities.clear();
         self.list_element_upper_bounds.clear();
         self.distinct_list_alloc_ids.clear();
         self.reset_current_generic_bounds();
@@ -10456,6 +10460,7 @@ unsafe {
         self.exact_integer_locals.clear();
         self.upper_bound_locals.clear();
         self.exact_list_lengths.clear();
+        self.exact_list_capacities.clear();
         self.list_element_upper_bounds.clear();
         self.distinct_list_alloc_ids.clear();
         self.loop_stack.clear();
@@ -10654,6 +10659,7 @@ unsafe {
                 self.update_binding_list_alias_fact(name, ty, &value.node);
                 if self.expr_creates_empty_list(&value.node, ty) {
                     self.exact_list_lengths.insert(name.clone(), 0);
+                    self.exact_list_capacities.remove(name);
                     self.list_element_upper_bounds.remove(name);
                 } else if let Expr::Ident(source_name) = &value.node {
                     if matches!(self.deref_codegen_type(ty), Type::List(_)) {
@@ -10670,6 +10676,7 @@ unsafe {
                     }
                 } else {
                     self.exact_list_lengths.remove(name);
+                    self.exact_list_capacities.remove(name);
                     self.list_element_upper_bounds.remove(name);
                 }
                 CODEGEN_PHASE_TIMING_TOTALS
@@ -10716,6 +10723,7 @@ unsafe {
                             self.update_binding_non_negative_fact(name, &target_ty, &value.node);
                             self.update_binding_list_alias_fact(name, &target_ty, &value.node);
                             self.exact_list_lengths.remove(name);
+                            self.exact_list_capacities.remove(name);
                             self.list_element_upper_bounds.remove(name);
                         }
                         CODEGEN_PHASE_TIMING_TOTALS
@@ -10828,6 +10836,7 @@ unsafe {
                     self.update_binding_list_alias_fact(name, &target_ty, &value.node);
                     if self.expr_creates_empty_list(&value.node, &target_ty) {
                         self.exact_list_lengths.insert(name.clone(), 0);
+                        self.exact_list_capacities.remove(name);
                         self.list_element_upper_bounds.remove(name);
                     } else if let Expr::Ident(source_name) = &value.node {
                         if matches!(self.deref_codegen_type(&target_ty), Type::List(_)) {
@@ -10844,6 +10853,7 @@ unsafe {
                         }
                     } else {
                         self.exact_list_lengths.remove(name);
+                        self.exact_list_capacities.remove(name);
                         self.list_element_upper_bounds.remove(name);
                     }
                 }
@@ -11145,6 +11155,7 @@ unsafe {
         if pushed_lists.is_empty() {
             return Ok(());
         }
+        let exact_capacity = self.exact_integer_value(bound_expr);
 
         let requested_capacity = self
             .compile_expr_with_expected_type(bound_expr, &Type::Integer)?
@@ -11157,6 +11168,12 @@ unsafe {
                 continue;
             }
             self.ensure_list_capacity_ptr(variable.ptr, &variable.ty, requested_capacity)?;
+            if let Some(exact_capacity) = exact_capacity {
+                self.exact_list_capacities
+                    .insert(list_name.clone(), exact_capacity);
+            } else {
+                self.exact_list_capacities.remove(&list_name);
+            }
         }
         Ok(())
     }
@@ -12449,6 +12466,7 @@ unsafe {
             let saved_exact_integer_locals = self.exact_integer_locals.clone();
             let saved_upper_bound_locals = self.upper_bound_locals.clone();
             let saved_exact_list_lengths = self.exact_list_lengths.clone();
+            let saved_exact_list_capacities = self.exact_list_capacities.clone();
             let saved_list_element_upper_bounds = self.list_element_upper_bounds.clone();
             let saved_distinct_list_alloc_ids = self.distinct_list_alloc_ids.clone();
 
@@ -12460,6 +12478,7 @@ unsafe {
             self.exact_integer_locals.clear();
             self.upper_bound_locals.clear();
             self.exact_list_lengths.clear();
+            self.exact_list_capacities.clear();
             self.list_element_upper_bounds.clear();
             self.distinct_list_alloc_ids.clear();
 
@@ -12576,6 +12595,7 @@ unsafe {
             self.exact_integer_locals = saved_exact_integer_locals;
             self.upper_bound_locals = saved_upper_bound_locals;
             self.exact_list_lengths = saved_exact_list_lengths;
+            self.exact_list_capacities = saved_exact_list_capacities;
             self.list_element_upper_bounds = saved_list_element_upper_bounds;
             self.distinct_list_alloc_ids = saved_distinct_list_alloc_ids;
             if let Some(block) = saved_insert_block {
@@ -13280,6 +13300,7 @@ unsafe {
         let saved_exact_integer_locals = self.exact_integer_locals.clone();
         let saved_upper_bound_locals = self.upper_bound_locals.clone();
         let saved_exact_list_lengths = self.exact_list_lengths.clone();
+        let saved_exact_list_capacities = self.exact_list_capacities.clone();
         let saved_list_element_upper_bounds = self.list_element_upper_bounds.clone();
         let saved_distinct_list_alloc_ids = self.distinct_list_alloc_ids.clone();
         let result = f(self);
@@ -13289,6 +13310,7 @@ unsafe {
         self.exact_integer_locals = saved_exact_integer_locals;
         self.upper_bound_locals = saved_upper_bound_locals;
         self.exact_list_lengths = saved_exact_list_lengths;
+        self.exact_list_capacities = saved_exact_list_capacities;
         self.list_element_upper_bounds = saved_list_element_upper_bounds;
         self.distinct_list_alloc_ids = saved_distinct_list_alloc_ids;
         result
@@ -14380,6 +14402,30 @@ unsafe {
         self.ensure_binary_operator_supported(op, &left_ty, &right_ty)?;
         let lhs = self.compile_expr_with_expected_type(left, &left_ty)?;
         let rhs = self.compile_expr_with_expected_type(right, &right_ty)?;
+        if matches!(op, BinOp::Mod)
+            && matches!(left_ty, Type::Integer)
+            && matches!(right_ty, Type::Integer)
+            && self.expr_is_provably_non_negative(left)
+            && self
+                .exact_integer_value(right)
+                .is_some_and(|value| value > 0 && (value as u64).is_power_of_two())
+        {
+            let lhs = lhs.into_int_value();
+            let rhs = rhs.into_int_value();
+            let mask = self
+                .builder
+                .build_int_sub(
+                    rhs,
+                    self.context.i64_type().const_int(1, false),
+                    "pow2_mod_mask",
+                )
+                .map_err(|_| CodegenError::new("failed to compute power-of-two modulo mask"))?;
+            let reduced = self
+                .builder
+                .build_and(lhs, mask, "pow2_mod")
+                .map_err(|_| CodegenError::new("failed to emit power-of-two modulo"))?;
+            return Ok(reduced.into());
+        }
         let skip_signed_division_overflow_guard = matches!(op, BinOp::Div | BinOp::Mod)
             && (self.expr_is_provably_non_negative(left)
                 || self.expr_is_provably_not_negative_one(right));

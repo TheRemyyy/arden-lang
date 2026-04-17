@@ -3596,28 +3596,40 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to load List pointer length"))?
                     .into_int_value();
 
-                let need_grow = self
-                    .builder
-                    .build_int_compare(IntPredicate::SGE, length, capacity, "need_grow")
-                    .map_err(|_| CodegenError::new("failed to compare List pointer growth need"))?;
-                let function = self
-                    .current_function
-                    .ok_or_else(|| CodegenError::new("No current function for list push"))?;
-                let grow_bb = self.context.append_basic_block(function, "list_grow");
-                let cont_bb = self.context.append_basic_block(function, "list_push_cont");
-                self.builder
-                    .build_conditional_branch(need_grow, grow_bb, cont_bb)
-                    .map_err(|_| CodegenError::new("failed to branch for List pointer growth"))?;
+                let skip_growth_check = owner_name.is_some_and(|owner_name| {
+                    self.exact_list_lengths
+                        .get(owner_name)
+                        .zip(self.exact_list_capacities.get(owner_name))
+                        .is_some_and(|(length, capacity)| *length < *capacity)
+                });
+                if !skip_growth_check {
+                    let need_grow = self
+                        .builder
+                        .build_int_compare(IntPredicate::SGE, length, capacity, "need_grow")
+                        .map_err(|_| {
+                            CodegenError::new("failed to compare List pointer growth need")
+                        })?;
+                    let function = self
+                        .current_function
+                        .ok_or_else(|| CodegenError::new("No current function for list push"))?;
+                    let grow_bb = self.context.append_basic_block(function, "list_grow");
+                    let cont_bb = self.context.append_basic_block(function, "list_push_cont");
+                    self.builder
+                        .build_conditional_branch(need_grow, grow_bb, cont_bb)
+                        .map_err(|_| {
+                            CodegenError::new("failed to branch for List pointer growth")
+                        })?;
 
-                self.builder.position_at_end(grow_bb);
-                self.grow_list_data_with_copy(data_ptr_ptr, capacity_ptr, capacity, elem_size)?;
-                self.builder
-                    .build_unconditional_branch(cont_bb)
-                    .map_err(|_| {
-                        CodegenError::new("failed to continue List pointer push after growth")
-                    })?;
+                    self.builder.position_at_end(grow_bb);
+                    self.grow_list_data_with_copy(data_ptr_ptr, capacity_ptr, capacity, elem_size)?;
+                    self.builder
+                        .build_unconditional_branch(cont_bb)
+                        .map_err(|_| {
+                            CodegenError::new("failed to continue List pointer push after growth")
+                        })?;
 
-                self.builder.position_at_end(cont_bb);
+                    self.builder.position_at_end(cont_bb);
+                }
                 let data_ptr = self
                     .builder
                     .build_load(
