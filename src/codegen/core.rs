@@ -549,6 +549,9 @@ pub struct Codegen<'ctx> {
     pub variables: HashMap<String, Variable<'ctx>>,
     pub(crate) non_negative_locals: HashSet<String>,
     pub(crate) non_zero_locals: HashSet<String>,
+    pub(crate) exact_integer_locals: HashMap<String, i64>,
+    pub(crate) upper_bound_locals: HashMap<String, i64>,
+    pub(crate) exact_list_lengths: HashMap<String, i64>,
     pub functions: HashMap<String, (FunctionValue<'ctx>, Type)>,
     pub(crate) non_negative_functions: HashSet<String>,
     pub function_param_modes: HashMap<String, Vec<ParamMode>>,
@@ -6854,6 +6857,9 @@ impl<'ctx> Codegen<'ctx> {
             variables: HashMap::new(),
             non_negative_locals: HashSet::new(),
             non_zero_locals: HashSet::new(),
+            exact_integer_locals: HashMap::new(),
+            upper_bound_locals: HashMap::new(),
+            exact_list_lengths: HashMap::new(),
             functions: HashMap::new(),
             non_negative_functions: HashSet::new(),
             function_param_modes: HashMap::new(),
@@ -9525,6 +9531,9 @@ impl<'ctx> Codegen<'ctx> {
         self.variables.clear();
         self.non_negative_locals.clear();
         self.non_zero_locals.clear();
+        self.exact_integer_locals.clear();
+        self.upper_bound_locals.clear();
+        self.exact_list_lengths.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&class.generic_params);
 
@@ -9634,6 +9643,9 @@ impl<'ctx> Codegen<'ctx> {
         self.variables.clear();
         self.non_negative_locals.clear();
         self.non_zero_locals.clear();
+        self.exact_integer_locals.clear();
+        self.upper_bound_locals.clear();
+        self.exact_list_lengths.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&class.generic_params);
         self.extend_current_generic_bounds(&method.generic_params);
@@ -9812,6 +9824,11 @@ impl<'ctx> Codegen<'ctx> {
             .context
             .create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0);
         function.add_attribute(AttributeLoc::Function, no_unwind);
+
+        let must_progress = self
+            .context
+            .create_enum_attribute(Attribute::get_named_enum_kind_id("mustprogress"), 0);
+        function.add_attribute(AttributeLoc::Function, must_progress);
 
         // Function will return (no infinite loops in analyzed functions)
         let will_return = self
@@ -10418,6 +10435,9 @@ unsafe {
         self.variables.clear();
         self.non_negative_locals.clear();
         self.non_zero_locals.clear();
+        self.exact_integer_locals.clear();
+        self.upper_bound_locals.clear();
+        self.exact_list_lengths.clear();
         self.loop_stack.clear();
         self.reset_current_generic_bounds();
         self.extend_current_generic_bounds(&func.generic_params);
@@ -10611,6 +10631,11 @@ unsafe {
                     },
                 );
                 self.update_binding_non_negative_fact(name, ty, &value.node);
+                if self.expr_creates_empty_list(&value.node, ty) {
+                    self.exact_list_lengths.insert(name.clone(), 0);
+                } else {
+                    self.exact_list_lengths.remove(name);
+                }
                 CODEGEN_PHASE_TIMING_TOTALS
                     .body_stmt_let_ns
                     .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
@@ -10653,6 +10678,7 @@ unsafe {
                         })?;
                         if let Expr::Ident(name) = &target.node {
                             self.update_binding_non_negative_fact(name, &target_ty, &value.node);
+                            self.exact_list_lengths.remove(name);
                         }
                         CODEGEN_PHASE_TIMING_TOTALS
                             .body_stmt_assign_ns
@@ -10761,6 +10787,11 @@ unsafe {
                     .map_err(|_| CodegenError::new("failed to store assignment value"))?;
                 if let Expr::Ident(name) = &target.node {
                     self.update_binding_non_negative_fact(name, &target_ty, &value.node);
+                    if self.expr_creates_empty_list(&value.node, &target_ty) {
+                        self.exact_list_lengths.insert(name.clone(), 0);
+                    } else {
+                        self.exact_list_lengths.remove(name);
+                    }
                 }
                 CODEGEN_PHASE_TIMING_TOTALS
                     .body_stmt_assign_ns
@@ -10967,6 +10998,7 @@ unsafe {
             .current_function
             .ok_or_else(|| CodegenError::new("while loop used outside function"))?;
 
+        let counted_push_loop_info = self.analyze_counted_push_only_while_loop(&cond.node, body);
         self.reserve_capacity_for_push_only_while_loop(&cond.node, body)?;
 
         // LOOP ROTATION OPTIMIZATION:
@@ -11020,6 +11052,12 @@ unsafe {
             .map_err(|_| CodegenError::new("failed to branch on while loop condition"))?;
 
         self.builder.position_at_end(after_bb);
+        if let Some((counter_name, exact_bound, pushed_lists)) = counted_push_loop_info {
+            self.exact_integer_locals.insert(counter_name, exact_bound);
+            for list_name in pushed_lists {
+                self.exact_list_lengths.insert(list_name, exact_bound);
+            }
+        }
         Ok(())
     }
 
@@ -11075,6 +11113,20 @@ unsafe {
         }
     }
 
+    fn simple_while_loop_counter_name(condition: &Expr) -> Option<&str> {
+        match condition {
+            Expr::Binary {
+                op: BinOp::Lt,
+                left,
+                ..
+            } => match &left.node {
+                Expr::Ident(name) => Some(name.as_str()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     fn collect_direct_local_list_push_targets(body: &Block) -> HashSet<String> {
         let mut pushed_lists = HashSet::new();
         for stmt in body {
@@ -11096,6 +11148,78 @@ unsafe {
             pushed_lists.insert(name.clone());
         }
         pushed_lists
+    }
+
+    fn analyze_counted_push_only_while_loop(
+        &self,
+        condition: &Expr,
+        body: &Block,
+    ) -> Option<(String, i64, HashSet<String>)> {
+        let counter_name = Self::simple_while_loop_counter_name(condition)?.to_string();
+        let bound_expr = Self::simple_while_loop_upper_bound_expr(condition)?;
+        let exact_bound = self.exact_integer_value(bound_expr)?;
+        if exact_bound < 0 {
+            return None;
+        }
+        if self.exact_integer_locals.get(&counter_name).copied()? != 0 {
+            return None;
+        }
+
+        let mut pushed_lists = HashSet::new();
+        let mut saw_counter_increment = false;
+        for stmt in body {
+            match &stmt.node {
+                Stmt::Expr(expr) => {
+                    let Expr::Call { callee, .. } = &expr.node else {
+                        return None;
+                    };
+                    let Expr::Field { object, field } = &callee.node else {
+                        return None;
+                    };
+                    if field != "push" {
+                        return None;
+                    }
+                    let Expr::Ident(name) = &object.node else {
+                        return None;
+                    };
+                    if self.exact_list_lengths.get(name).copied()? != 0 {
+                        return None;
+                    }
+                    pushed_lists.insert(name.clone());
+                }
+                Stmt::Assign { target, value } => {
+                    let Expr::Ident(target_name) = &target.node else {
+                        return None;
+                    };
+                    if target_name != &counter_name {
+                        return None;
+                    }
+                    let Expr::Binary {
+                        op: BinOp::Add,
+                        left,
+                        right,
+                    } = &value.node
+                    else {
+                        return None;
+                    };
+                    if !matches!(&left.node, Expr::Ident(name) if name == &counter_name)
+                        || !matches!(
+                            TypeChecker::eval_numeric_const_expr(&right.node),
+                            Some(NumericConst::Integer(1))
+                        )
+                    {
+                        return None;
+                    }
+                    saw_counter_increment = true;
+                }
+                _ => return None,
+            }
+        }
+        (!pushed_lists.is_empty() && saw_counter_increment).then_some((
+            counter_name,
+            exact_bound,
+            pushed_lists,
+        ))
     }
 
     fn adapt_for_loop_binding_value(
@@ -11132,6 +11256,11 @@ unsafe {
             "unsupported for-loop binding conversion: {:?} -> {:?}",
             source_ty, target_ty
         )))
+    }
+
+    fn expr_creates_empty_list(&self, expr: &Expr, ty: &Type) -> bool {
+        matches!(self.deref_codegen_type(ty), Type::List(_))
+            && matches!(expr, Expr::Construct { args, .. } if args.is_empty())
     }
 
     fn encode_enum_payload(
@@ -12251,12 +12380,18 @@ unsafe {
             let saved_variables = self.variables.clone();
             let saved_non_negative_locals = self.non_negative_locals.clone();
             let saved_non_zero_locals = self.non_zero_locals.clone();
+            let saved_exact_integer_locals = self.exact_integer_locals.clone();
+            let saved_upper_bound_locals = self.upper_bound_locals.clone();
+            let saved_exact_list_lengths = self.exact_list_lengths.clone();
 
             self.current_function = Some(wrapper_fn);
             self.current_return_type = Some(function_ty.clone());
             self.variables.clear();
             self.non_negative_locals.clear();
             self.non_zero_locals.clear();
+            self.exact_integer_locals.clear();
+            self.upper_bound_locals.clear();
+            self.exact_list_lengths.clear();
 
             let entry = self.context.append_basic_block(wrapper_fn, "entry");
             self.builder.position_at_end(entry);
@@ -12368,6 +12503,9 @@ unsafe {
             self.variables = saved_variables;
             self.non_negative_locals = saved_non_negative_locals;
             self.non_zero_locals = saved_non_zero_locals;
+            self.exact_integer_locals = saved_exact_integer_locals;
+            self.upper_bound_locals = saved_upper_bound_locals;
+            self.exact_list_lengths = saved_exact_list_lengths;
             if let Some(block) = saved_insert_block {
                 self.builder.position_at_end(block);
             }
@@ -13067,10 +13205,16 @@ unsafe {
         let saved_variables = self.variables.clone();
         let saved_non_negative_locals = self.non_negative_locals.clone();
         let saved_non_zero_locals = self.non_zero_locals.clone();
+        let saved_exact_integer_locals = self.exact_integer_locals.clone();
+        let saved_upper_bound_locals = self.upper_bound_locals.clone();
+        let saved_exact_list_lengths = self.exact_list_lengths.clone();
         let result = f(self);
         self.variables = saved_variables;
         self.non_negative_locals = saved_non_negative_locals;
         self.non_zero_locals = saved_non_zero_locals;
+        self.exact_integer_locals = saved_exact_integer_locals;
+        self.upper_bound_locals = saved_upper_bound_locals;
+        self.exact_list_lengths = saved_exact_list_lengths;
         result
     }
 
@@ -13468,6 +13612,117 @@ unsafe {
         )
     }
 
+    fn exact_integer_value_in_scope(
+        expr: &Expr,
+        exact_integer_locals: &HashMap<String, i64>,
+    ) -> Option<i64> {
+        if let Some(NumericConst::Integer(value)) = TypeChecker::eval_numeric_const_expr(expr) {
+            return Some(value);
+        }
+
+        match expr {
+            Expr::Ident(name) => exact_integer_locals.get(name).copied(),
+            Expr::Binary { op, left, right } => {
+                let left_value =
+                    Self::exact_integer_value_in_scope(&left.node, exact_integer_locals)?;
+                let right_value =
+                    Self::exact_integer_value_in_scope(&right.node, exact_integer_locals)?;
+                match op {
+                    BinOp::Add => left_value.checked_add(right_value),
+                    BinOp::Sub => left_value.checked_sub(right_value),
+                    BinOp::Mul => left_value.checked_mul(right_value),
+                    BinOp::Div => (right_value != 0).then(|| left_value / right_value),
+                    BinOp::Mod => (right_value != 0).then(|| left_value % right_value),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn exact_integer_value(&self, expr: &Expr) -> Option<i64> {
+        Self::exact_integer_value_in_scope(expr, &self.exact_integer_locals)
+    }
+
+    fn expr_upper_bound_exclusive_in_scope(
+        expr: &Expr,
+        exact_integer_locals: &HashMap<String, i64>,
+        upper_bound_locals: &HashMap<String, i64>,
+    ) -> Option<i64> {
+        if let Some(exact) = Self::exact_integer_value_in_scope(expr, exact_integer_locals) {
+            return exact.checked_add(1);
+        }
+
+        match expr {
+            Expr::Ident(name) => upper_bound_locals.get(name).copied(),
+            Expr::Binary {
+                op: BinOp::Add,
+                left,
+                right,
+            } => {
+                let left_bound = Self::expr_upper_bound_exclusive_in_scope(
+                    &left.node,
+                    exact_integer_locals,
+                    upper_bound_locals,
+                )?;
+                let right_bound = Self::expr_upper_bound_exclusive_in_scope(
+                    &right.node,
+                    exact_integer_locals,
+                    upper_bound_locals,
+                )?;
+                left_bound.checked_add(right_bound)
+            }
+            Expr::Binary {
+                op: BinOp::Sub,
+                left,
+                right,
+            } => {
+                let left_bound = Self::expr_upper_bound_exclusive_in_scope(
+                    &left.node,
+                    exact_integer_locals,
+                    upper_bound_locals,
+                )?;
+                let right_exact =
+                    Self::exact_integer_value_in_scope(&right.node, exact_integer_locals)?;
+                left_bound.checked_sub(right_exact)
+            }
+            Expr::Binary {
+                op: BinOp::Mul,
+                left,
+                right,
+            } => {
+                let left_bound = Self::expr_upper_bound_exclusive_in_scope(
+                    &left.node,
+                    exact_integer_locals,
+                    upper_bound_locals,
+                )?;
+                let right_bound = Self::expr_upper_bound_exclusive_in_scope(
+                    &right.node,
+                    exact_integer_locals,
+                    upper_bound_locals,
+                )?;
+                left_bound.checked_mul(right_bound)
+            }
+            _ => None,
+        }
+    }
+
+    fn expr_upper_bound_exclusive(&self, expr: &Expr) -> Option<i64> {
+        Self::expr_upper_bound_exclusive_in_scope(
+            expr,
+            &self.exact_integer_locals,
+            &self.upper_bound_locals,
+        )
+    }
+
+    pub(crate) fn expr_is_provably_below_exact_limit(&self, expr: &Expr, exact_limit: i64) -> bool {
+        self.exact_integer_value(expr)
+            .is_some_and(|value| value < exact_limit)
+            || self
+                .expr_upper_bound_exclusive(expr)
+                .is_some_and(|bound| bound <= exact_limit)
+    }
+
     fn collect_condition_non_negative_facts(expr: &Expr, names: &mut HashSet<String>) {
         match expr {
             Expr::Binary {
@@ -13526,15 +13781,77 @@ unsafe {
         }
     }
 
+    fn collect_condition_upper_bound_facts(
+        expr: &Expr,
+        exact_integer_locals: &HashMap<String, i64>,
+        bounds: &mut HashMap<String, i64>,
+    ) {
+        match expr {
+            Expr::Binary {
+                op: BinOp::And,
+                left,
+                right,
+            } => {
+                Self::collect_condition_upper_bound_facts(&left.node, exact_integer_locals, bounds);
+                Self::collect_condition_upper_bound_facts(
+                    &right.node,
+                    exact_integer_locals,
+                    bounds,
+                );
+            }
+            Expr::Binary {
+                op: BinOp::Lt,
+                left,
+                right,
+            } => {
+                if let Expr::Ident(name) = &left.node {
+                    if let Some(bound) =
+                        Self::exact_integer_value_in_scope(&right.node, exact_integer_locals)
+                    {
+                        bounds
+                            .entry(name.clone())
+                            .and_modify(|current| *current = (*current).min(bound))
+                            .or_insert(bound);
+                    }
+                }
+            }
+            Expr::Binary {
+                op: BinOp::LtEq,
+                left,
+                right,
+            } => {
+                if let Expr::Ident(name) = &left.node {
+                    if let Some(bound) =
+                        Self::exact_integer_value_in_scope(&right.node, exact_integer_locals)
+                            .and_then(|value| value.checked_add(1))
+                    {
+                        bounds
+                            .entry(name.clone())
+                            .and_modify(|current| *current = (*current).min(bound))
+                            .or_insert(bound);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn with_condition_non_negative_facts<T>(
         &mut self,
         condition: &Expr,
         f: impl FnOnce(&mut Self) -> Result<T>,
     ) -> Result<T> {
-        let saved = self.non_negative_locals.clone();
+        let saved_non_negative_locals = self.non_negative_locals.clone();
+        let saved_upper_bound_locals = self.upper_bound_locals.clone();
         Self::collect_condition_non_negative_facts(condition, &mut self.non_negative_locals);
+        Self::collect_condition_upper_bound_facts(
+            condition,
+            &self.exact_integer_locals,
+            &mut self.upper_bound_locals,
+        );
         let result = f(self);
-        self.non_negative_locals = saved;
+        self.non_negative_locals = saved_non_negative_locals;
+        self.upper_bound_locals = saved_upper_bound_locals;
         result
     }
 
@@ -13551,9 +13868,18 @@ unsafe {
             } else {
                 self.non_zero_locals.remove(name);
             }
+            if let Some(exact_value) = self.exact_integer_value(value) {
+                self.exact_integer_locals
+                    .insert(name.to_string(), exact_value);
+            } else {
+                self.exact_integer_locals.remove(name);
+            }
+            self.upper_bound_locals.remove(name);
         } else {
             self.non_negative_locals.remove(name);
             self.non_zero_locals.remove(name);
+            self.exact_integer_locals.remove(name);
+            self.upper_bound_locals.remove(name);
         }
     }
 
@@ -14410,19 +14736,49 @@ unsafe {
             match ty {
                 Type::List(_) => {
                     let list_ptr = match object {
-                        Expr::Ident(name) if !is_reference_receiver => {
-                            Ok(self.variables.get(name).map(|v| v.ptr))
-                        }
-                        Expr::Field { object: obj, field } => {
-                            self.compile_field_ptr(&obj.node, field).map(Some)
-                        }
+                        Expr::Ident(name) if !is_reference_receiver => Ok(self
+                            .variables
+                            .get(name)
+                            .map(|v| (v.ptr, Some(name.as_str())))),
+                        Expr::Field { object: obj, field } => self
+                            .compile_field_ptr(&obj.node, field)
+                            .map(|ptr| Some((ptr, None))),
                         Expr::This if !is_reference_receiver => {
-                            Ok(self.variables.get("this").map(|v| v.ptr))
+                            Ok(self.variables.get("this").map(|v| (v.ptr, None)))
                         }
                         _ => Ok(None),
                     }?;
-                    if let Some(ptr) = list_ptr {
-                        return self.compile_list_method_ptr(ptr, ty, method, args);
+                    if let Some((ptr, owner_name)) = list_ptr {
+                        let result =
+                            self.compile_list_method_ptr(ptr, ty, method, args, owner_name)?;
+                        if let Some(owner_name) = owner_name {
+                            match method {
+                                "push" => {
+                                    if let Some(length) =
+                                        self.exact_list_lengths.get_mut(owner_name)
+                                    {
+                                        if let Some(next_length) = length.checked_add(1) {
+                                            *length = next_length;
+                                        } else {
+                                            self.exact_list_lengths.remove(owner_name);
+                                        }
+                                    }
+                                }
+                                "pop" => {
+                                    if let Some(length) =
+                                        self.exact_list_lengths.get_mut(owner_name)
+                                    {
+                                        if *length > 0 {
+                                            *length -= 1;
+                                        } else {
+                                            self.exact_list_lengths.remove(owner_name);
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        return Ok(result);
                     }
                     let list_val = self.compile_expr(object)?;
                     return self.compile_list_method_on_value(list_val, ty, method, args);
@@ -15131,6 +15487,14 @@ unsafe {
                     CodegenError::new(format!("failed to access field pointer for '{}'", field))
                 })?
         };
+        if let Some(instruction) = field_ptr.as_instruction() {
+            instruction.set_in_bounds_flag(true).map_err(|_| {
+                CodegenError::new(format!(
+                    "failed to mark field pointer for '{}' as inbounds",
+                    field
+                ))
+            })?;
+        }
 
         Ok(field_ptr)
     }

@@ -82,7 +82,7 @@ impl<'ctx> Codegen<'ctx> {
             })?;
         // SAFETY: This GEP indexes into a contiguous heap allocation sized for `elem_llvm_ty`
         // elements. Bounds are checked by surrounding control flow before use where required.
-        unsafe {
+        let element_ptr = unsafe {
             self.builder
                 .build_gep(
                     elem_llvm_ty,
@@ -92,8 +92,16 @@ impl<'ctx> Codegen<'ctx> {
                 )
                 .map_err(|_| {
                     CodegenError::new(format!("failed to compute {context_name} element pointer"))
-                })
+                })?
+        };
+        if let Some(instruction) = element_ptr.as_instruction() {
+            instruction.set_in_bounds_flag(true).map_err(|_| {
+                CodegenError::new(format!(
+                    "failed to mark {context_name} element pointer as inbounds"
+                ))
+            })?;
         }
+        Ok(element_ptr)
     }
 
     fn build_memcmp_equality(
@@ -3503,6 +3511,7 @@ unsafe {
         list_ty: &Type,
         method: &str,
         args: &[Spanned<Expr>],
+        owner_name: Option<&str>,
     ) -> Result<BasicValueEnum<'ctx>> {
         match method {
             "length" | "pop" => self.validate_builtin_method_arg_count("List", method, args, 0)?,
@@ -3686,54 +3695,73 @@ unsafe {
                         &args[0].node,
                         "List.get() index cannot be negative",
                     )?;
+                let index_provably_in_bounds = owner_name.and_then(|name| {
+                    self.exact_list_lengths.get(name).copied().filter(|length| {
+                        index_provably_non_negative
+                            && self.expr_is_provably_below_exact_limit(&args[0].node, *length)
+                    })
+                });
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("List.get used outside function"))?;
-                let ok_bb = self
-                    .context
-                    .append_basic_block(current_fn, "list_ptr_get.ok");
-                let fail_bb = self
-                    .context
-                    .append_basic_block(current_fn, "list_ptr_get.fail");
-                let in_bounds = self
-                    .builder
-                    .build_int_compare(IntPredicate::SLT, index, length, "list_ptr_get_in_bounds")
-                    .map_err(|_| CodegenError::new("failed to check List pointer get bounds"))?;
-                if index_provably_non_negative {
-                    self.builder
-                        .build_conditional_branch(in_bounds, ok_bb, fail_bb)
-                        .map_err(|_| {
-                            CodegenError::new(
-                                "failed to branch for List pointer get upper-bound check",
-                            )
-                        })?;
-                } else {
-                    let non_negative = self
+                if index_provably_in_bounds.is_none() {
+                    let ok_bb = self
+                        .context
+                        .append_basic_block(current_fn, "list_ptr_get.ok");
+                    let fail_bb = self
+                        .context
+                        .append_basic_block(current_fn, "list_ptr_get.fail");
+                    let in_bounds = self
                         .builder
                         .build_int_compare(
-                            IntPredicate::SGE,
+                            IntPredicate::SLT,
                             index,
-                            self.context.i64_type().const_zero(),
-                            "list_ptr_get_non_negative",
+                            length,
+                            "list_ptr_get_in_bounds",
                         )
                         .map_err(|_| {
-                            CodegenError::new("failed to check List pointer get index sign")
+                            CodegenError::new("failed to check List pointer get bounds")
                         })?;
-                    let valid = self
-                        .builder
-                        .build_and(non_negative, in_bounds, "list_ptr_get_valid")
-                        .map_err(|_| {
-                            CodegenError::new("failed to combine List pointer get bounds checks")
-                        })?;
-                    self.builder
-                        .build_conditional_branch(valid, ok_bb, fail_bb)
-                        .map_err(|_| CodegenError::new("failed to branch for List pointer get"))?;
+                    if index_provably_non_negative {
+                        self.builder
+                            .build_conditional_branch(in_bounds, ok_bb, fail_bb)
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to branch for List pointer get upper-bound check",
+                                )
+                            })?;
+                    } else {
+                        let non_negative = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::SGE,
+                                index,
+                                self.context.i64_type().const_zero(),
+                                "list_ptr_get_non_negative",
+                            )
+                            .map_err(|_| {
+                                CodegenError::new("failed to check List pointer get index sign")
+                            })?;
+                        let valid = self
+                            .builder
+                            .build_and(non_negative, in_bounds, "list_ptr_get_valid")
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to combine List pointer get bounds checks",
+                                )
+                            })?;
+                        self.builder
+                            .build_conditional_branch(valid, ok_bb, fail_bb)
+                            .map_err(|_| {
+                                CodegenError::new("failed to branch for List pointer get")
+                            })?;
+                    }
+
+                    self.builder.position_at_end(fail_bb);
+                    self.emit_runtime_error("List.get() index out of bounds", "list_ptr_get_oob")?;
+
+                    self.builder.position_at_end(ok_bb);
                 }
-
-                self.builder.position_at_end(fail_bb);
-                self.emit_runtime_error("List.get() index out of bounds", "list_ptr_get_oob")?;
-
-                self.builder.position_at_end(ok_bb);
                 let data_ptr_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
 // alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
 unsafe {
@@ -3792,54 +3820,73 @@ unsafe {
                         &args[0].node,
                         "List.set() index cannot be negative",
                     )?;
+                let index_provably_in_bounds = owner_name.and_then(|name| {
+                    self.exact_list_lengths.get(name).copied().filter(|length| {
+                        index_provably_non_negative
+                            && self.expr_is_provably_below_exact_limit(&args[0].node, *length)
+                    })
+                });
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("List.set used outside function"))?;
-                let ok_bb = self
-                    .context
-                    .append_basic_block(current_fn, "list_ptr_set.ok");
-                let fail_bb = self
-                    .context
-                    .append_basic_block(current_fn, "list_ptr_set.fail");
-                let in_bounds = self
-                    .builder
-                    .build_int_compare(IntPredicate::SLT, index, length, "list_ptr_set_in_bounds")
-                    .map_err(|_| CodegenError::new("failed to check List pointer set bounds"))?;
-                if index_provably_non_negative {
-                    self.builder
-                        .build_conditional_branch(in_bounds, ok_bb, fail_bb)
-                        .map_err(|_| {
-                            CodegenError::new(
-                                "failed to branch for List pointer set upper-bound check",
-                            )
-                        })?;
-                } else {
-                    let non_negative = self
+                if index_provably_in_bounds.is_none() {
+                    let ok_bb = self
+                        .context
+                        .append_basic_block(current_fn, "list_ptr_set.ok");
+                    let fail_bb = self
+                        .context
+                        .append_basic_block(current_fn, "list_ptr_set.fail");
+                    let in_bounds = self
                         .builder
                         .build_int_compare(
-                            IntPredicate::SGE,
+                            IntPredicate::SLT,
                             index,
-                            self.context.i64_type().const_zero(),
-                            "list_ptr_set_non_negative",
+                            length,
+                            "list_ptr_set_in_bounds",
                         )
                         .map_err(|_| {
-                            CodegenError::new("failed to check List pointer set index sign")
+                            CodegenError::new("failed to check List pointer set bounds")
                         })?;
-                    let valid = self
-                        .builder
-                        .build_and(non_negative, in_bounds, "list_ptr_set_valid")
-                        .map_err(|_| {
-                            CodegenError::new("failed to combine List pointer set bounds checks")
-                        })?;
-                    self.builder
-                        .build_conditional_branch(valid, ok_bb, fail_bb)
-                        .map_err(|_| CodegenError::new("failed to branch for List pointer set"))?;
+                    if index_provably_non_negative {
+                        self.builder
+                            .build_conditional_branch(in_bounds, ok_bb, fail_bb)
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to branch for List pointer set upper-bound check",
+                                )
+                            })?;
+                    } else {
+                        let non_negative = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::SGE,
+                                index,
+                                self.context.i64_type().const_zero(),
+                                "list_ptr_set_non_negative",
+                            )
+                            .map_err(|_| {
+                                CodegenError::new("failed to check List pointer set index sign")
+                            })?;
+                        let valid = self
+                            .builder
+                            .build_and(non_negative, in_bounds, "list_ptr_set_valid")
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to combine List pointer set bounds checks",
+                                )
+                            })?;
+                        self.builder
+                            .build_conditional_branch(valid, ok_bb, fail_bb)
+                            .map_err(|_| {
+                                CodegenError::new("failed to branch for List pointer set")
+                            })?;
+                    }
+
+                    self.builder.position_at_end(fail_bb);
+                    self.emit_runtime_error("List.set() index out of bounds", "list_ptr_set_oob")?;
+
+                    self.builder.position_at_end(ok_bb);
                 }
-
-                self.builder.position_at_end(fail_bb);
-                self.emit_runtime_error("List.set() index out of bounds", "list_ptr_set_oob")?;
-
-                self.builder.position_at_end(ok_bb);
                 let data_ptr_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
 // alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
 unsafe {

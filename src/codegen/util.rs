@@ -3504,6 +3504,7 @@ unsafe {
     }
 
     fn add_standard_nonthrowing_attrs(&self, function: FunctionValue<'ctx>) {
+        self.add_enum_attribute(function, AttributeLoc::Function, "mustprogress");
         self.add_enum_attribute(function, AttributeLoc::Function, "nounwind");
         self.add_enum_attribute(function, AttributeLoc::Function, "willreturn");
     }
