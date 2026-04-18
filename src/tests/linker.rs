@@ -1,5 +1,5 @@
 #[cfg(unix)]
-use crate::linker::find_tool_in_path;
+use crate::linker::find_tool_in_path_for_test;
 #[cfg(target_os = "linux")]
 use crate::linker::gcc_version_sort_keys_for_test;
 #[cfg(target_os = "linux")]
@@ -47,14 +47,7 @@ fn find_tool_in_path_ignores_non_executable_files() {
     std::fs::set_permissions(&fake_tool, std::fs::Permissions::from_mode(0o644))
         .expect("set fake tool non-executable permissions");
 
-    let original_path = std::env::var_os("PATH");
-    std::env::set_var("PATH", &root);
-    let detected = find_tool_in_path("fake-linker");
-    if let Some(path) = original_path {
-        std::env::set_var("PATH", path);
-    } else {
-        std::env::remove_var("PATH");
-    }
+    let detected = find_tool_in_path_for_test("fake-linker", root.as_os_str());
 
     let _ = std::fs::remove_file(&fake_tool);
     let _ = std::fs::remove_dir_all(&root);

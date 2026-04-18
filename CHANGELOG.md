@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - List allocation strategy: empty `List()` values now start lazily with zero capacity/null data and let reserve/growth pick the first real allocation size, removing pointless eager `malloc` + immediate `realloc` churn in push-heavy builders such as `sort_heavy`.
 - Counted `for` push reservation: simple `for (p in 0..N)` loops that only push into local lists now reserve exact capacity up front, cutting repeated growth work in initialization-heavy kernels such as `matrix_mul`.
 - Reserved-capacity push fast path: direct local list `push` now skips the dead growth branch when codegen can prove the current exact length is still below a known reserved capacity, reducing initialization overhead in large fill loops such as `scatter_gather_mix`.
+- Nominal dispatch/codegen throughput: interface method and bound-method resolution now walks known implementors directly instead of rescanning every emitted function by suffix, and both bound-method and closure/function-value adapters are now reused per concrete signature instead of regenerating identical wrapper functions for every occurrence.
 
 ### 🐛 Fixed
 
@@ -37,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Type and diagnostics correctness: fixed async-block return-type inference for explicit `return`, and unified parser/type/borrow/import + CLI/project path rendering (including Windows prefix cleanup).
 - Tooling/path hardening: tightened bindgen/cache/object/linker path handling and release smoke script guards/timeouts.
 - Web polish: restored large-screen hero centering and improved ultra-wide readability scaling.
+- Test harness stability: removed linker PATH mutation from the non-executable-tool probe so parallel test runs no longer spuriously fail runtime/codegen tests with missing-`mold` diagnostics.
 
 ## [1.3.8] - Linker Pipeline & Stability Sweep - 2026-04-13
 

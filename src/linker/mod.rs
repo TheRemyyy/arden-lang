@@ -4,6 +4,7 @@ use crate::project::OutputKind;
 use crate::shared::process_exit::command_failure_details;
 use colored::*;
 use std::env;
+use std::ffi::OsStr;
 #[cfg(any(windows, target_os = "macos"))]
 use std::ffi::OsString;
 use std::fmt;
@@ -93,9 +94,9 @@ fn canonicalize_tool_path(path: PathBuf) -> PathBuf {
     fs::canonicalize(&path).unwrap_or(path)
 }
 
-pub(crate) fn find_tool_in_path(tool: &str) -> Option<PathBuf> {
-    env::var_os("PATH").and_then(|paths| {
-        env::split_paths(&paths).find_map(|dir| {
+fn find_tool_in_path_entries(tool: &str, paths: Option<&OsStr>) -> Option<PathBuf> {
+    paths.and_then(|paths| {
+        env::split_paths(paths).find_map(|dir| {
             let candidate = dir.join(tool);
             if is_executable_file(&candidate) {
                 return Some(canonicalize_tool_path(candidate));
@@ -110,6 +111,16 @@ pub(crate) fn find_tool_in_path(tool: &str) -> Option<PathBuf> {
             None
         })
     })
+}
+
+pub(crate) fn find_tool_in_path(tool: &str) -> Option<PathBuf> {
+    let path_env = env::var_os("PATH");
+    find_tool_in_path_entries(tool, path_env.as_deref())
+}
+
+#[cfg(test)]
+pub(crate) fn find_tool_in_path_for_test(tool: &str, paths: &OsStr) -> Option<PathBuf> {
+    find_tool_in_path_entries(tool, Some(paths))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

@@ -1414,6 +1414,34 @@ impl<'ctx> Codegen<'ctx> {
         Ok(implementors)
     }
 
+    fn resolve_interface_method_candidates(
+        &self,
+        receiver_interfaces: &[String],
+        method: &str,
+    ) -> Result<Vec<(String, FunctionValue<'ctx>, Type)>> {
+        let implementors = self.matching_interface_implementors(receiver_interfaces, method)?;
+        let mut seen_function_names = HashSet::new();
+        let mut candidates = Vec::new();
+
+        for owner in implementors {
+            let Some(function_name) = self.resolve_method_function_name(&owner, method) else {
+                continue;
+            };
+            if !seen_function_names.insert(function_name.clone()) {
+                continue;
+            }
+            let (function, function_ty) = self.functions.get(&function_name).ok_or_else(|| {
+                CodegenError::new(format!(
+                    "Unknown interface method implementation: {}",
+                    function_name
+                ))
+            })?;
+            candidates.push((function_name, *function, function_ty.clone()));
+        }
+
+        Ok(candidates)
+    }
+
     fn infer_bound_field_function_type(&self, object: &Expr, field: &str) -> Option<Type> {
         let obj_ty = self
             .infer_object_type(object)
@@ -1453,23 +1481,14 @@ impl<'ctx> Codegen<'ctx> {
             return None;
         }
 
-        let implementors = self
-            .matching_interface_implementors(&receiver_interfaces, field)
-            .ok()?;
-        let suffix = format!("__{}", field);
         let mut candidates = self
-            .functions
-            .iter()
-            .filter_map(|(name, (_, ty))| {
-                let owner = name.strip_suffix(&suffix)?;
-                implementors.contains(owner).then_some(ty.clone())
-            })
-            .collect::<Vec<_>>();
+            .resolve_interface_method_candidates(&receiver_interfaces, field)
+            .ok()?;
         if candidates.len() != 1 {
             return None;
         }
 
-        candidates.pop()
+        candidates.pop().map(|(_, _, ty)| ty)
     }
 
     pub(crate) fn canonical_codegen_type_name(&self, name: &str) -> Option<String> {
@@ -12703,8 +12722,11 @@ unsafe {
                 CodegenError::new(format!("failed to store function adapter closure: {e}"))
             })?;
 
-        let adapter_name = format!("__fn_closure_adapter_{}", self.lambda_counter);
-        self.lambda_counter += 1;
+        let adapter_name = format!(
+            "__fn_closure_adapter_{}_to_{}",
+            Self::type_specialization_suffix(actual_ty),
+            Self::type_specialization_suffix(expected_ty)
+        );
         let expected_ret_llvm = self.llvm_type(expected_ret);
         let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
         for param_ty in expected_params {
@@ -12717,68 +12739,6 @@ unsafe {
             BasicTypeEnum::StructType(s) => s.fn_type(&llvm_params, false),
             _ => self.context.i8_type().fn_type(&llvm_params, false),
         };
-        let adapter_fn = self
-            .module
-            .add_function(&adapter_name, adapter_fn_type, None);
-
-        let saved_function = self.current_function;
-        let saved_return_type = self.current_return_type.clone();
-        let saved_insert_block = self.builder.get_insert_block();
-
-        self.current_function = Some(adapter_fn);
-        self.current_return_type = Some(expected_ty.clone());
-        let entry = self.context.append_basic_block(adapter_fn, "entry");
-        self.builder.position_at_end(entry);
-
-        let adapter_env = adapter_fn
-            .get_nth_param(0)
-            .ok_or_else(|| CodegenError::new("function adapter env param missing"))?
-            .into_pointer_value();
-        let closure_field_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
-// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
-unsafe {
-            self.builder
-                .build_gep(
-                    env_struct_ty,
-                    adapter_env,
-                    &[
-                        self.context.i32_type().const_int(0, false),
-                        self.context.i32_type().const_int(0, false),
-                    ],
-                    "fn_adapter_env_closure_ptr",
-                )
-                .map_err(|e| {
-                    CodegenError::new(format!(
-                        "failed to get function adapter env closure pointer: {e}"
-                    ))
-                })?
-        };
-        let loaded_closure = self
-            .builder
-            .build_load(closure_ty, closure_field_ptr, "fn_adapter_closure")
-            .map_err(|e| {
-                CodegenError::new(format!("failed to load function adapter closure: {e}"))
-            })?
-            .into_struct_value();
-        let loaded_fn_ptr = self
-            .builder
-            .build_extract_value(loaded_closure, 0, "fn_adapter_fn_ptr")
-            .map_err(|e| {
-                CodegenError::new(format!(
-                    "failed to extract function adapter fn pointer: {e}"
-                ))
-            })?
-            .into_pointer_value();
-        let loaded_env_ptr = self
-            .builder
-            .build_extract_value(loaded_closure, 1, "fn_adapter_env_ptr")
-            .map_err(|e| {
-                CodegenError::new(format!(
-                    "failed to extract function adapter env pointer: {e}"
-                ))
-            })?
-            .into_pointer_value();
-
         let mut actual_llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
         for param_ty in actual_params {
             actual_llvm_params.push(self.llvm_type(param_ty).into());
@@ -12791,49 +12751,117 @@ unsafe {
             BasicTypeEnum::StructType(s) => s.fn_type(&actual_llvm_params, false),
             _ => self.context.i8_type().fn_type(&actual_llvm_params, false),
         };
-        let typed_fn_ptr = self
-            .builder
-            .build_pointer_cast(
-                loaded_fn_ptr,
-                self.context.ptr_type(AddressSpace::default()),
-                "fn_adapter_typed_fn_ptr",
-            )
-            .map_err(|e| {
-                CodegenError::new(format!("failed to cast function adapter fn pointer: {e}"))
-            })?;
-        let mut call_args: Vec<BasicMetadataValueEnum> = vec![loaded_env_ptr.into()];
-        for (index, (expected_param_ty, actual_param_ty)) in
-            expected_params.iter().zip(actual_params.iter()).enumerate()
-        {
-            let param = adapter_fn
-                .get_nth_param((index + 1) as u32)
-                .ok_or_else(|| CodegenError::new("function adapter parameter missing"))?;
-            let adapted_param =
-                self.adapt_function_adapter_param(param, expected_param_ty, actual_param_ty)?;
-            call_args.push(adapted_param.into());
-        }
-        let call = self
-            .builder
-            .build_indirect_call(actual_fn_type, typed_fn_ptr, &call_args, "fn_adapter_call")
-            .map_err(|e| {
-                CodegenError::new(format!("failed to build function adapter call: {e}"))
-            })?;
-        let result = self.extract_call_value(call);
-        let adapted = self.adapt_function_adapter_return(
-            result?,
-            actual_ret.as_ref(),
-            expected_ret.as_ref(),
-            "fn_adapter_return",
-        )?;
-        self.builder.build_return(Some(&adapted)).map_err(|e| {
-            CodegenError::new(format!("failed to return function adapter result: {e}"))
-        })?;
+        let adapter_fn = if let Some(existing) = self.module.get_function(&adapter_name) {
+            existing
+        } else {
+            let adapter_fn = self
+                .module
+                .add_function(&adapter_name, adapter_fn_type, None);
 
-        self.current_function = saved_function;
-        self.current_return_type = saved_return_type;
-        if let Some(block) = saved_insert_block {
-            self.builder.position_at_end(block);
-        }
+            let saved_function = self.current_function;
+            let saved_return_type = self.current_return_type.clone();
+            let saved_insert_block = self.builder.get_insert_block();
+
+            self.current_function = Some(adapter_fn);
+            self.current_return_type = Some(expected_ty.clone());
+            let entry = self.context.append_basic_block(adapter_fn, "entry");
+            self.builder.position_at_end(entry);
+
+            let adapter_env = adapter_fn
+                .get_nth_param(0)
+                .ok_or_else(|| CodegenError::new("function adapter env param missing"))?
+                .into_pointer_value();
+            let closure_field_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
+// alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
+unsafe {
+                self.builder
+                    .build_gep(
+                        env_struct_ty,
+                        adapter_env,
+                        &[
+                            self.context.i32_type().const_int(0, false),
+                            self.context.i32_type().const_int(0, false),
+                        ],
+                        "fn_adapter_env_closure_ptr",
+                    )
+                    .map_err(|e| {
+                        CodegenError::new(format!(
+                            "failed to get function adapter env closure pointer: {e}"
+                        ))
+                    })?
+            };
+            let loaded_closure = self
+                .builder
+                .build_load(closure_ty, closure_field_ptr, "fn_adapter_closure")
+                .map_err(|e| {
+                    CodegenError::new(format!("failed to load function adapter closure: {e}"))
+                })?
+                .into_struct_value();
+            let loaded_fn_ptr = self
+                .builder
+                .build_extract_value(loaded_closure, 0, "fn_adapter_fn_ptr")
+                .map_err(|e| {
+                    CodegenError::new(format!(
+                        "failed to extract function adapter fn pointer: {e}"
+                    ))
+                })?
+                .into_pointer_value();
+            let loaded_env_ptr = self
+                .builder
+                .build_extract_value(loaded_closure, 1, "fn_adapter_env_ptr")
+                .map_err(|e| {
+                    CodegenError::new(format!(
+                        "failed to extract function adapter env pointer: {e}"
+                    ))
+                })?
+                .into_pointer_value();
+
+            let typed_fn_ptr = self
+                .builder
+                .build_pointer_cast(
+                    loaded_fn_ptr,
+                    self.context.ptr_type(AddressSpace::default()),
+                    "fn_adapter_typed_fn_ptr",
+                )
+                .map_err(|e| {
+                    CodegenError::new(format!("failed to cast function adapter fn pointer: {e}"))
+                })?;
+            let mut call_args: Vec<BasicMetadataValueEnum> = vec![loaded_env_ptr.into()];
+            for (index, (expected_param_ty, actual_param_ty)) in
+                expected_params.iter().zip(actual_params.iter()).enumerate()
+            {
+                let param = adapter_fn
+                    .get_nth_param((index + 1) as u32)
+                    .ok_or_else(|| CodegenError::new("function adapter parameter missing"))?;
+                let adapted_param =
+                    self.adapt_function_adapter_param(param, expected_param_ty, actual_param_ty)?;
+                call_args.push(adapted_param.into());
+            }
+            let call = self
+                .builder
+                .build_indirect_call(actual_fn_type, typed_fn_ptr, &call_args, "fn_adapter_call")
+                .map_err(|e| {
+                    CodegenError::new(format!("failed to build function adapter call: {e}"))
+                })?;
+            let result = self.extract_call_value(call);
+            let adapted = self.adapt_function_adapter_return(
+                result?,
+                actual_ret.as_ref(),
+                expected_ret.as_ref(),
+                "fn_adapter_return",
+            )?;
+            self.builder.build_return(Some(&adapted)).map_err(|e| {
+                CodegenError::new(format!("failed to return function adapter result: {e}"))
+            })?;
+
+            self.current_function = saved_function;
+            self.current_return_type = saved_return_type;
+            if let Some(block) = saved_insert_block {
+                self.builder.position_at_end(block);
+            }
+
+            adapter_fn
+        };
 
         let wrapper_closure_ty = self
             .context
@@ -15334,23 +15362,13 @@ unsafe {
                 |ty| Self::unknown_method_error(method, ty),
             ));
         } else {
-            let implementors = if receiver_interfaces.is_empty() {
-                HashSet::new()
-            } else {
-                self.matching_interface_implementors(&receiver_interfaces, method)?
-            };
             // Interface-typed object (or unknown Named type): no vtable yet.
             // We allow codegen only when there is a single unambiguous method implementation.
-            let suffix = format!("__{}", method);
-            let mut candidates =
-                self.functions
-                    .iter()
-                    .filter_map(|(name, (func, ty))| {
-                        let owner = name.strip_suffix(&suffix)?;
-                        (!receiver_interfaces.is_empty() && implementors.contains(owner))
-                            .then_some((name.clone(), *func, ty.clone()))
-                    })
-                    .collect::<Vec<_>>();
+            let mut candidates = if receiver_interfaces.is_empty() {
+                Vec::new()
+            } else {
+                self.resolve_interface_method_candidates(&receiver_interfaces, method)?
+            };
             if candidates.len() == 1 {
                 let (name, func, func_ty) = candidates.pop().ok_or_else(|| {
                     CodegenError::new("interface method candidate disappeared during dispatch")
@@ -15518,24 +15536,17 @@ unsafe {
                 })?,
             ));
         }
-        let interface_implementors = if receiver_interfaces.is_empty() {
-            HashSet::new()
-        } else {
-            self.matching_interface_implementors(&receiver_interfaces, field)?
-        };
 
         let class_info = self.classes.get(&class_name);
         if class_info.is_none() {
-            let suffix = format!("__{}", field);
-            let mut candidates = self
-                .functions
-                .iter()
-                .filter_map(|(name, (_, ty))| {
-                    let owner = name.strip_suffix(&suffix)?;
-                    (!receiver_interfaces.is_empty() && interface_implementors.contains(owner))
-                        .then_some((name.clone(), ty.clone()))
-                })
-                .collect::<Vec<_>>();
+            let mut candidates = if receiver_interfaces.is_empty() {
+                Vec::new()
+            } else {
+                self.resolve_interface_method_candidates(&receiver_interfaces, field)?
+                    .into_iter()
+                    .map(|(name, _, ty)| (name, ty))
+                    .collect::<Vec<_>>()
+            };
             if candidates.len() == 1 {
                 let (method_name, func_ty) = candidates.pop().ok_or_else(|| {
                     CodegenError::new("field method candidate disappeared during dispatch")
@@ -15680,8 +15691,11 @@ unsafe {
             .build_store(receiver_ptr, receiver_value)
             .map_err(|_| CodegenError::new("failed to store bound-method receiver"))?;
 
-        let adapter_name = format!("__bound_method_adapter_{}", self.lambda_counter);
-        self.lambda_counter += 1;
+        let adapter_name = format!(
+            "__bound_method_adapter_{}_{}",
+            method_name,
+            Self::type_specialization_suffix(arden_func_ty)
+        );
         let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
         for (index, param_ty) in param_types.iter().enumerate() {
             llvm_params.push(match self.param_mode_for_function(method_name, index) {
@@ -15696,81 +15710,87 @@ unsafe {
             BasicTypeEnum::StructType(s) => s.fn_type(&llvm_params, false),
             _ => self.context.i8_type().fn_type(&llvm_params, false),
         };
-        let adapter_fn = self
-            .module
-            .add_function(&adapter_name, adapter_fn_type, None);
+        let adapter_fn = if let Some(existing) = self.module.get_function(&adapter_name) {
+            existing
+        } else {
+            let adapter_fn = self
+                .module
+                .add_function(&adapter_name, adapter_fn_type, None);
 
-        let saved_function = self.current_function;
-        let saved_return_type = self.current_return_type.clone();
-        let saved_insert_block = self.builder.get_insert_block();
+            let saved_function = self.current_function;
+            let saved_return_type = self.current_return_type.clone();
+            let saved_insert_block = self.builder.get_insert_block();
 
-        self.current_function = Some(adapter_fn);
-        self.current_return_type = Some(arden_func_ty.clone());
-        let entry = self.context.append_basic_block(adapter_fn, "entry");
-        self.builder.position_at_end(entry);
+            self.current_function = Some(adapter_fn);
+            self.current_return_type = Some(arden_func_ty.clone());
+            let entry = self.context.append_basic_block(adapter_fn, "entry");
+            self.builder.position_at_end(entry);
 
-        let adapter_env = adapter_fn
-            .get_nth_param(0)
-            .ok_or_else(|| CodegenError::new("bound-method env param missing"))?
-            .into_pointer_value();
-        let stored_receiver_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
+            let adapter_env = adapter_fn
+                .get_nth_param(0)
+                .ok_or_else(|| CodegenError::new("bound-method env param missing"))?
+                .into_pointer_value();
+            let stored_receiver_ptr = // SAFETY: This block performs low-level pointer/layout operations in codegen; pointer provenance,
 // alignment, and bounds are validated by the surrounding control flow and runtime layout invariants.
 unsafe {
-            self.builder
-                .build_gep(
-                    env_struct_ty,
-                    adapter_env,
-                    &[
-                        self.context.i32_type().const_int(0, false),
-                        self.context.i32_type().const_int(0, false),
-                    ],
-                    "bound_method_loaded_receiver_ptr",
-                )
-                .map_err(|_| {
-                    CodegenError::new("failed to access bound-method receiver during load")
-                })?
-        };
-        let loaded_receiver = self
-            .builder
-            .build_load(
-                receiver_llvm_ty,
-                stored_receiver_ptr,
-                "bound_method_receiver",
-            )
-            .map_err(|_| CodegenError::new("failed to load bound-method receiver"))?;
-
-        let mut call_args: Vec<BasicMetadataValueEnum> =
-            vec![ptr_type.const_null().into(), loaded_receiver.into()];
-        for (index, _) in param_types.iter().enumerate() {
-            let param = adapter_fn
-                .get_nth_param((index + 1) as u32)
-                .ok_or_else(|| CodegenError::new("bound-method parameter missing"))?;
-            call_args.push(param.into());
-        }
-        let call = self
-            .builder
-            .build_call(method_fn, &call_args, "bound_method_call")
-            .map_err(|_| CodegenError::new("failed to emit bound-method adapter call"))?;
-        match call.try_as_basic_value() {
-            ValueKind::Basic(val) => {
-                self.builder.build_return(Some(&val)).map_err(|_| {
-                    CodegenError::new("failed to return bound-method adapter value")
-                })?;
-            }
-            ValueKind::Instruction(_) => {
                 self.builder
-                    .build_return(Some(&self.context.i8_type().const_int(0, false)))
+                    .build_gep(
+                        env_struct_ty,
+                        adapter_env,
+                        &[
+                            self.context.i32_type().const_int(0, false),
+                            self.context.i32_type().const_int(0, false),
+                        ],
+                        "bound_method_loaded_receiver_ptr",
+                    )
                     .map_err(|_| {
-                        CodegenError::new("failed to return bound-method adapter placeholder")
-                    })?;
-            }
-        }
+                        CodegenError::new("failed to access bound-method receiver during load")
+                    })?
+            };
+            let loaded_receiver = self
+                .builder
+                .build_load(
+                    receiver_llvm_ty,
+                    stored_receiver_ptr,
+                    "bound_method_receiver",
+                )
+                .map_err(|_| CodegenError::new("failed to load bound-method receiver"))?;
 
-        self.current_function = saved_function;
-        self.current_return_type = saved_return_type;
-        if let Some(block) = saved_insert_block {
-            self.builder.position_at_end(block);
-        }
+            let mut call_args: Vec<BasicMetadataValueEnum> =
+                vec![ptr_type.const_null().into(), loaded_receiver.into()];
+            for (index, _) in param_types.iter().enumerate() {
+                let param = adapter_fn
+                    .get_nth_param((index + 1) as u32)
+                    .ok_or_else(|| CodegenError::new("bound-method parameter missing"))?;
+                call_args.push(param.into());
+            }
+            let call = self
+                .builder
+                .build_call(method_fn, &call_args, "bound_method_call")
+                .map_err(|_| CodegenError::new("failed to emit bound-method adapter call"))?;
+            match call.try_as_basic_value() {
+                ValueKind::Basic(val) => {
+                    self.builder.build_return(Some(&val)).map_err(|_| {
+                        CodegenError::new("failed to return bound-method adapter value")
+                    })?;
+                }
+                ValueKind::Instruction(_) => {
+                    self.builder
+                        .build_return(Some(&self.context.i8_type().const_int(0, false)))
+                        .map_err(|_| {
+                            CodegenError::new("failed to return bound-method adapter placeholder")
+                        })?;
+                }
+            }
+
+            self.current_function = saved_function;
+            self.current_return_type = saved_return_type;
+            if let Some(block) = saved_insert_block {
+                self.builder.position_at_end(block);
+            }
+
+            adapter_fn
+        };
 
         let closure_ty = self.llvm_type(arden_func_ty).into_struct_type();
         let mut closure = closure_ty.get_undef();
