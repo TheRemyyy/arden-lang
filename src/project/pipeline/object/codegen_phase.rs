@@ -15,7 +15,7 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -24,6 +24,65 @@ enum ObjectCodegenPhaseError {
     CachePathResolve(String),
     ObjectEmit(String),
     CacheMetaSave(String),
+}
+
+#[derive(Default)]
+struct ObjectShardStats {
+    shard_count: AtomicUsize,
+    specialization_shard_count: AtomicUsize,
+    member_file_sum: AtomicUsize,
+    member_file_max: AtomicUsize,
+    closure_file_sum: AtomicUsize,
+    closure_file_max: AtomicUsize,
+    declaration_symbol_sum: AtomicUsize,
+    declaration_symbol_max: AtomicUsize,
+    active_symbol_sum: AtomicUsize,
+    active_symbol_max: AtomicUsize,
+    program_decl_sum: AtomicUsize,
+    program_decl_max: AtomicUsize,
+}
+
+impl ObjectShardStats {
+    fn record_max(slot: &AtomicUsize, value: usize) {
+        let mut current = slot.load(Ordering::Relaxed);
+        while value > current {
+            match slot.compare_exchange(current, value, Ordering::Relaxed, Ordering::Relaxed) {
+                Ok(_) => break,
+                Err(observed) => current = observed,
+            }
+        }
+    }
+
+    fn record_shard(
+        &self,
+        member_files: usize,
+        closure_files: usize,
+        declaration_symbols: usize,
+        active_symbols: usize,
+        program_decls: usize,
+        needs_full_program: bool,
+    ) {
+        self.shard_count.fetch_add(1, Ordering::Relaxed);
+        if needs_full_program {
+            self.specialization_shard_count
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        self.member_file_sum
+            .fetch_add(member_files, Ordering::Relaxed);
+        self.closure_file_sum
+            .fetch_add(closure_files, Ordering::Relaxed);
+        self.declaration_symbol_sum
+            .fetch_add(declaration_symbols, Ordering::Relaxed);
+        self.active_symbol_sum
+            .fetch_add(active_symbols, Ordering::Relaxed);
+        self.program_decl_sum
+            .fetch_add(program_decls, Ordering::Relaxed);
+        Self::record_max(&self.member_file_max, member_files);
+        Self::record_max(&self.closure_file_max, closure_files);
+        Self::record_max(&self.declaration_symbol_max, declaration_symbols);
+        Self::record_max(&self.active_symbol_max, active_symbols);
+        Self::record_max(&self.program_decl_max, program_decls);
+    }
 }
 
 impl fmt::Display for ObjectCodegenPhaseError {
@@ -75,6 +134,7 @@ fn run_object_codegen_phase_impl(
     let object_codegen_timing_totals = Arc::new(ObjectCodegenTimingTotals::default());
     let declaration_closure_timing_totals = Arc::new(DeclarationClosureTimingTotals::default());
     let object_emit_timing_totals = Arc::new(ObjectEmitTimingTotals::default());
+    let object_shard_stats = Arc::new(ObjectShardStats::default());
 
     crate::codegen::core::reset_codegen_phase_timings();
     crate::codegen::util::reset_object_write_timings();
@@ -186,6 +246,14 @@ fn run_object_codegen_phase_impl(
                         inputs.global_maps.class_file_map,
                         inputs.global_maps.module_file_map,
                     ));
+                    object_shard_stats.record_shard(
+                        shard.member_files.len(),
+                        batch_closure_files.len(),
+                        batch_declaration_symbols.len(),
+                        codegen_active_symbols.len(),
+                        codegen_program.declarations.len(),
+                        shard_needs_full_program,
+                    );
                     object_codegen_timing_totals
                         .closure_body_symbols_ns
                         .fetch_add(
@@ -372,6 +440,65 @@ fn run_object_codegen_phase_impl(
                 object_emit_timing_totals
                     .program_decl_count
                     .load(Ordering::Relaxed),
+            ),
+        ],
+    );
+    build_timings.record_counts(
+        "object codegen/shard details",
+        &[
+            (
+                "shards",
+                object_shard_stats.shard_count.load(Ordering::Relaxed),
+            ),
+            (
+                "specialization_shards",
+                object_shard_stats
+                    .specialization_shard_count
+                    .load(Ordering::Relaxed),
+            ),
+            (
+                "member_files_sum",
+                object_shard_stats.member_file_sum.load(Ordering::Relaxed),
+            ),
+            (
+                "member_files_max",
+                object_shard_stats.member_file_max.load(Ordering::Relaxed),
+            ),
+            (
+                "closure_files_sum",
+                object_shard_stats.closure_file_sum.load(Ordering::Relaxed),
+            ),
+            (
+                "closure_files_max",
+                object_shard_stats.closure_file_max.load(Ordering::Relaxed),
+            ),
+            (
+                "decl_symbols_sum",
+                object_shard_stats
+                    .declaration_symbol_sum
+                    .load(Ordering::Relaxed),
+            ),
+            (
+                "decl_symbols_max",
+                object_shard_stats
+                    .declaration_symbol_max
+                    .load(Ordering::Relaxed),
+            ),
+            (
+                "active_symbols_sum",
+                object_shard_stats.active_symbol_sum.load(Ordering::Relaxed),
+            ),
+            (
+                "active_symbols_max",
+                object_shard_stats.active_symbol_max.load(Ordering::Relaxed),
+            ),
+            (
+                "program_decls_sum",
+                object_shard_stats.program_decl_sum.load(Ordering::Relaxed),
+            ),
+            (
+                "program_decls_max",
+                object_shard_stats.program_decl_max.load(Ordering::Relaxed),
             ),
         ],
     );

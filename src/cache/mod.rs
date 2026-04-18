@@ -1282,7 +1282,7 @@ pub(crate) struct RewrittenFileCacheEntry {
 pub(crate) const OBJECT_CACHE_SCHEMA: &str = "v3";
 pub(crate) const OBJECT_SHARD_CACHE_SCHEMA: &str = "v1";
 pub(crate) const LINK_MANIFEST_CACHE_SCHEMA: &str = "v1";
-pub(crate) const OBJECT_CODEGEN_SHARD_SIZE: usize = 4;
+pub(crate) const OBJECT_CODEGEN_SHARD_SIZE: usize = 1;
 // Large projects pay a disproportionate fixed cost per LLVM module/object emit.
 // Sharding only kicks in once the project is big enough that the cold-build win
 // outweighs the coarser invalidation granularity for object cache reuse.

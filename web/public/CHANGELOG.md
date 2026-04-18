@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Statement codegen throughput: `let`/`assign`/`return` validation now reuses the cheaper builtin-argument type fast path where possible, and assignment lowering collapses compound/map-target analysis into a single pass instead of re-matching and re-inferring the same target shape multiple times.
 - Call codegen throughput: `compile_call` now only builds/infers synthetic `Expr::Call` state for actual `Option`/`Result` static constructor calls, and the shared lowering for those builtins is centralized instead of duplicated across alias/direct-name branches.
 - Cold object-codegen throughput: specialization-demand object shards now share one prebuilt full-project codegen `Program` snapshot instead of rebuilding the same combined AST projection separately in each shard, reducing repeated whole-project cloning work in large cold builds such as `compile_project_mega_graph`.
+- Object-codegen sharding diagnostics: `--timings` now reports per-shard member/closure/declaration/active/program totals, making it obvious when large shard shapes are inflating backend work instead of hiding all of that cost inside one aggregate `llvm emit` bucket.
+- Object-codegen throughput: default large-project object shard size now falls back to single-file objects after timing sweeps showed the previous fixed-size grouping made LLVM backend object emission grow superlinearly on mega-graph projects, cutting `compile_project_mega_graph` cold compile time from roughly `20.7s` to `10.4s` in the benchmark harness and from about `21.0s`/`89.5s` (`size=4`/`8`) to about `8.9s` with single-file shards in direct timing runs.
 
 ### 🐛 Fixed
 
@@ -46,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Test harness stability: removed linker PATH mutation from the non-executable-tool probe so parallel test runs no longer spuriously fail runtime/codegen tests with missing-`mold` diagnostics.
 - Benchmark harness portability: generated Rust compile-benchmark projects now copy the repo `.cargo` linker wrapper config into their own workspace, fixing CI/macOS/Linux `cargo build --release --offline` failures from missing relative `mold`/`lld` wrapper paths.
 - CI LLVM install resilience: the shared `install-llvm` action now retries transient download failures, tries multiple LLVM 22 patch versions and archive name variants, and falls back across those candidates on both Linux and Windows instead of hard-failing on a single 404/504 from one release asset.
+- Benchmark/web stability: benchmark runner compiler-path handling now respects platform executables such as `target/release/arden.exe`, and markdown heading rendering now supports both legacy string and newer token-based `marked` callbacks so SSR/prerender builds no longer crash on formatted headings.
 
 ## [1.3.8] - Linker Pipeline & Stability Sweep - 2026-04-13
 
