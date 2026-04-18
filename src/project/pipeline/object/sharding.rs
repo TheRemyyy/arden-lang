@@ -27,7 +27,7 @@ pub(crate) fn build_object_sharding_plan(
 
     let object_shard_size = object_codegen_shard_size();
     let object_shard_threshold = object_codegen_shard_threshold();
-    let use_object_shards = active_indices.len() >= object_shard_threshold;
+    let use_object_shards = object_shard_size > 1 && active_indices.len() >= object_shard_threshold;
 
     let object_shards = if use_object_shards {
         active_indices
