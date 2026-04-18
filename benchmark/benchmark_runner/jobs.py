@@ -2,7 +2,7 @@ import shutil
 import time
 from pathlib import Path
 
-from .system import exe_path, parse_checksum, run_cmd
+from .system import arden_binary_path, exe_path, parse_checksum, run_cmd
 from .types import TimedCompileResult
 
 
@@ -14,7 +14,7 @@ def compile_arden(
     opt_level: str,
     target: str | None,
 ) -> None:
-    compiler = root / "target" / "release" / "arden"
+    compiler = arden_binary_path(root)
     if not compiler.exists():
         raise RuntimeError(
             f"Arden missing at {compiler}. Build it first or run without --no-build."
@@ -100,7 +100,7 @@ def make_compile_jobs(
     build_env: dict[str, str],
     arden_timings: bool,
 ) -> dict[str, dict]:
-    compiler = root / "target" / "release" / "arden"
+    compiler = arden_binary_path(root)
     arden_cmd = [str(compiler), "build", "--no-check"]
     if arden_timings:
         arden_cmd.append("--timings")

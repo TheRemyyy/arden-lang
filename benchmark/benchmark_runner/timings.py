@@ -101,9 +101,9 @@ def run_arden_profile(
     Returns an empty string when the compiler is unavailable or the command
     fails so that the benchmark run is not aborted by an optional feature.
     """
-    from .system import run_cmd
+    from .system import arden_binary_path, run_cmd
 
-    compiler = root / "target" / "release" / "arden"
+    compiler = arden_binary_path(root)
     if not compiler.exists():
         return ""
     src = root / "benchmark" / "arden" / f"{bench_name}.arden"

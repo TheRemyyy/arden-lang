@@ -673,6 +673,10 @@ fn run_object_codegen_phase_impl(
         object_write_timings.module_set_data_layout_ns,
     );
     build_timings.record_duration_ns(
+        "object codegen/write object optimize module",
+        object_write_timings.optimize_module_ns,
+    );
+    build_timings.record_duration_ns(
         "object codegen/write object memory buffer",
         object_write_timings.write_to_memory_buffer_ns,
     );

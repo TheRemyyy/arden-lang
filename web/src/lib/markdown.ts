@@ -10,18 +10,50 @@ function slugifyHeading(text: string): string {
     return slug || 'section';
 }
 
+function stripHtmlTags(text: string): string {
+    return text.replace(/<[^>]+>/g, ' ');
+}
+
+type HeadingTokenLike = {
+    text?: string;
+    depth?: number;
+    tokens?: unknown[];
+};
+
+function isHeadingTokenLike(value: unknown): value is HeadingTokenLike {
+    return typeof value === 'object' && value !== null;
+}
+
+function resolveHeadingText(value: string | HeadingTokenLike): string {
+    if (typeof value === 'string') {
+        return value;
+    }
+    return typeof value.text === 'string' ? stripHtmlTags(value.text) : '';
+}
+
 function createRenderer() {
     const renderer = new marked.Renderer();
     const headingCounts = new Map<string, number>();
 
-    // marked's heading signature is broader than the typed package currently exposes.
-    // @ts-ignore typed package lags the runtime API here
-    renderer.heading = (text: string, depth: number) => {
-        const baseSlug = slugifyHeading(text);
+    // `marked` heading runtime args differ across versions; support both text and token forms.
+    // @ts-expect-error runtime API is broader than the bundled type signature here
+    renderer.heading = function (value: string | HeadingTokenLike, depth?: number) {
+        const headingText = resolveHeadingText(value);
+        const headingDepth =
+            typeof depth === 'number'
+                ? depth
+                : isHeadingTokenLike(value) && typeof value.depth === 'number'
+                    ? value.depth
+                    : 1;
+        const headingHtml =
+            isHeadingTokenLike(value) && Array.isArray(value.tokens)
+                ? marked.Parser.parseInline(value.tokens)
+                : headingText;
+        const baseSlug = slugifyHeading(stripHtmlTags(headingHtml));
         const count = headingCounts.get(baseSlug) ?? 0;
         headingCounts.set(baseSlug, count + 1);
         const headingId = count === 0 ? baseSlug : `${baseSlug}-${count}`;
-        return `<h${depth} id="${headingId}">${text}</h${depth}>`;
+        return `<h${headingDepth} id="${headingId}">${headingHtml}</h${headingDepth}>`;
     };
 
     return renderer;

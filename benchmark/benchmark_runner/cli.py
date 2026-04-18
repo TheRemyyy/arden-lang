@@ -10,7 +10,7 @@ from .specs import (
     filter_benchmarks_by_kinds,
     select_benchmarks,
 )
-from .system import current_timestamp, detect_llvm_prefix, ensure_tool, run_cmd
+from .system import arden_binary_path, current_timestamp, detect_llvm_prefix, ensure_tool, run_cmd
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -110,12 +110,13 @@ def main() -> int:
         f"capture_profile={args.capture_profile}, output_csv={args.output_csv}",
         flush=True,
     )
+    compiler = arden_binary_path(root)
     if not args.no_build:
-        print("Building target/release/arden...", flush=True)
+        print(f"Building {compiler}...", flush=True)
         proc = run_cmd(["cargo", "build", "--release"], root, env=build_env)
         if proc.returncode != 0:
             raise RuntimeError(f"Failed to build Arden:\n{proc.stderr}")
-        print("Built target/release/arden", flush=True)
+        print(f"Built {compiler}", flush=True)
 
     selected = select_benchmarks(args.bench, args.include_extreme)
     selected = filter_benchmarks_by_kinds(selected, tuple(args.kinds) if args.kinds else None)

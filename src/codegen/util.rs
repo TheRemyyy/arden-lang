@@ -46,6 +46,7 @@ pub struct ObjectWriteTimingSnapshot {
     pub target_machine_setup_ns: u64,
     pub module_set_triple_ns: u64,
     pub module_set_data_layout_ns: u64,
+    pub optimize_module_ns: u64,
     pub write_to_memory_buffer_ns: u64,
     pub memory_buffer_to_vec_ns: u64,
     pub direct_write_to_file_ns: u64,
@@ -98,6 +99,7 @@ struct ObjectWriteTimingTotals {
     target_machine_setup_ns: AtomicU64,
     module_set_triple_ns: AtomicU64,
     module_set_data_layout_ns: AtomicU64,
+    optimize_module_ns: AtomicU64,
     write_to_memory_buffer_ns: AtomicU64,
     memory_buffer_to_vec_ns: AtomicU64,
     direct_write_to_file_ns: AtomicU64,
@@ -121,6 +123,7 @@ static OBJECT_WRITE_TIMING_TOTALS: ObjectWriteTimingTotals = ObjectWriteTimingTo
     target_machine_setup_ns: AtomicU64::new(0),
     module_set_triple_ns: AtomicU64::new(0),
     module_set_data_layout_ns: AtomicU64::new(0),
+    optimize_module_ns: AtomicU64::new(0),
     write_to_memory_buffer_ns: AtomicU64::new(0),
     memory_buffer_to_vec_ns: AtomicU64::new(0),
     direct_write_to_file_ns: AtomicU64::new(0),
@@ -167,6 +170,9 @@ pub fn reset_object_write_timings() {
         .store(0, Ordering::Relaxed);
     OBJECT_WRITE_TIMING_TOTALS
         .module_set_data_layout_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .optimize_module_ns
         .store(0, Ordering::Relaxed);
     OBJECT_WRITE_TIMING_TOTALS
         .write_to_memory_buffer_ns
@@ -231,6 +237,9 @@ pub fn snapshot_object_write_timings() -> ObjectWriteTimingSnapshot {
             .load(Ordering::Relaxed),
         module_set_data_layout_ns: OBJECT_WRITE_TIMING_TOTALS
             .module_set_data_layout_ns
+            .load(Ordering::Relaxed),
+        optimize_module_ns: OBJECT_WRITE_TIMING_TOTALS
+            .optimize_module_ns
             .load(Ordering::Relaxed),
         write_to_memory_buffer_ns: OBJECT_WRITE_TIMING_TOTALS
             .write_to_memory_buffer_ns
@@ -3597,7 +3606,11 @@ unsafe {
                 OBJECT_WRITE_TIMING_TOTALS
                     .target_machine_setup_ns
                     .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
+                let optimize_started_at = Instant::now();
                 self.optimize_module_with_default_pipeline(machine, opt_level)?;
+                OBJECT_WRITE_TIMING_TOTALS
+                    .optimize_module_ns
+                    .fetch_add(elapsed_nanos_u64(optimize_started_at), Ordering::Relaxed);
                 let direct_write_started_at = Instant::now();
                 let result = machine
                     .write_to_file(&self.module, FileType::Object, path)

@@ -701,11 +701,14 @@ def run_campaign(
     bin_dir.mkdir(parents=True, exist_ok=True)
 
     if not no_build:
-        print("\nBuilding target/release/arden...", flush=True)
+        from .system import arden_binary_path
+
+        compiler = arden_binary_path(root)
+        print(f"\nBuilding {compiler}...", flush=True)
         proc = run_cmd(["cargo", "build", "--release"], root, env=build_env)
         if proc.returncode != 0:
             raise RuntimeError(f"Failed to build Arden:\n{proc.stderr}")
-        print("Built target/release/arden", flush=True)
+        print(f"Built {compiler}", flush=True)
 
     campaign: dict = {
         "generated_at": timestamp,

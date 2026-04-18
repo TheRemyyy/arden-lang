@@ -90,7 +90,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Skip `cargo build --release`. "
-            "The Arden binary must already exist at target/release/arden."
+            "The Arden binary must already exist at target/release/arden(.exe)."
         ),
     )
     parser.add_argument(

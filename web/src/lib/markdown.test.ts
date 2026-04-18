@@ -9,6 +9,12 @@ describe('markdown helpers', () => {
         expect(html).toContain('<h2 id="repeat-1">Repeat</h2>');
     });
 
+    it('renders emphasized heading text without crashing marked token headings', async () => {
+        const html = await renderMarkdown('## Hello *World*');
+
+        expect(html).toContain('<h2 id="hello-world">Hello <em>World</em></h2>');
+    });
+
     it('does not rewrite custom-scheme links as router links', () => {
         const html = rewriteInternalDocLinks(
             '<p><a href="ftp://example.com/archive.md">Archive</a></p>',

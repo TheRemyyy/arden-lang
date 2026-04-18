@@ -118,7 +118,7 @@ pub(crate) fn find_tool_in_path(tool: &str) -> Option<PathBuf> {
     find_tool_in_path_entries(tool, path_env.as_deref())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn find_tool_in_path_for_test(tool: &str, paths: &OsStr) -> Option<PathBuf> {
     find_tool_in_path_entries(tool, Some(paths))
 }

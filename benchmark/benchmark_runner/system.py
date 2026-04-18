@@ -16,6 +16,10 @@ def exe_path(path: Path) -> Path:
     return path
 
 
+def arden_binary_path(root: Path) -> Path:
+    return exe_path(root / "target" / "release" / "arden")
+
+
 def run_cmd(cmd: list[str], cwd: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     merged_env = os.environ.copy()
     if env:

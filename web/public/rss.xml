@@ -9,8 +9,8 @@
     <title>Unreleased</title>
     <link>https://www.arden-lang.dev/changelog#unreleased</link>
     <guid>https://www.arden-lang.dev/changelog#unreleased</guid>
-    <description>LSP and diagnostics: fixed span-boundary/end-exclusive lookup, CRLF position mapping/clamping, lexer-offset overflow fallback, Unicode underline width, and EOF rendering edge cases.</description>
-    <pubDate>Wed, 15 Apr 2026 00:00:00 GMT</pubDate>
+    <description>Benchmark harness: expanded runtime coverage with additional branch-heavy and memory-heavy workloads, including new prefix-sum/scatter-gather/stencil passes, added explicit flat/layered/dense/worst-case synthetic graph compile benchmarks, and switched Rust project compile benchmarks to Cargo release builds for more realistic cold-build numbers.</description>
+    <pubDate>Sat, 18 Apr 2026 00:00:00 GMT</pubDate>
   </item>
   <item>
     <title>v1.3.8</title>
