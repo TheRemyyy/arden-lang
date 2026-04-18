@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### ♻️ Changed
 
 - Benchmark harness: expanded runtime coverage with additional branch-heavy and memory-heavy workloads, including new prefix-sum/scatter-gather/stencil passes, added explicit flat/layered/dense/worst-case synthetic graph compile benchmarks, and switched Rust project compile benchmarks to Cargo release builds for more realistic cold-build numbers.
+- Benchmark harness: added a new `compile_project_call_stress_graph` compile benchmark and wired it into the default compile hot/cold campaign coverage so call-heavy function-value lowering has a dedicated benchmark instead of being hidden inside the generic graph suites.
 - Benchmark presets/docs/CI: reworked the quick benchmark path to cover all default runtime workloads plus the non-extreme hot/cold compile graph set, updated benchmark docs accordingly, and made CI upload a direct `run.py` quick-suite artifact instead of going through the heavier multi-stage campaign flow.
 - LLVM/codegen throughput: tightened hot runtime lowering by switching enum payload equality to block `memcmp`, removing redundant full-slot zero stores before overwrite in Map/Set updates, lowering List element access through typed indexed pointers so LLVM sees cleaner element-address arithmetic in matrix/list-heavy loops, skipping redundant lower-bound index checks when the code generator can conservatively prove an integer index stays non-negative, running the LLVM default middle-end optimization pipeline before object emission so LLVM 22 can actually apply LICM/GVN/vectorization on the generated IR, teaching `--emit-llvm` to dump the post-pass module instead of pre-optimization IR, and attaching more precise libc/runtime attributes so alias analysis and LICM have better facts to work with.
 - Integer proof propagation: extended exact-integer reasoning so loop-derived locals and bounds feed signed `div`/`mod` lowering, which removes redundant overflow-control CFG in hot modulo/division loops such as prefix-sum and prime-count workloads when non-negative or non-`-1` facts are provable.
@@ -18,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Counted `for` push reservation: simple `for (p in 0..N)` loops that only push into local lists now reserve exact capacity up front, cutting repeated growth work in initialization-heavy kernels such as `matrix_mul`.
 - Reserved-capacity push fast path: direct local list `push` now skips the dead growth branch when codegen can prove the current exact length is still below a known reserved capacity, reducing initialization overhead in large fill loops such as `scatter_gather_mix`.
 - Nominal dispatch/codegen throughput: interface method and bound-method resolution now walks known implementors directly instead of rescanning every emitted function by suffix, and both bound-method and closure/function-value adapters are now reused per concrete signature instead of regenerating identical wrapper functions for every occurrence.
+- Statement codegen throughput: `let`/`assign`/`return` validation now reuses the cheaper builtin-argument type fast path where possible, and assignment lowering collapses compound/map-target analysis into a single pass instead of re-matching and re-inferring the same target shape multiple times.
+- Call codegen throughput: `compile_call` now only builds/infers synthetic `Expr::Call` state for actual `Option`/`Result` static constructor calls, and the shared lowering for those builtins is centralized instead of duplicated across alias/direct-name branches.
 
 ### 🐛 Fixed
 
@@ -39,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Tooling/path hardening: tightened bindgen/cache/object/linker path handling and release smoke script guards/timeouts.
 - Web polish: restored large-screen hero centering and improved ultra-wide readability scaling.
 - Test harness stability: removed linker PATH mutation from the non-executable-tool probe so parallel test runs no longer spuriously fail runtime/codegen tests with missing-`mold` diagnostics.
+- Benchmark harness portability: generated Rust compile-benchmark projects now copy the repo `.cargo` linker wrapper config into their own workspace, fixing CI/macOS/Linux `cargo build --release --offline` failures from missing relative `mold`/`lld` wrapper paths.
 
 ## [1.3.8] - Linker Pipeline & Stability Sweep - 2026-04-13
 

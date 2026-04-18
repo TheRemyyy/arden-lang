@@ -78,6 +78,7 @@ _RUNTIME_STANDARD: tuple[str, ...] = (
 
 _COMPILE_STANDARD: tuple[str, ...] = (
     "compile_project_starter_graph",
+    "compile_project_call_stress_graph",
     "compile_project_flat_graph",
     "compile_project_layered_graph",
     "compile_project_dense_graph",
@@ -125,6 +126,7 @@ PRESETS: dict[str, list[CampaignStage]] = {
             bench_names=(
                 "compile_project_tiny_graph",
                 "compile_project_starter_graph",
+                "compile_project_call_stress_graph",
                 "compile_project_flat_graph",
                 "compile_project_layered_graph",
                 "compile_project_dense_graph",
@@ -142,6 +144,7 @@ PRESETS: dict[str, list[CampaignStage]] = {
             ),
             bench_names=(
                 "compile_project_starter_graph",
+                "compile_project_call_stress_graph",
                 "compile_project_flat_graph",
                 "compile_project_layered_graph",
                 "compile_project_dense_graph",

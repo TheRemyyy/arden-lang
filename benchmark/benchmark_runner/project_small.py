@@ -36,6 +36,29 @@ def reset_generated_root(generated_root: Path) -> None:
     generated_root.mkdir(parents=True, exist_ok=True)
 
 
+def provision_generated_rust_cargo_config(root: Path, rust_dir: Path) -> None:
+    source_cargo_dir = root / ".cargo"
+    if not source_cargo_dir.exists():
+        return
+
+    target_cargo_dir = rust_dir / ".cargo"
+    target_linkers_dir = target_cargo_dir / "linkers"
+    target_linkers_dir.mkdir(parents=True, exist_ok=True)
+
+    config_source = source_cargo_dir / "config.toml"
+    if config_source.exists():
+        shutil.copy2(config_source, target_cargo_dir / "config.toml")
+
+    source_linkers_dir = source_cargo_dir / "linkers"
+    if not source_linkers_dir.exists():
+        return
+
+    for linker_script in source_linkers_dir.glob("*.sh"):
+        target_script = target_linkers_dir / linker_script.name
+        shutil.copy2(linker_script, target_script)
+        target_script.chmod(linker_script.stat().st_mode)
+
+
 def generate_compile_project_starter_graph(
     root: Path,
     bench_name: str,
@@ -100,6 +123,7 @@ def generate_compile_project_starter_graph(
 
     rust_dir = generated_root / "rust"
     rust_dir.mkdir(parents=True, exist_ok=True)
+    provision_generated_rust_cargo_config(root, rust_dir)
     rust_part_files: list[Path] = []
     rust_bin_name = f"{bench_name}_rust"
     (rust_dir / "Cargo.toml").write_text(
@@ -222,6 +246,204 @@ def generate_compile_project_tiny_graph(
     )
 
 
+def generate_compile_project_call_stress_graph(
+    root: Path,
+    bench_name: str,
+    file_count: int = 16,
+    funcs_per_file: int = 96,
+) -> dict[str, dict[str, Path]]:
+    generated_root = root / "benchmark" / "generated" / bench_name
+    reset_generated_root(generated_root)
+
+    arden_dir = generated_root / "arden"
+    arden_src = arden_dir / "src"
+    arden_src.mkdir(parents=True, exist_ok=True)
+    arden_files = ["src/core.arden"]
+    arden_part_files: list[Path] = []
+    (arden_src / "core.arden").write_text(
+        "\n".join(
+            [
+                "function core_mix(x: Integer, k: Integer): Integer {",
+                "    return x + k;",
+                "}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    for index in range(file_count):
+        part_name = f"part_{index:02d}"
+        part_file = arden_src / f"{part_name}.arden"
+        arden_files.append(f"src/{part_name}.arden")
+        arden_part_files.append(part_file)
+        lines = []
+        for func_index in range(funcs_per_file):
+            left_const = index + func_index + 1
+            right_const = index + func_index + 2
+            lines.extend(
+                [
+                    f"function {part_name}_left_{func_index:03d}(x: Integer): Integer {{ return core_mix(x, {left_const}); }}",
+                    f"function {part_name}_right_{func_index:03d}(x: Integer): Integer {{ return core_mix(x, {right_const}); }}",
+                    f"function {part_name}_choose_{func_index:03d}(flag: Boolean): (Integer) -> Integer {{",
+                    f"    return if (flag) {{ {part_name}_left_{func_index:03d} }} else {{ {part_name}_right_{func_index:03d} }};",
+                    "}",
+                    "",
+                ]
+            )
+        lines.extend([f"function {part_name}_apply(x: Integer): Integer {{", "    mut y: Integer = x;"])
+        for func_index in range(funcs_per_file):
+            flag = "true" if func_index % 2 == 0 else "false"
+            lines.append(f"    y = {part_name}_choose_{func_index:03d}({flag})(y);")
+        lines.extend(["    return y;", "}"])
+        part_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    main_lines = ["import std.io.*;", "", "function main(): None {", "    mut acc: Integer = 0;"]
+    for index in range(file_count):
+        main_lines.append(f"    acc = part_{index:02d}_apply(acc);")
+    main_lines.extend(['    println(to_string(acc));', "    return None;", "}"])
+    (arden_src / "main.arden").write_text("\n".join(main_lines) + "\n", encoding="utf-8")
+    arden_files.append("src/main.arden")
+    (arden_dir / "arden.toml").write_text(
+        "\n".join(
+            [
+                f'name = "{bench_name}"',
+                'version = "0.1.0"',
+                'entry = "src/main.arden"',
+                "files = [",
+                *[f'    "{value}",' for value in arden_files],
+                "]",
+                f'output = "{bench_name}"',
+                'opt_level = "3"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rust_dir = generated_root / "rust"
+    rust_dir.mkdir(parents=True, exist_ok=True)
+    provision_generated_rust_cargo_config(root, rust_dir)
+    rust_bin_name = f"{bench_name}_rust"
+    rust_part_files: list[Path] = []
+    (rust_dir / "Cargo.toml").write_text(
+        "\n".join(
+            [
+                "[package]",
+                f'name = "{rust_bin_name}"',
+                'version = "0.1.0"',
+                'edition = "2021"',
+                "",
+                "[[bin]]",
+                f'name = "{rust_bin_name}"',
+                'path = "main.rs"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (rust_dir / "core.rs").write_text(
+        "\n".join(["pub fn mix(x: i64, k: i64) -> i64 {", "    x + k", "}", ""]),
+        encoding="utf-8",
+    )
+    rust_main = ["mod core;"]
+    for index in range(file_count):
+        rust_main.append(f"mod part_{index:02d};")
+    rust_main.extend(["", "fn main() {", "    let mut acc: i64 = 0;"])
+    for index in range(file_count):
+        rust_main.append(f"    acc = part_{index:02d}::apply(acc);")
+    rust_main.extend(['    println!("{acc}");', "}"])
+    (rust_dir / "main.rs").write_text("\n".join(rust_main) + "\n", encoding="utf-8")
+    for index in range(file_count):
+        part_name = f"part_{index:02d}"
+        part_file = rust_dir / f"{part_name}.rs"
+        rust_part_files.append(part_file)
+        lines = ["use crate::core::mix;", ""]
+        for func_index in range(funcs_per_file):
+            left_const = index + func_index + 1
+            right_const = index + func_index + 2
+            lines.extend(
+                [
+                    f"fn left_{func_index:03d}(x: i64) -> i64 {{ mix(x, {left_const}) }}",
+                    f"fn right_{func_index:03d}(x: i64) -> i64 {{ mix(x, {right_const}) }}",
+                    f"fn choose_{func_index:03d}(flag: bool) -> fn(i64) -> i64 {{",
+                    f"    if flag {{ left_{func_index:03d} }} else {{ right_{func_index:03d} }}",
+                    "}",
+                    "",
+                ]
+            )
+        lines.extend(["pub fn apply(x: i64) -> i64 {", "    let mut y = x;"])
+        for func_index in range(funcs_per_file):
+            flag = "true" if func_index % 2 == 0 else "false"
+            lines.append(f"    y = choose_{func_index:03d}({flag})(y);")
+        lines.extend(["    y", "}"])
+        part_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    go_dir = generated_root / "go"
+    go_dir.mkdir(parents=True, exist_ok=True)
+    go_part_files: list[Path] = []
+    (go_dir / "go.mod").write_text("module compilecallstress\n\ngo 1.22\n", encoding="utf-8")
+    (go_dir / "core.go").write_text(
+        "\n".join(
+            ["package main", "", "func coreMix(x int64, k int64) int64 {", "    return x + k", "}", ""]
+        ),
+        encoding="utf-8",
+    )
+    go_main = ['package main', "", 'import "fmt"', "", "func main() {", "    var acc int64 = 0"]
+    for index in range(file_count):
+        go_main.append(f"    acc = part_{index:02d}_apply(acc)")
+    go_main.extend(["    fmt.Println(acc)", "}"])
+    (go_dir / "main.go").write_text("\n".join(go_main) + "\n", encoding="utf-8")
+    for index in range(file_count):
+        part_file = go_dir / f"unit_{index:04d}.go"
+        go_part_files.append(part_file)
+        lines = ["package main", ""]
+        for func_index in range(funcs_per_file):
+            left_const = index + func_index + 1
+            right_const = index + func_index + 2
+            lines.extend(
+                [
+                    f"func part_{index:02d}_left_{func_index:03d}(x int64) int64 {{ return coreMix(x, {left_const}) }}",
+                    f"func part_{index:02d}_right_{func_index:03d}(x int64) int64 {{ return coreMix(x, {right_const}) }}",
+                    f"func part_{index:02d}_choose_{func_index:03d}(flag bool) func(int64) int64 {{",
+                    f"    if flag {{ return part_{index:02d}_left_{func_index:03d} }}",
+                    f"    return part_{index:02d}_right_{func_index:03d}",
+                    "}",
+                    "",
+                ]
+            )
+        lines.extend([f"func part_{index:02d}_apply(x int64) int64 {{", "    y := x"])
+        for func_index in range(funcs_per_file):
+            flag = "true" if func_index % 2 == 0 else "false"
+            lines.append(f"    y = part_{index:02d}_choose_{func_index:03d}({flag})(y)")
+        lines.extend(["    return y", "}"])
+        part_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    arden_mutate_sources = pick_mutation_targets(arden_part_files, 1, "leaf")
+    rust_mutate_sources = pick_mutation_targets(rust_part_files, 1, "leaf")
+    go_mutate_sources = pick_mutation_targets(go_part_files, 1, "leaf")
+
+    return {
+        "arden": {
+            "project_dir": arden_dir,
+            "binary": arden_dir / bench_name,
+            "mutate_source": arden_mutate_sources[0],
+            "mutate_sources": arden_mutate_sources,
+        },
+        "rust": {
+            "project_dir": rust_dir,
+            "binary": rust_dir / "target" / "release" / rust_bin_name,
+            "mutate_source": rust_mutate_sources[0],
+            "mutate_sources": rust_mutate_sources,
+        },
+        "go": {
+            "project_dir": go_dir,
+            "binary": go_dir / f"{bench_name}_go",
+            "mutate_source": go_mutate_sources[0],
+            "mutate_sources": go_mutate_sources,
+        },
+    }
+
+
 def generate_incremental_rebuild_api_surface_cascade(
     root: Path,
     bench_name: str,
@@ -311,6 +533,7 @@ def generate_incremental_rebuild_api_surface_cascade(
     # ── Rust ──────────────────────────────────────────────────────────────────
     rust_dir = generated_root / "rust"
     rust_dir.mkdir(parents=True, exist_ok=True)
+    provision_generated_rust_cargo_config(root, rust_dir)
     rust_core = rust_dir / "core.rs"
     rust_core.write_text(
         "\n".join([

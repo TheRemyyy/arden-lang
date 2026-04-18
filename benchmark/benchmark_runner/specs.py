@@ -135,6 +135,12 @@ BENCHMARKS = [
         aliases=("compile_project_10_files",),
     ),
     BenchmarkSpec(
+        "compile_project_call_stress_graph",
+        "Compile call-heavy project graph with many function-value chooser calls per language",
+        kind="compile",
+        aliases=("compile_project_fn_value_graph", "compile_project_call_heavy_graph"),
+    ),
+    BenchmarkSpec(
         "compile_project_mega_graph",
         "Compile stress test on a generated 1400-file mega-graph project per language",
         kind="compile",

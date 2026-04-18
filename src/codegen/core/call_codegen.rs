@@ -1,6 +1,85 @@
 use super::*;
 
 impl<'ctx> Codegen<'ctx> {
+    fn resolve_option_result_static_builtin(type_name: &str, field: &str) -> Option<&'static str> {
+        builtin_exact_import_alias_canonical(&format!("{}.{}", type_name, field)).or(
+            match (type_name, field) {
+                ("Option", "some") => Some("Option__some"),
+                ("Option", "none") => Some("Option__none"),
+                ("Result", "ok") => Some("Result__ok"),
+                ("Result", "error") => Some("Result__error"),
+                _ => None,
+            },
+        )
+    }
+
+    fn compile_option_result_static_call(
+        &mut self,
+        canonical_builtin: &str,
+        args: &[Spanned<Expr>],
+        inferred_expr_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        match canonical_builtin {
+            "Option__some" => {
+                if args.len() != 1 {
+                    return Err(CodegenError::new(
+                        "Option.some() requires exactly 1 argument",
+                    ));
+                }
+                if let Type::Option(inner_ty) = inferred_expr_ty {
+                    let val =
+                        self.compile_expr_for_concrete_class_payload(&args[0].node, inner_ty)?;
+                    return self.create_option_some_typed(val, inner_ty);
+                }
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
+                self.create_option_some(val)
+            }
+            "Option__none" => {
+                if !args.is_empty() {
+                    return Err(CodegenError::new(format!(
+                        "Option.none() expects 0 argument(s), got {}",
+                        args.len()
+                    )));
+                }
+                if let Type::Option(inner_ty) = inferred_expr_ty {
+                    return self.create_option_none_typed(inner_ty);
+                }
+                self.create_option_none()
+            }
+            "Result__ok" => {
+                if args.len() != 1 {
+                    return Err(CodegenError::new("Result.ok() requires exactly 1 argument"));
+                }
+                if let Type::Result(ok_ty, err_ty) = inferred_expr_ty {
+                    let val = self.compile_expr_for_concrete_class_payload(&args[0].node, ok_ty)?;
+                    return self.create_result_ok_typed(val, ok_ty, err_ty);
+                }
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
+                self.create_result_ok(val)
+            }
+            "Result__error" => {
+                if args.len() != 1 {
+                    return Err(CodegenError::new(
+                        "Result.error() requires exactly 1 argument",
+                    ));
+                }
+                if let Type::Result(ok_ty, err_ty) = inferred_expr_ty {
+                    let val =
+                        self.compile_expr_for_concrete_class_payload(&args[0].node, err_ty)?;
+                    return self.create_result_error_typed(val, ok_ty, err_ty);
+                }
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
+                self.create_result_error(val)
+            }
+            _ => Err(CodegenError::new(
+                "internal error: unsupported Option/Result static builtin call",
+            )),
+        }
+    }
+
     pub fn compile_call(
         &mut self,
         callee: &Expr,
@@ -43,144 +122,20 @@ impl<'ctx> Codegen<'ctx> {
         // Check for Option/Result static methods
         if let Expr::Field { object, field } = callee {
             if let Expr::Ident(type_name) = &object.node {
-                let call_expr = Expr::Call {
-                    callee: Box::new(Spanned::new(callee.clone(), Span::default())),
-                    args: args.to_vec(),
-                    type_args: Vec::new(),
-                };
-                let inferred_expr_ty = self.infer_expr_type(&call_expr, &[]);
                 if let Some(canonical_builtin) =
-                    builtin_exact_import_alias_canonical(&format!("{}.{}", type_name, field))
+                    Self::resolve_option_result_static_builtin(type_name, field)
                 {
-                    match canonical_builtin {
-                        "Option__some" => {
-                            if args.len() != 1 {
-                                return Err(CodegenError::new(
-                                    "Option.some() requires exactly 1 argument",
-                                ));
-                            }
-                            if let Type::Option(inner_ty) = &inferred_expr_ty {
-                                let val = self.compile_expr_for_concrete_class_payload(
-                                    &args[0].node,
-                                    inner_ty,
-                                )?;
-                                return self.create_option_some_typed(val, inner_ty);
-                            }
-                            let arg_ty = self.infer_builtin_argument_type(&args[0].node);
-                            let val =
-                                self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
-                            return self.create_option_some(val);
-                        }
-                        "Option__none" => {
-                            if !args.is_empty() {
-                                return Err(CodegenError::new(format!(
-                                    "Option.none() expects 0 argument(s), got {}",
-                                    args.len()
-                                )));
-                            }
-                            if let Type::Option(inner_ty) = &inferred_expr_ty {
-                                return self.create_option_none_typed(inner_ty);
-                            }
-                            return self.create_option_none();
-                        }
-                        "Result__ok" => {
-                            if args.len() != 1 {
-                                return Err(CodegenError::new(
-                                    "Result.ok() requires exactly 1 argument",
-                                ));
-                            }
-                            if let Type::Result(ok_ty, err_ty) = &inferred_expr_ty {
-                                let val = self.compile_expr_for_concrete_class_payload(
-                                    &args[0].node,
-                                    ok_ty,
-                                )?;
-                                return self.create_result_ok_typed(val, ok_ty, err_ty);
-                            }
-                            let arg_ty = self.infer_builtin_argument_type(&args[0].node);
-                            let val =
-                                self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
-                            return self.create_result_ok(val);
-                        }
-                        "Result__error" => {
-                            if args.len() != 1 {
-                                return Err(CodegenError::new(
-                                    "Result.error() requires exactly 1 argument",
-                                ));
-                            }
-                            if let Type::Result(ok_ty, err_ty) = &inferred_expr_ty {
-                                let val = self.compile_expr_for_concrete_class_payload(
-                                    &args[0].node,
-                                    err_ty,
-                                )?;
-                                return self.create_result_error_typed(val, ok_ty, err_ty);
-                            }
-                            let arg_ty = self.infer_builtin_argument_type(&args[0].node);
-                            let val =
-                                self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
-                            return self.create_result_error(val);
-                        }
-                        _ => {}
-                    }
-                }
-                match (type_name.as_str(), field.as_str()) {
-                    ("Option", "some") => {
-                        if args.len() != 1 {
-                            return Err(CodegenError::new(
-                                "Option.some() requires exactly 1 argument",
-                            ));
-                        }
-                        if let Type::Option(inner_ty) = &inferred_expr_ty {
-                            let val = self
-                                .compile_expr_for_concrete_class_payload(&args[0].node, inner_ty)?;
-                            return self.create_option_some_typed(val, inner_ty);
-                        }
-                        let arg_ty = self.infer_builtin_argument_type(&args[0].node);
-                        let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
-                        return self.create_option_some(val);
-                    }
-                    ("Option", "none") => {
-                        if !args.is_empty() {
-                            return Err(CodegenError::new(format!(
-                                "Option.none() expects 0 argument(s), got {}",
-                                args.len()
-                            )));
-                        }
-                        if let Type::Option(inner_ty) = &inferred_expr_ty {
-                            return self.create_option_none_typed(inner_ty);
-                        }
-                        return self.create_option_none();
-                    }
-                    ("Result", "ok") => {
-                        if args.len() != 1 {
-                            return Err(CodegenError::new(
-                                "Result.ok() requires exactly 1 argument",
-                            ));
-                        }
-                        if let Type::Result(ok_ty, err_ty) = &inferred_expr_ty {
-                            let val =
-                                self.compile_expr_for_concrete_class_payload(&args[0].node, ok_ty)?;
-                            return self.create_result_ok_typed(val, ok_ty, err_ty);
-                        }
-                        let arg_ty = self.infer_builtin_argument_type(&args[0].node);
-                        let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
-                        return self.create_result_ok(val);
-                    }
-                    ("Result", "error") => {
-                        if args.len() != 1 {
-                            return Err(CodegenError::new(
-                                "Result.error() requires exactly 1 argument",
-                            ));
-                        }
-                        if let Type::Result(ok_ty, err_ty) = &inferred_expr_ty {
-                            let val = self
-                                .compile_expr_for_concrete_class_payload(&args[0].node, err_ty)?;
-                            return self.create_result_error_typed(val, ok_ty, err_ty);
-                        }
-                        let arg_ty = self.infer_builtin_argument_type(&args[0].node);
-                        let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
-                        return self.create_result_error(val);
-                    }
-                    _ => {}
+                    let call_expr = Expr::Call {
+                        callee: Box::new(Spanned::new(callee.clone(), Span::default())),
+                        args: args.to_vec(),
+                        type_args: Vec::new(),
+                    };
+                    let inferred_expr_ty = self.infer_expr_type(&call_expr, &[]);
+                    return self.compile_option_result_static_call(
+                        canonical_builtin,
+                        args,
+                        &inferred_expr_ty,
+                    );
                 }
             }
         }

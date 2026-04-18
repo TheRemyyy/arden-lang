@@ -97,8 +97,8 @@ python3 benchmark/full_campaign.py --preset exhaustive --no-build
 | :--- | :--- | ---: | ---: | :--- |
 | `runtime` | sum_loop, prime_count, matrix_mul, fibonacci_recursive, sort_heavy, collatz_batch, convolution_1d, histogram_heavy, prefix_sum_stream, scatter_gather_mix, stencil_2d | 5 | 2 | — |
 | `runtime_heavy` | matrix_mul_heavy (220×220) | 5 | 2 | `--capture-profile` |
-| `compile_hot` | starter, flat, layered, dense, worst-case, mega-graph | 5 | 2 | `--arden-timings` |
-| `compile_cold` | starter, flat, layered, dense, worst-case, mega-graph | 5 | 2 | — |
+| `compile_hot` | starter, call-stress, flat, layered, dense, worst-case, mega-graph | 5 | 2 | `--arden-timings` |
+| `compile_cold` | starter, call-stress, flat, layered, dense, worst-case, mega-graph | 5 | 2 | — |
 | `incremental_small` | single-file, shared-core, API-surface cascade | 5 | 2 | `--arden-timings` |
 | `incremental_large` | large-batch, mega-graph-batch, mega-graph-mixed | 5 | 2 | `--arden-timings` |
 
@@ -138,6 +138,7 @@ Measure the full frontend-to-native-binary pipeline cost.
 | :--- | :--- |
 | `compile_project_tiny_graph` | 1-file micro baseline |
 | `compile_project_starter_graph` | 10-file starter graph |
+| `compile_project_call_stress_graph` | call-heavy function-value stress graph |
 | `compile_project_flat_graph` | ~220-file flat graph with no inter-leaf imports |
 | `compile_project_layered_graph` | ~240-file layered dependency graph |
 | `compile_project_dense_graph` | ~180-file dense local fan-in graph |

@@ -10660,7 +10660,7 @@ unsafe {
                 let stmt_started_at = Instant::now();
                 let normalized_ty = self.normalize_codegen_type(ty);
                 let val = self.compile_expr_with_expected_type(&value.node, &normalized_ty)?;
-                let actual_ty = self.infer_expr_type(&value.node, &[]);
+                let actual_ty = self.infer_builtin_argument_type(&value.node);
                 self.reject_incompatible_expected_type_value(&normalized_ty, &actual_ty, val)?;
                 let alloca = self.build_entry_alloca(self.llvm_type(&normalized_ty), name)?;
                 self.builder.build_store(alloca, val).map_err(|_| {
@@ -10706,60 +10706,28 @@ unsafe {
             Stmt::Assign { target, value } => {
                 let stmt_started_at = Instant::now();
                 self.ensure_assignment_target_mutable(&target.node)?;
-                if let Some((op, rhs)) =
-                    Self::match_compound_assign_target(&target.node, &value.node)
-                {
-                    let is_map_index_target = matches!(
-                        &target.node,
-                        Expr::Index { object, .. }
-                            if matches!(
-                                self.infer_object_type(&object.node)
-                                    .or_else(|| Some(self.infer_expr_type(&object.node, &[])))
-                                    .map(|ty| self.deref_codegen_type(&ty).clone()),
-                                Some(Type::Map(_, _))
-                            )
-                    );
-                    if !is_map_index_target {
-                        let target_ty = self.infer_expr_type(&target.node, &[]);
-                        let rhs_ty = self.infer_builtin_argument_type(&rhs.node);
-                        let ptr = self.compile_lvalue(&target.node)?;
-                        let current = self
-                            .builder
-                            .build_load(self.llvm_type(&target_ty), ptr, "compound_current")
-                            .map_err(|_| {
-                                CodegenError::new(
-                                    "failed to load current compound assignment value",
-                                )
-                            })?;
-                        let rhs_value =
-                            self.compile_expr_with_expected_type(&rhs.node, &target_ty)?;
-                        let result = self
-                            .compile_binary_values(op, current, rhs_value, &target_ty, &rhs_ty)?;
-                        self.builder.build_store(ptr, result).map_err(|_| {
-                            CodegenError::new("failed to store compound assignment result")
-                        })?;
-                        if let Expr::Ident(name) = &target.node {
-                            self.update_binding_non_negative_fact(name, &target_ty, &value.node);
-                            self.update_binding_list_alias_fact(name, &target_ty, &value.node);
-                            self.exact_list_lengths.remove(name);
-                            self.exact_list_capacities.remove(name);
-                            self.list_element_upper_bounds.remove(name);
-                        }
-                        CODEGEN_PHASE_TIMING_TOTALS
-                            .body_stmt_assign_ns
-                            .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
-                        return Ok(());
+                let compound_assign = Self::match_compound_assign_target(&target.node, &value.node);
+                let indexed_target = match &target.node {
+                    Expr::Index { object, index } => {
+                        let object_ty = self
+                            .infer_object_type(&object.node)
+                            .or_else(|| Some(self.infer_builtin_argument_type(&object.node)));
+                        let map_ty = object_ty
+                            .as_ref()
+                            .map(|ty| self.deref_codegen_type(ty).clone())
+                            .and_then(|ty| match ty {
+                                Type::Map(_, _) => Some(ty),
+                                _ => None,
+                            });
+                        Some((object, index, object_ty, map_ty))
                     }
-                }
+                    _ => None,
+                };
 
-                if let Expr::Index { object, index } = &target.node {
-                    let object_ty = self
-                        .infer_object_type(&object.node)
-                        .or_else(|| Some(self.infer_expr_type(&object.node, &[])));
-                    let deref_object_ty = object_ty
-                        .clone()
-                        .map(|ty| self.deref_codegen_type(&ty).clone());
-                    if let Some(map_ty @ Type::Map(_, _)) = deref_object_ty {
+                if let Some((op, rhs)) = compound_assign {
+                    if let Some((object, index, object_ty, Some(map_ty @ Type::Map(_, _)))) =
+                        indexed_target.as_ref()
+                    {
                         let map_value =
                             if matches!(object_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
                                 self.compile_expr(&object.node)?
@@ -10768,72 +10736,107 @@ unsafe {
                             } else {
                                 self.compile_expr(&object.node)?
                             };
-                        if let Some((op, rhs)) =
-                            Self::match_compound_assign_target(&target.node, &value.node)
-                        {
-                            let Type::Map(key_ty, val_ty) = &map_ty else {
-                                return Err(CodegenError::new(
-                                    "internal error: expected map type for map compound assignment",
-                                ));
-                            };
-                            let (key_ty, val_ty) = ((*key_ty.clone()), (*val_ty.clone()));
-                            let key = self.compile_expr_with_expected_type(&index.node, &key_ty)?;
-                            // Materialize the evaluated key once and reload it for get/set.
-                            // This keeps side-effect semantics intact and avoids reusing a
-                            // complex aggregate SSA value across two large map helper expansions.
-                            let key_slot = self
-                                .build_entry_alloca(self.llvm_type(&key_ty), "map_compound_key")?;
-                            self.builder.build_store(key_slot, key).map_err(|_| {
+                        let Type::Map(key_ty, val_ty) = map_ty else {
+                            return Err(CodegenError::new(
+                                "internal error: expected map type for map compound assignment",
+                            ));
+                        };
+                        let (key_ty, val_ty) = ((*key_ty.clone()), (*val_ty.clone()));
+                        let key = self.compile_expr_with_expected_type(&index.node, &key_ty)?;
+                        // Materialize the evaluated key once and reload it for get/set.
+                        // This keeps side-effect semantics intact and avoids reusing a
+                        // complex aggregate SSA value across two large map helper expansions.
+                        let key_slot =
+                            self.build_entry_alloca(self.llvm_type(&key_ty), "map_compound_key")?;
+                        self.builder.build_store(key_slot, key).map_err(|_| {
+                            CodegenError::new(
+                                "failed to store map compound-assignment key temporary",
+                            )
+                        })?;
+                        let key_for_get = self
+                            .builder
+                            .build_load(self.llvm_type(&key_ty), key_slot, "map_key_get")
+                            .map_err(|_| {
                                 CodegenError::new(
-                                    "failed to store map compound-assignment key temporary",
+                                    "failed to reload map compound-assignment key for get",
                                 )
                             })?;
-                            let key_for_get = self
-                                .builder
-                                .build_load(self.llvm_type(&key_ty), key_slot, "map_key_get")
-                                .map_err(|_| {
-                                    CodegenError::new(
-                                        "failed to reload map compound-assignment key for get",
-                                    )
-                                })?;
-                            let current = self.compile_map_get_on_value_with_compiled_key(
-                                map_value,
-                                &map_ty,
-                                key_for_get,
-                            )?;
-                            let rhs_value =
-                                self.compile_expr_with_expected_type(&rhs.node, &val_ty)?;
-                            let result = self
-                                .compile_binary_values(op, current, rhs_value, &val_ty, &val_ty)?;
-                            let key_for_set = self
-                                .builder
-                                .build_load(self.llvm_type(&key_ty), key_slot, "map_key_set")
-                                .map_err(|_| {
-                                    CodegenError::new(
-                                        "failed to reload map compound-assignment key for set",
-                                    )
-                                })?;
-                            self.compile_map_set_on_value_with_compiled_key_value(
-                                map_value,
-                                &map_ty,
-                                key_for_set,
-                                result,
-                            )?;
-                            CODEGEN_PHASE_TIMING_TOTALS
-                                .body_stmt_assign_ns
-                                .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
-                            return Ok(());
-                        }
-                        let args = [
-                            Spanned::new(index.node.clone(), index.span.clone()),
-                            Spanned::new(value.node.clone(), value.span.clone()),
-                        ];
-                        self.compile_map_method_on_value(map_value, &map_ty, "set", &args)?;
+                        let current = self.compile_map_get_on_value_with_compiled_key(
+                            map_value,
+                            map_ty,
+                            key_for_get,
+                        )?;
+                        let rhs_value = self.compile_expr_with_expected_type(&rhs.node, &val_ty)?;
+                        let result =
+                            self.compile_binary_values(op, current, rhs_value, &val_ty, &val_ty)?;
+                        let key_for_set = self
+                            .builder
+                            .build_load(self.llvm_type(&key_ty), key_slot, "map_key_set")
+                            .map_err(|_| {
+                                CodegenError::new(
+                                    "failed to reload map compound-assignment key for set",
+                                )
+                            })?;
+                        self.compile_map_set_on_value_with_compiled_key_value(
+                            map_value,
+                            map_ty,
+                            key_for_set,
+                            result,
+                        )?;
                         CODEGEN_PHASE_TIMING_TOTALS
                             .body_stmt_assign_ns
                             .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
                         return Ok(());
                     }
+
+                    let target_ty = self.infer_expr_type(&target.node, &[]);
+                    let rhs_ty = self.infer_builtin_argument_type(&rhs.node);
+                    let ptr = self.compile_lvalue(&target.node)?;
+                    let current = self
+                        .builder
+                        .build_load(self.llvm_type(&target_ty), ptr, "compound_current")
+                        .map_err(|_| {
+                            CodegenError::new("failed to load current compound assignment value")
+                        })?;
+                    let rhs_value = self.compile_expr_with_expected_type(&rhs.node, &target_ty)?;
+                    let result =
+                        self.compile_binary_values(op, current, rhs_value, &target_ty, &rhs_ty)?;
+                    self.builder.build_store(ptr, result).map_err(|_| {
+                        CodegenError::new("failed to store compound assignment result")
+                    })?;
+                    if let Expr::Ident(name) = &target.node {
+                        self.update_binding_non_negative_fact(name, &target_ty, &value.node);
+                        self.update_binding_list_alias_fact(name, &target_ty, &value.node);
+                        self.exact_list_lengths.remove(name);
+                        self.exact_list_capacities.remove(name);
+                        self.list_element_upper_bounds.remove(name);
+                    }
+                    CODEGEN_PHASE_TIMING_TOTALS
+                        .body_stmt_assign_ns
+                        .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
+                    return Ok(());
+                }
+
+                if let Some((object, index, object_ty, Some(map_ty @ Type::Map(_, _)))) =
+                    indexed_target.as_ref()
+                {
+                    let map_value =
+                        if matches!(object_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+                            self.compile_expr(&object.node)?
+                        } else if let Ok(map_ptr) = self.compile_lvalue(&object.node) {
+                            map_ptr.into()
+                        } else {
+                            self.compile_expr(&object.node)?
+                        };
+                    let args = [
+                        Spanned::new(index.node.clone(), index.span.clone()),
+                        Spanned::new(value.node.clone(), value.span.clone()),
+                    ];
+                    self.compile_map_method_on_value(map_value, map_ty, "set", &args)?;
+                    CODEGEN_PHASE_TIMING_TOTALS
+                        .body_stmt_assign_ns
+                        .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
+                    return Ok(());
                 }
 
                 let target_ty = self.infer_expr_type(&target.node, &[]);
@@ -10844,7 +10847,7 @@ unsafe {
                     Type::Integer | Type::Float | Type::Boolean | Type::Char
                 );
                 if !target_is_plain_scalar || val.get_type() != self.llvm_type(&target_ty) {
-                    let actual_ty = self.infer_expr_type(&value.node, &[]);
+                    let actual_ty = self.infer_builtin_argument_type(&value.node);
                     self.reject_incompatible_expected_type_value(&target_ty, &actual_ty, val)?;
                 }
                 self.builder
@@ -10922,7 +10925,8 @@ unsafe {
                                 if !ret_is_plain_scalar
                                     || compiled.get_type() != self.llvm_type(&ret_ty)
                                 {
-                                    let inferred_expr_ty = self.infer_expr_type(&expr.node, &[]);
+                                    let inferred_expr_ty =
+                                        self.infer_builtin_argument_type(&expr.node);
                                     self.reject_incompatible_expected_type_value(
                                         &ret_ty,
                                         &inferred_expr_ty,

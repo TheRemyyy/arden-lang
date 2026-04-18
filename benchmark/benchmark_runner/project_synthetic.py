@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from .project_small import pick_mutation_targets, reset_generated_root
+from .project_small import (
+    pick_mutation_targets,
+    provision_generated_rust_cargo_config,
+    reset_generated_root,
+)
 from .synthetic_arden import (
     write_arden_core,
     write_arden_group_files,
@@ -32,6 +36,7 @@ def generate_compile_project_synthetic_graph(
     arden_src.mkdir(parents=True, exist_ok=True)
     rust_dir = generated_root / "rust"
     rust_dir.mkdir(parents=True, exist_ok=True)
+    provision_generated_rust_cargo_config(root, rust_dir)
     go_dir = generated_root / "go"
     go_dir.mkdir(parents=True, exist_ok=True)
 
