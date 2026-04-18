@@ -830,8 +830,10 @@ pub(crate) struct ObjectEmitTimingTotals {
     pub(crate) context_create_ns: AtomicU64,
     pub(crate) codegen_new_ns: AtomicU64,
     pub(crate) compile_filtered_ns: AtomicU64,
+    pub(crate) compile_filtered_max_ns: AtomicU64,
     pub(crate) object_dir_setup_ns: AtomicU64,
     pub(crate) write_object_ns: AtomicU64,
+    pub(crate) write_object_max_ns: AtomicU64,
     pub(crate) active_symbol_count: AtomicUsize,
     pub(crate) declaration_symbol_count: AtomicUsize,
     pub(crate) program_decl_count: AtomicUsize,
@@ -861,9 +863,12 @@ pub(crate) struct PipelineRewriteTimingTotals {
 #[derive(Default)]
 pub(crate) struct ObjectCodegenTimingTotals {
     pub(crate) declaration_closure_ns: AtomicU64,
+    pub(crate) declaration_closure_max_ns: AtomicU64,
     pub(crate) codegen_program_ns: AtomicU64,
+    pub(crate) codegen_program_max_ns: AtomicU64,
     pub(crate) closure_body_symbols_ns: AtomicU64,
     pub(crate) llvm_emit_ns: AtomicU64,
+    pub(crate) llvm_emit_max_ns: AtomicU64,
     pub(crate) cache_save_ns: AtomicU64,
 }
 

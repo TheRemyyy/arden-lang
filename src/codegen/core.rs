@@ -584,6 +584,7 @@ pub struct Codegen<'ctx> {
     current_package: String,
     current_module_prefix: Option<String>,
     pub(crate) current_generic_bounds: HashMap<String, Vec<String>>,
+    externally_visible_functions: Option<HashSet<String>>,
 }
 
 impl<'ctx> Codegen<'ctx> {
@@ -6915,7 +6916,12 @@ impl<'ctx> Codegen<'ctx> {
             current_package: String::new(),
             current_module_prefix: None,
             current_generic_bounds: HashMap::new(),
+            externally_visible_functions: None,
         }
+    }
+
+    pub fn set_externally_visible_functions(&mut self, functions: HashSet<String>) {
+        self.externally_visible_functions = Some(functions);
     }
 
     /// Check if a function name is a stdlib function
@@ -9844,7 +9850,12 @@ impl<'ctx> Codegen<'ctx> {
         };
 
         let function = self.module.add_function(&func.name, fn_type, None);
-        if func.name.contains("__spec__") {
+        let is_externally_visible = func.name == "main"
+            || self
+                .externally_visible_functions
+                .as_ref()
+                .is_none_or(|functions| functions.contains(&func.name));
+        if func.name.contains("__spec__") || !is_externally_visible {
             function.set_linkage(Linkage::Internal);
         }
         if Self::function_returns_provably_non_negative(func) {

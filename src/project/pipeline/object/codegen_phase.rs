@@ -5,12 +5,17 @@ use crate::cache::{
     OBJECT_CACHE_META_TIMING_TOTALS,
 };
 use crate::cli::output::{cli_error, format_cli_path};
+use crate::dependency::{import_lookup_key, resolve_symbol_in_namespace_path};
 use crate::linker::LinkConfig;
-use crate::specialization::{codegen_program_for_units, combined_program_for_files};
-use crate::symbol_lookup::{
-    closure_body_symbols_for_files, declaration_symbols_for_unit, CodegenReferenceMetadata,
-    DeclarationClosureRequest, GlobalSymbolMaps,
+use crate::specialization::{
+    codegen_program_for_units, combined_program_for_files, mangle_project_symbol_for_codegen,
 };
+use crate::symbol_lookup::{
+    closure_body_symbols_for_files, declaration_symbols_for_unit,
+    resolve_exact_imported_symbol_owner, CodegenReferenceMetadata, DeclarationClosureRequest,
+    GlobalSymbolMaps,
+};
+use crate::{Decl, Program};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -85,6 +90,16 @@ impl ObjectShardStats {
     }
 }
 
+fn record_atomic_max(slot: &std::sync::atomic::AtomicU64, value: u64) {
+    let mut current = slot.load(Ordering::Relaxed);
+    while value > current {
+        match slot.compare_exchange(current, value, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => break,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
 impl fmt::Display for ObjectCodegenPhaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -99,6 +114,121 @@ impl From<ObjectCodegenPhaseError> for String {
     fn from(value: ObjectCodegenPhaseError) -> Self {
         value.to_string()
     }
+}
+
+fn collect_externally_visible_functions_for_shard(
+    member_files: &HashSet<PathBuf>,
+    entry_namespace: &str,
+    reference_metadata: &HashMap<PathBuf, CodegenReferenceMetadata>,
+    global_maps: &GlobalSymbolMaps<'_>,
+    project_symbol_lookup: &ProjectSymbolLookup,
+) -> HashSet<String> {
+    let mut externally_visible = HashSet::new();
+
+    let mut record_function = |symbol: &str, owner_ns: &str, owner_file: &PathBuf| {
+        if member_files.contains(owner_file) {
+            externally_visible.insert(mangle_project_symbol_for_codegen(
+                owner_ns,
+                entry_namespace,
+                symbol,
+            ));
+        }
+    };
+
+    for (consumer_file, metadata) in reference_metadata {
+        if member_files.contains(consumer_file) {
+            continue;
+        }
+
+        for symbol in &metadata.referenced_symbols {
+            if let (Some(owner_ns), Some(owner_file)) = (
+                global_maps.function_map.get(symbol),
+                global_maps.function_file_map.get(symbol),
+            ) {
+                record_function(symbol, owner_ns, owner_file);
+            }
+        }
+
+        for import in &metadata.imports {
+            if import.path.ends_with(".*") {
+                let namespace = import.path.trim_end_matches(".*");
+                for symbol in &metadata.referenced_symbols {
+                    if let Some((owner_ns, candidate)) = resolve_symbol_in_namespace_path(
+                        namespace,
+                        std::slice::from_ref(symbol),
+                        project_symbol_lookup,
+                    ) {
+                        if let Some(owner_file) = global_maps.function_file_map.get(&candidate) {
+                            record_function(&candidate, &owner_ns, owner_file);
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if let Some((owner_ns, symbol_name, owner_file)) = import
+                .path
+                .rsplit_once('.')
+                .and_then(|(namespace, symbol)| {
+                    resolve_exact_imported_symbol_owner(namespace, symbol, project_symbol_lookup)
+                })
+            {
+                record_function(&symbol_name, &owner_ns, owner_file);
+            }
+
+            let import_key = import_lookup_key(import);
+            for path in &metadata.qualified_symbol_refs {
+                if path.first().is_some_and(|part| part == &import_key) {
+                    let rest = &path[1..];
+                    if let Some((owner_ns, candidate)) =
+                        resolve_symbol_in_namespace_path(&import.path, rest, project_symbol_lookup)
+                    {
+                        if let Some(owner_file) = global_maps.function_file_map.get(&candidate) {
+                            record_function(&candidate, &owner_ns, owner_file);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if member_files
+        .iter()
+        .any(|file| file.file_stem().and_then(|stem| stem.to_str()) == Some("main"))
+    {
+        externally_visible.insert("main".to_string());
+    }
+
+    externally_visible
+}
+
+fn program_is_plain_top_level_function_file(program: &Program) -> bool {
+    program
+        .declarations
+        .iter()
+        .all(|decl| matches!(decl.node, Decl::Function(_)))
+}
+
+fn file_is_safe_internalization_candidate(unit: &RewrittenProjectUnit) -> bool {
+    let Some(file_stem) = unit.file.file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    if !program_is_plain_top_level_function_file(&unit.program) {
+        return false;
+    }
+
+    let mut function_count = 0_usize;
+    for decl in &unit.program.declarations {
+        let Decl::Function(func) = &decl.node else {
+            return false;
+        };
+        function_count += 1;
+        if func.name != "main" && !func.name.starts_with(file_stem) {
+            return false;
+        }
+    }
+
+    function_count > 1
 }
 
 pub(crate) struct ObjectCodegenPhaseInputs<'a, 'b> {
@@ -156,6 +286,26 @@ fn run_object_codegen_phase_impl(
                 .cache_misses
                 .par_iter()
                 .map(|shard| {
+                    let shard_member_files =
+                        shard.member_files.iter().cloned().collect::<HashSet<_>>();
+                    let shard_supports_internalization = shard
+                        .member_indices
+                        .iter()
+                        .all(|index| file_is_safe_internalization_candidate(&inputs.rewritten_files[*index]));
+                    let externally_visible_functions = (shard_supports_internalization
+                        && matches!(
+                            inputs.link.output_kind,
+                            crate::project::types::OutputKind::Bin
+                        ))
+                    .then(|| {
+                        collect_externally_visible_functions_for_shard(
+                            &shard_member_files,
+                            inputs.entry_namespace,
+                            inputs.codegen_reference_metadata,
+                            &inputs.global_maps,
+                            inputs.project_symbol_lookup,
+                        )
+                    });
                     let obj_path = if let Some(cache_paths) = &shard.cache_paths {
                         cache_paths.object_path.clone()
                     } else {
@@ -197,12 +347,15 @@ fn run_object_codegen_phase_impl(
                         batch_declaration_symbols.extend(declaration_closure.symbols);
                         batch_closure_files.extend(declaration_closure.files);
                     }
+                    let declaration_closure_elapsed_ns =
+                        elapsed_nanos_u64(declaration_closure_started_at);
                     object_codegen_timing_totals
                         .declaration_closure_ns
-                        .fetch_add(
-                            elapsed_nanos_u64(declaration_closure_started_at),
-                            Ordering::Relaxed,
-                        );
+                        .fetch_add(declaration_closure_elapsed_ns, Ordering::Relaxed);
+                    record_atomic_max(
+                        &object_codegen_timing_totals.declaration_closure_max_ns,
+                        declaration_closure_elapsed_ns,
+                    );
 
                     let codegen_program_started_at = Instant::now();
                     let shard_needs_full_program = shard
@@ -230,15 +383,17 @@ fn run_object_codegen_phase_impl(
                         );
                         &projected_codegen_program
                     };
-                    object_codegen_timing_totals.codegen_program_ns.fetch_add(
-                        elapsed_nanos_u64(codegen_program_started_at),
-                        Ordering::Relaxed,
+                    let codegen_program_elapsed_ns = elapsed_nanos_u64(codegen_program_started_at);
+                    object_codegen_timing_totals
+                        .codegen_program_ns
+                        .fetch_add(codegen_program_elapsed_ns, Ordering::Relaxed);
+                    record_atomic_max(
+                        &object_codegen_timing_totals.codegen_program_max_ns,
+                        codegen_program_elapsed_ns,
                     );
 
                     let closure_body_symbols_started_at = Instant::now();
                     let mut codegen_active_symbols = batch_active_symbols;
-                    let shard_member_files =
-                        shard.member_files.iter().cloned().collect::<HashSet<_>>();
                     codegen_active_symbols.extend(closure_body_symbols_for_files(
                         &shard_member_files,
                         &batch_declaration_symbols,
@@ -263,18 +418,26 @@ fn run_object_codegen_phase_impl(
 
                     let llvm_emit_started_at = Instant::now();
                     crate::compile_program_ast_to_object_filtered(
-                        codegen_program,
-                        &shard.member_files[0],
-                        &obj_path,
-                        inputs.link,
-                        &codegen_active_symbols,
-                        &batch_declaration_symbols,
-                        Some(object_emit_timing_totals.as_ref()),
+                        crate::FilteredObjectCompileRequest {
+                            program: codegen_program,
+                            source_path: &shard.member_files[0],
+                            object_path: &obj_path,
+                            link: inputs.link,
+                            active_symbols: &codegen_active_symbols,
+                            declaration_symbols: &batch_declaration_symbols,
+                            externally_visible_functions: externally_visible_functions.as_ref(),
+                            timings: Some(object_emit_timing_totals.as_ref()),
+                        },
                     )
                     .map_err(ObjectCodegenPhaseError::ObjectEmit)?;
+                    let llvm_emit_elapsed_ns = elapsed_nanos_u64(llvm_emit_started_at);
                     object_codegen_timing_totals
                         .llvm_emit_ns
-                        .fetch_add(elapsed_nanos_u64(llvm_emit_started_at), Ordering::Relaxed);
+                        .fetch_add(llvm_emit_elapsed_ns, Ordering::Relaxed);
+                    record_atomic_max(
+                        &object_codegen_timing_totals.llvm_emit_max_ns,
+                        llvm_emit_elapsed_ns,
+                    );
 
                     let cache_save_started_at = Instant::now();
                     if let Some(cache_paths) = &shard.cache_paths {
@@ -343,9 +506,21 @@ fn run_object_codegen_phase_impl(
             .load(Ordering::Relaxed),
     );
     build_timings.record_duration_ns(
+        "object codegen/declaration closure max",
+        object_codegen_timing_totals
+            .declaration_closure_max_ns
+            .load(Ordering::Relaxed),
+    );
+    build_timings.record_duration_ns(
         "object codegen/program projection",
         object_codegen_timing_totals
             .codegen_program_ns
+            .load(Ordering::Relaxed),
+    );
+    build_timings.record_duration_ns(
+        "object codegen/program projection max",
+        object_codegen_timing_totals
+            .codegen_program_max_ns
             .load(Ordering::Relaxed),
     );
     build_timings.record_duration_ns(
@@ -358,6 +533,12 @@ fn run_object_codegen_phase_impl(
         "object codegen/llvm emit",
         object_codegen_timing_totals
             .llvm_emit_ns
+            .load(Ordering::Relaxed),
+    );
+    build_timings.record_duration_ns(
+        "object codegen/llvm emit max",
+        object_codegen_timing_totals
+            .llvm_emit_max_ns
             .load(Ordering::Relaxed),
     );
     build_timings.record_duration_ns(
@@ -409,6 +590,12 @@ fn run_object_codegen_phase_impl(
             .load(Ordering::Relaxed),
     );
     build_timings.record_duration_ns(
+        "object codegen/emit compile filtered max",
+        object_emit_timing_totals
+            .compile_filtered_max_ns
+            .load(Ordering::Relaxed),
+    );
+    build_timings.record_duration_ns(
         "object codegen/emit object dir setup",
         object_emit_timing_totals
             .object_dir_setup_ns
@@ -418,6 +605,12 @@ fn run_object_codegen_phase_impl(
         "object codegen/emit write object",
         object_emit_timing_totals
             .write_object_ns
+            .load(Ordering::Relaxed),
+    );
+    build_timings.record_duration_ns(
+        "object codegen/emit write object max",
+        object_emit_timing_totals
+            .write_object_max_ns
             .load(Ordering::Relaxed),
     );
     build_timings.record_counts(
@@ -804,6 +997,10 @@ fn run_object_codegen_phase_impl(
         object_write_timings.optimize_module_ns,
     );
     build_timings.record_duration_ns(
+        "object codegen/write object optimize module max",
+        object_write_timings.optimize_module_max_ns,
+    );
+    build_timings.record_duration_ns(
         "object codegen/write object memory buffer",
         object_write_timings.write_to_memory_buffer_ns,
     );
@@ -816,8 +1013,16 @@ fn run_object_codegen_phase_impl(
         object_write_timings.direct_write_to_file_ns,
     );
     build_timings.record_duration_ns(
+        "object codegen/write object direct file emit max",
+        object_write_timings.direct_write_to_file_max_ns,
+    );
+    build_timings.record_duration_ns(
         "object codegen/write object fs write",
         object_write_timings.filesystem_write_ns,
+    );
+    build_timings.record_duration_ns(
+        "object codegen/write object fs write max",
+        object_write_timings.filesystem_write_max_ns,
     );
     build_timings.record_counts(
         "object codegen/write object counts",

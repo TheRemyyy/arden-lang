@@ -47,10 +47,13 @@ pub struct ObjectWriteTimingSnapshot {
     pub module_set_triple_ns: u64,
     pub module_set_data_layout_ns: u64,
     pub optimize_module_ns: u64,
+    pub optimize_module_max_ns: u64,
     pub write_to_memory_buffer_ns: u64,
     pub memory_buffer_to_vec_ns: u64,
     pub direct_write_to_file_ns: u64,
+    pub direct_write_to_file_max_ns: u64,
     pub filesystem_write_ns: u64,
+    pub filesystem_write_max_ns: u64,
     pub target_machine_cache_hit_count: usize,
     pub target_machine_cache_miss_count: usize,
     pub emit_object_call_count: usize,
@@ -100,10 +103,13 @@ struct ObjectWriteTimingTotals {
     module_set_triple_ns: AtomicU64,
     module_set_data_layout_ns: AtomicU64,
     optimize_module_ns: AtomicU64,
+    optimize_module_max_ns: AtomicU64,
     write_to_memory_buffer_ns: AtomicU64,
     memory_buffer_to_vec_ns: AtomicU64,
     direct_write_to_file_ns: AtomicU64,
+    direct_write_to_file_max_ns: AtomicU64,
     filesystem_write_ns: AtomicU64,
+    filesystem_write_max_ns: AtomicU64,
     target_machine_cache_hit_count: AtomicUsize,
     target_machine_cache_miss_count: AtomicUsize,
     emit_object_call_count: AtomicUsize,
@@ -124,15 +130,28 @@ static OBJECT_WRITE_TIMING_TOTALS: ObjectWriteTimingTotals = ObjectWriteTimingTo
     module_set_triple_ns: AtomicU64::new(0),
     module_set_data_layout_ns: AtomicU64::new(0),
     optimize_module_ns: AtomicU64::new(0),
+    optimize_module_max_ns: AtomicU64::new(0),
     write_to_memory_buffer_ns: AtomicU64::new(0),
     memory_buffer_to_vec_ns: AtomicU64::new(0),
     direct_write_to_file_ns: AtomicU64::new(0),
+    direct_write_to_file_max_ns: AtomicU64::new(0),
     filesystem_write_ns: AtomicU64::new(0),
+    filesystem_write_max_ns: AtomicU64::new(0),
     target_machine_cache_hit_count: AtomicUsize::new(0),
     target_machine_cache_miss_count: AtomicUsize::new(0),
     emit_object_call_count: AtomicUsize::new(0),
     write_object_call_count: AtomicUsize::new(0),
 };
+
+fn record_atomic_max(slot: &AtomicU64, value: u64) {
+    let mut current = slot.load(Ordering::Relaxed);
+    while value > current {
+        match slot.compare_exchange(current, value, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => break,
+            Err(observed) => current = observed,
+        }
+    }
+}
 
 pub fn reset_object_write_timings() {
     OBJECT_WRITE_TIMING_TOTALS
@@ -175,6 +194,9 @@ pub fn reset_object_write_timings() {
         .optimize_module_ns
         .store(0, Ordering::Relaxed);
     OBJECT_WRITE_TIMING_TOTALS
+        .optimize_module_max_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
         .write_to_memory_buffer_ns
         .store(0, Ordering::Relaxed);
     OBJECT_WRITE_TIMING_TOTALS
@@ -184,7 +206,13 @@ pub fn reset_object_write_timings() {
         .direct_write_to_file_ns
         .store(0, Ordering::Relaxed);
     OBJECT_WRITE_TIMING_TOTALS
+        .direct_write_to_file_max_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
         .filesystem_write_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .filesystem_write_max_ns
         .store(0, Ordering::Relaxed);
     OBJECT_WRITE_TIMING_TOTALS
         .target_machine_cache_hit_count
@@ -241,6 +269,9 @@ pub fn snapshot_object_write_timings() -> ObjectWriteTimingSnapshot {
         optimize_module_ns: OBJECT_WRITE_TIMING_TOTALS
             .optimize_module_ns
             .load(Ordering::Relaxed),
+        optimize_module_max_ns: OBJECT_WRITE_TIMING_TOTALS
+            .optimize_module_max_ns
+            .load(Ordering::Relaxed),
         write_to_memory_buffer_ns: OBJECT_WRITE_TIMING_TOTALS
             .write_to_memory_buffer_ns
             .load(Ordering::Relaxed),
@@ -250,8 +281,14 @@ pub fn snapshot_object_write_timings() -> ObjectWriteTimingSnapshot {
         direct_write_to_file_ns: OBJECT_WRITE_TIMING_TOTALS
             .direct_write_to_file_ns
             .load(Ordering::Relaxed),
+        direct_write_to_file_max_ns: OBJECT_WRITE_TIMING_TOTALS
+            .direct_write_to_file_max_ns
+            .load(Ordering::Relaxed),
         filesystem_write_ns: OBJECT_WRITE_TIMING_TOTALS
             .filesystem_write_ns
+            .load(Ordering::Relaxed),
+        filesystem_write_max_ns: OBJECT_WRITE_TIMING_TOTALS
+            .filesystem_write_max_ns
             .load(Ordering::Relaxed),
         target_machine_cache_hit_count: OBJECT_WRITE_TIMING_TOTALS
             .target_machine_cache_hit_count
@@ -3608,24 +3645,36 @@ unsafe {
                     .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
                 let optimize_started_at = Instant::now();
                 self.optimize_module_with_default_pipeline(machine, opt_level)?;
+                let optimize_elapsed_ns = elapsed_nanos_u64(optimize_started_at);
                 OBJECT_WRITE_TIMING_TOTALS
                     .optimize_module_ns
-                    .fetch_add(elapsed_nanos_u64(optimize_started_at), Ordering::Relaxed);
+                    .fetch_add(optimize_elapsed_ns, Ordering::Relaxed);
+                record_atomic_max(
+                    &OBJECT_WRITE_TIMING_TOTALS.optimize_module_max_ns,
+                    optimize_elapsed_ns,
+                );
                 let direct_write_started_at = Instant::now();
                 let result = machine
                     .write_to_file(&self.module, FileType::Object, path)
                     .map_err(|e| e.to_string());
+                let direct_write_elapsed_ns = elapsed_nanos_u64(direct_write_started_at);
                 OBJECT_WRITE_TIMING_TOTALS
                     .direct_write_to_file_ns
-                    .fetch_add(
-                        elapsed_nanos_u64(direct_write_started_at),
-                        Ordering::Relaxed,
-                    );
+                    .fetch_add(direct_write_elapsed_ns, Ordering::Relaxed);
+                record_atomic_max(
+                    &OBJECT_WRITE_TIMING_TOTALS.direct_write_to_file_max_ns,
+                    direct_write_elapsed_ns,
+                );
                 result
             });
+        let write_elapsed_ns = elapsed_nanos_u64(write_started_at);
         OBJECT_WRITE_TIMING_TOTALS
             .filesystem_write_ns
-            .fetch_add(elapsed_nanos_u64(write_started_at), Ordering::Relaxed);
+            .fetch_add(write_elapsed_ns, Ordering::Relaxed);
+        record_atomic_max(
+            &OBJECT_WRITE_TIMING_TOTALS.filesystem_write_max_ns,
+            write_elapsed_ns,
+        );
         result
     }
 

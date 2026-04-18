@@ -42,6 +42,16 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
+fn record_atomic_max_u64(slot: &std::sync::atomic::AtomicU64, value: u64) {
+    let mut current = slot.load(Ordering::Relaxed);
+    while value > current {
+        match slot.compare_exchange(current, value, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => break,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
 use crate::ast::{Block, Decl, Expr, ImportDecl, Pattern, Program, Stmt};
 use crate::cache::*;
 #[cfg(test)]
@@ -1655,35 +1665,35 @@ fn compile_program_ast_impl(
 }
 
 pub(crate) fn compile_program_ast_to_object_filtered(
-    program: &Program,
-    source_path: &Path,
-    object_path: &Path,
-    link: &LinkConfig<'_>,
-    active_symbols: &HashSet<String>,
-    declaration_symbols: &HashSet<String>,
-    timings: Option<&ObjectEmitTimingTotals>,
+    request: FilteredObjectCompileRequest<'_>,
 ) -> Result<(), String> {
-    compile_program_ast_to_object_filtered_impl(
+    compile_program_ast_to_object_filtered_impl(request).map_err(Into::into)
+}
+
+pub(crate) struct FilteredObjectCompileRequest<'a> {
+    pub(crate) program: &'a Program,
+    pub(crate) source_path: &'a Path,
+    pub(crate) object_path: &'a Path,
+    pub(crate) link: &'a LinkConfig<'a>,
+    pub(crate) active_symbols: &'a HashSet<String>,
+    pub(crate) declaration_symbols: &'a HashSet<String>,
+    pub(crate) externally_visible_functions: Option<&'a HashSet<String>>,
+    pub(crate) timings: Option<&'a ObjectEmitTimingTotals>,
+}
+
+fn compile_program_ast_to_object_filtered_impl(
+    request: FilteredObjectCompileRequest<'_>,
+) -> Result<(), CompilePipelineError> {
+    let FilteredObjectCompileRequest {
         program,
         source_path,
         object_path,
         link,
         active_symbols,
         declaration_symbols,
+        externally_visible_functions,
         timings,
-    )
-    .map_err(Into::into)
-}
-
-fn compile_program_ast_to_object_filtered_impl(
-    program: &Program,
-    source_path: &Path,
-    object_path: &Path,
-    link: &LinkConfig<'_>,
-    active_symbols: &HashSet<String>,
-    declaration_symbols: &HashSet<String>,
-    timings: Option<&ObjectEmitTimingTotals>,
-) -> Result<(), CompilePipelineError> {
+    } = request;
     let context_started_at = Instant::now();
     let context = Context::create();
     if let Some(timings) = timings {
@@ -1706,6 +1716,9 @@ fn compile_program_ast_to_object_filtered_impl(
         .unwrap_or("main");
     let codegen_new_started_at = Instant::now();
     let mut codegen = Codegen::new(&context, module_name);
+    if let Some(functions) = externally_visible_functions {
+        codegen.set_externally_visible_functions(functions.clone());
+    }
     if let Some(timings) = timings {
         timings
             .codegen_new_ns
@@ -1723,9 +1736,11 @@ fn compile_program_ast_to_object_filtered_impl(
             ))
         })?;
     if let Some(timings) = timings {
+        let compile_elapsed_ns = elapsed_nanos_u64(compile_started_at);
         timings
             .compile_filtered_ns
-            .fetch_add(elapsed_nanos_u64(compile_started_at), Ordering::Relaxed);
+            .fetch_add(compile_elapsed_ns, Ordering::Relaxed);
+        record_atomic_max_u64(&timings.compile_filtered_max_ns, compile_elapsed_ns);
     }
 
     if let Some(parent) = object_path.parent() {
@@ -1757,9 +1772,11 @@ fn compile_program_ast_to_object_filtered_impl(
             ))
         })?;
     if let Some(timings) = timings {
+        let write_elapsed_ns = elapsed_nanos_u64(write_started_at);
         timings
             .write_object_ns
-            .fetch_add(elapsed_nanos_u64(write_started_at), Ordering::Relaxed);
+            .fetch_add(write_elapsed_ns, Ordering::Relaxed);
+        record_atomic_max_u64(&timings.write_object_max_ns, write_elapsed_ns);
     }
     Ok(())
 }
