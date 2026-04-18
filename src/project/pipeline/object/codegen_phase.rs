@@ -79,6 +79,17 @@ fn run_object_codegen_phase_impl(
     crate::codegen::core::reset_codegen_phase_timings();
     crate::codegen::util::reset_object_write_timings();
 
+    let shared_full_codegen_program = inputs
+        .cache_misses
+        .iter()
+        .any(|shard| {
+            shard
+                .member_indices
+                .iter()
+                .any(|index| inputs.rewritten_files[*index].has_specialization_demand)
+        })
+        .then(|| Arc::new(combined_program_for_files(inputs.rewritten_files)));
+
     let compiled_results: Vec<(usize, PathBuf)> =
         build_timings.measure("object codegen", || {
             inputs
@@ -134,20 +145,30 @@ fn run_object_codegen_phase_impl(
                         );
 
                     let codegen_program_started_at = Instant::now();
-                    let codegen_program = if shard
+                    let shard_needs_full_program = shard
                         .member_indices
                         .iter()
-                        .any(|index| inputs.rewritten_files[*index].has_specialization_demand)
-                    {
-                        combined_program_for_files(inputs.rewritten_files)
+                        .any(|index| inputs.rewritten_files[*index].has_specialization_demand);
+                    let projected_codegen_program;
+                    let codegen_program = if shard_needs_full_program {
+                        match shared_full_codegen_program.as_deref() {
+                            Some(program) => program,
+                            None => {
+                                return Err(ObjectCodegenPhaseError::ObjectEmit(
+                                    "internal error: missing shared full codegen program for specialization-demand shard"
+                                        .to_string(),
+                                ))
+                            }
+                        }
                     } else {
-                        codegen_program_for_units(
+                        projected_codegen_program = codegen_program_for_units(
                             inputs.rewritten_files,
                             inputs.rewritten_file_indices,
                             &shard.member_files,
                             Some(&batch_closure_files),
                             Some(&batch_declaration_symbols),
-                        )
+                        );
+                        &projected_codegen_program
                     };
                     object_codegen_timing_totals.codegen_program_ns.fetch_add(
                         elapsed_nanos_u64(codegen_program_started_at),
@@ -174,7 +195,7 @@ fn run_object_codegen_phase_impl(
 
                     let llvm_emit_started_at = Instant::now();
                     crate::compile_program_ast_to_object_filtered(
-                        &codegen_program,
+                        codegen_program,
                         &shard.member_files[0],
                         &obj_path,
                         inputs.link,

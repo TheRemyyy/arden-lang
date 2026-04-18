@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Nominal dispatch/codegen throughput: interface method and bound-method resolution now walks known implementors directly instead of rescanning every emitted function by suffix, and both bound-method and closure/function-value adapters are now reused per concrete signature instead of regenerating identical wrapper functions for every occurrence.
 - Statement codegen throughput: `let`/`assign`/`return` validation now reuses the cheaper builtin-argument type fast path where possible, and assignment lowering collapses compound/map-target analysis into a single pass instead of re-matching and re-inferring the same target shape multiple times.
 - Call codegen throughput: `compile_call` now only builds/infers synthetic `Expr::Call` state for actual `Option`/`Result` static constructor calls, and the shared lowering for those builtins is centralized instead of duplicated across alias/direct-name branches.
+- Cold object-codegen throughput: specialization-demand object shards now share one prebuilt full-project codegen `Program` snapshot instead of rebuilding the same combined AST projection separately in each shard, reducing repeated whole-project cloning work in large cold builds such as `compile_project_mega_graph`.
 
 ### 🐛 Fixed
 
