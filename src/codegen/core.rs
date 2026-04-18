@@ -9855,8 +9855,15 @@ impl<'ctx> Codegen<'ctx> {
                 .externally_visible_functions
                 .as_ref()
                 .is_none_or(|functions| functions.contains(&func.name));
-        if func.name.contains("__spec__") || !is_externally_visible {
+        if func.name.contains("__spec__") {
             function.set_linkage(Linkage::Internal);
+        } else if !is_externally_visible {
+            let can_use_available_externally = !func.is_async && func.params.len() <= 3;
+            function.set_linkage(if can_use_available_externally {
+                Linkage::AvailableExternally
+            } else {
+                Linkage::Internal
+            });
         }
         if Self::function_returns_provably_non_negative(func) {
             self.non_negative_functions.insert(func.name.clone());
