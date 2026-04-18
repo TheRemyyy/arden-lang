@@ -7,21 +7,41 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        LLVM_VERSION="22.1.3"
-        LLVM_PREFIX="${RUNNER_TEMP}/llvm-${LLVM_VERSION}"
-        if ! [ -x "${LLVM_PREFIX}/bin/llvm-config" ] || ! "${LLVM_PREFIX}/bin/llvm-config" --version >/dev/null 2>&1; then
+        set -euo pipefail
+        LLVM_VERSIONS=(22.1.4 22.1.3 22.1.2 22.1.1 22.1.0)
+        download_llvm_archive() {
+          local url="$1"
+          local output="$2"
+          curl --fail --silent --show-error --location \
+            --retry 6 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            --connect-timeout 20 \
+            --max-time 600 \
+            "$url" -o "$output"
+        }
+
+        INSTALL_OK=0
+        LLVM_PREFIX=""
+        for LLVM_VERSION in "${LLVM_VERSIONS[@]}"; do
+          LLVM_PREFIX="${RUNNER_TEMP}/llvm-${LLVM_VERSION}"
+          if [ -x "${LLVM_PREFIX}/bin/llvm-config" ] && "${LLVM_PREFIX}/bin/llvm-config" --version >/dev/null 2>&1; then
+            INSTALL_OK=1
+            break
+          fi
+
           rm -rf "${LLVM_PREFIX}"
           LLVM_ARCHIVES=(
+            "clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-24.04.tar.xz"
             "clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-22.04.tar.xz"
             "clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-20.04.tar.xz"
             "LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
           )
-          INSTALL_OK=0
           for LLVM_ARCHIVE in "${LLVM_ARCHIVES[@]}"; do
             LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${LLVM_ARCHIVE}"
             rm -rf "${RUNNER_TEMP}/llvm-extract" "${LLVM_PREFIX}"
             mkdir -p "${RUNNER_TEMP}/llvm-extract"
-            if ! curl -fsSL "${LLVM_URL}" -o "${RUNNER_TEMP}/${LLVM_ARCHIVE}"; then
+            if ! download_llvm_archive "${LLVM_URL}" "${RUNNER_TEMP}/${LLVM_ARCHIVE}"; then
               continue
             fi
             if ! tar -xf "${RUNNER_TEMP}/${LLVM_ARCHIVE}" -C "${RUNNER_TEMP}/llvm-extract"; then
@@ -34,13 +54,14 @@ runs:
             mv "${EXTRACTED_DIR}" "${LLVM_PREFIX}"
             if "${LLVM_PREFIX}/bin/llvm-config" --version >/dev/null 2>&1; then
               INSTALL_OK=1
-              break
+              break 2
             fi
           done
-          if [ "${INSTALL_OK}" -ne 1 ]; then
-            echo "error: unable to install runnable LLVM ${LLVM_VERSION} toolchain on this Linux runner" >&2
-            exit 1
-          fi
+        done
+
+        if [ "${INSTALL_OK}" -ne 1 ]; then
+          echo "error: unable to install runnable LLVM 22.x toolchain on this Linux runner" >&2
+          exit 1
         fi
         sudo apt-get update
         sudo apt-get install -y mold
@@ -84,40 +105,91 @@ runs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        $llvmVersion = "22.1.3"
-        $llvmPrefix = "C:\arden-toolchains\llvm-$llvmVersion"
-        $llvmBin = Join-Path $llvmPrefix "bin"
-        $llvmLib = Join-Path $llvmPrefix "lib"
-        $llvmInclude = Join-Path $llvmPrefix "include"
-        $lldLinkExe = Join-Path $llvmBin "lld-link.exe"
+        $llvmVersions = @("22.1.4", "22.1.3", "22.1.2", "22.1.1", "22.1.0")
+        $llvmVersion = $null
+        $llvmPrefix = $null
+        $llvmBin = $null
+        $llvmLib = $null
+        $llvmInclude = $null
+        $lldLinkExe = $null
         $shimRoot = Join-Path $env:RUNNER_TEMP "llvm-shim"
         $shimBin = Join-Path $shimRoot "bin"
         $llvmConfig = Join-Path $shimBin "llvm-config.cmd"
 
-        if (-not (Test-Path $lldLinkExe)) {
-          $archiveName = "clang+llvm-$llvmVersion-x86_64-pc-windows-msvc.tar.xz"
-          $archiveUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmVersion/$archiveName"
-          $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
-          $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-extract"
-          if (Test-Path $llvmPrefix) {
-            Remove-Item -Recurse -Force $llvmPrefix
+        function Download-LlvmArchive {
+          param(
+            [Parameter(Mandatory = $true)][string]$Url,
+            [Parameter(Mandatory = $true)][string]$OutFile
+          )
+
+          $attempt = 0
+          while ($attempt -lt 6) {
+            try {
+              Invoke-WebRequest -Uri $Url -OutFile $OutFile -MaximumRetryCount 0
+              return $true
+            } catch {
+              $attempt += 1
+              if ($attempt -ge 6) {
+                return $false
+              }
+              Start-Sleep -Seconds ([Math]::Min(20, 2 * $attempt))
+            }
           }
-          if (Test-Path $extractRoot) {
-            Remove-Item -Recurse -Force $extractRoot
+          return $false
+        }
+
+        foreach ($candidateVersion in $llvmVersions) {
+          $candidatePrefix = "C:\arden-toolchains\llvm-$candidateVersion"
+          $candidateBin = Join-Path $candidatePrefix "bin"
+          $candidateLib = Join-Path $candidatePrefix "lib"
+          $candidateInclude = Join-Path $candidatePrefix "include"
+          $candidateLldLinkExe = Join-Path $candidateBin "lld-link.exe"
+
+          if (-not (Test-Path $candidateLldLinkExe)) {
+            $archiveNames = @(
+              "clang+llvm-$candidateVersion-x86_64-pc-windows-msvc.tar.xz",
+              "LLVM-$candidateVersion-Windows-X64.tar.xz"
+            )
+            foreach ($archiveName in $archiveNames) {
+              $archiveUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$candidateVersion/$archiveName"
+              $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
+              $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-extract"
+              if (Test-Path $candidatePrefix) {
+                Remove-Item -Recurse -Force $candidatePrefix
+              }
+              if (Test-Path $extractRoot) {
+                Remove-Item -Recurse -Force $extractRoot
+              }
+              New-Item -ItemType Directory -Force -Path (Split-Path -Parent $candidatePrefix) | Out-Null
+              New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
+              if (-not (Download-LlvmArchive -Url $archiveUrl -OutFile $archivePath)) {
+                continue
+              }
+              tar -xf $archivePath -C $extractRoot
+              $extractedDir = Get-ChildItem -Path $extractRoot -Directory | Select-Object -First 1
+              if (-not $extractedDir) {
+                continue
+              }
+              Move-Item -Path $extractedDir.FullName -Destination $candidatePrefix
+              if (Test-Path $candidateLldLinkExe) {
+                break
+              }
+            }
           }
-          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $llvmPrefix) | Out-Null
-          New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
-          Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath
-          tar -xf $archivePath -C $extractRoot
-          $extractedDir = Get-ChildItem -Path $extractRoot -Directory | Select-Object -First 1
-          if (-not $extractedDir) {
-            throw "Failed to extract LLVM archive: $archiveName"
+
+          if (Test-Path $candidateLldLinkExe) {
+            $llvmVersion = $candidateVersion
+            $llvmPrefix = $candidatePrefix
+            $llvmBin = $candidateBin
+            $llvmLib = $candidateLib
+            $llvmInclude = $candidateInclude
+            $lldLinkExe = $candidateLldLinkExe
+            break
           }
-          Move-Item -Path $extractedDir.FullName -Destination $llvmPrefix
         }
 
         if (-not (Test-Path $lldLinkExe)) {
-          throw "lld-link.exe not found in LLVM bin directory: $llvmBin"
+          throw "unable to install runnable LLVM 22.x toolchain on this Windows runner"
         }
         if (-not (Test-Path $llvmLib)) {
           throw "LLVM lib directory not found: $llvmLib"

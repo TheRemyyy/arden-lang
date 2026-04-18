@@ -1,9 +1,16 @@
 import statistics
+import re
 from pathlib import Path
+
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return ANSI_ESCAPE_RE.sub("", text)
 
 
 def parse_build_timings(output: str) -> dict[str, dict]:
-    lines = output.splitlines()
+    lines = [_strip_ansi(line) for line in output.splitlines()]
     try:
         start = lines.index("Build timings") + 1
     except ValueError:
@@ -12,11 +19,21 @@ def parse_build_timings(output: str) -> dict[str, dict]:
     timings: dict[str, dict] = {}
     for raw_line in lines[start:]:
         line = raw_line.strip()
-        if not line or " ms" not in line:
+        if not line:
             continue
 
-        ms_index = line.rfind(" ms")
-        number_start = ms_index - 1
+        unit = None
+        unit_index = line.rfind(" ms")
+        if unit_index != -1:
+            unit = "ms"
+        else:
+            unit_index = line.rfind(" s")
+            if unit_index != -1:
+                unit = "s"
+        if unit is None:
+            continue
+
+        number_start = unit_index - 1
         while number_start >= 0 and (
             line[number_start].isdigit() or line[number_start] == "."
         ):
@@ -26,12 +43,13 @@ def parse_build_timings(output: str) -> dict[str, dict]:
         if not label:
             continue
         try:
-            ms_value = float(line[number_start:ms_index].strip())
+            parsed_value = float(line[number_start:unit_index].strip())
         except ValueError:
             continue
+        ms_value = parsed_value * 1000.0 if unit == "s" else parsed_value
 
         counters: dict[str, int] = {}
-        counters_part = line[ms_index + len(" ms"):].strip()
+        counters_part = line[unit_index + len(f" {unit}"):].strip()
         if counters_part:
             for item in counters_part.split(","):
                 key, sep, value = item.strip().partition("=")

@@ -3,17 +3,52 @@ updates:
   - package-ecosystem: cargo
     directory: "/"
     schedule:
-      interval: weekly
+      interval: daily
+      time: "04:15"
+      timezone: "Europe/Prague"
     open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - security
+    groups:
+      cargo-nonbreaking:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: npm
     directory: "/web"
     schedule:
-      interval: weekly
+      interval: daily
+      time: "04:30"
+      timezone: "Europe/Prague"
     open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - security
+      - web
+    groups:
+      npm-nonbreaking:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
+      interval: daily
+      time: "04:45"
+      timezone: "Europe/Prague"
     open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - ci
+      - security
+    groups:
+      github-actions:
+        patterns:
+          - "*"
