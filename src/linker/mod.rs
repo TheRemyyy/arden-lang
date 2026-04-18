@@ -1,4 +1,4 @@
-#[cfg(target_os = "macos")]
+#[cfg(any(windows, target_os = "macos"))]
 use crate::cli::output::format_cli_path;
 use crate::project::OutputKind;
 use crate::shared::process_exit::command_failure_details;
@@ -689,7 +689,7 @@ fn macos_sdk_version() -> Result<String, LinkerCommandError> {
     Ok(version)
 }
 
-#[cfg(any(test, target_os = "macos"))]
+#[cfg(any(test, windows, target_os = "macos"))]
 pub(crate) fn escape_response_file_arg(arg: &str) -> String {
     let escaped = arg
         .replace('\\', "\\\\")
@@ -699,7 +699,7 @@ pub(crate) fn escape_response_file_arg(arg: &str) -> String {
     format!("\"{}\"", escaped)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(windows, target_os = "macos"))]
 fn unique_link_response_path(output_path: &Path) -> PathBuf {
     let pid = std::process::id();
     let nanos = SystemTime::now()
@@ -710,7 +710,7 @@ fn unique_link_response_path(output_path: &Path) -> PathBuf {
     output_path.with_extension(suffix)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(windows, target_os = "macos"))]
 fn write_link_response_file(path: &Path, args: &[String]) -> Result<(), LinkerCommandError> {
     let mut contents = String::new();
     for arg in args {
@@ -728,7 +728,7 @@ fn write_link_response_file(path: &Path, args: &[String]) -> Result<(), LinkerCo
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(windows, target_os = "macos"))]
 fn path_to_response_arg(path: &Path, context: &str) -> Result<String, LinkerCommandError> {
     path.to_str().map(str::to_owned).ok_or_else(|| {
         LinkerCommandError::LinkExecution(format!(
@@ -836,62 +836,92 @@ fn link_with_lld_link(
             "error".red().bold()
         ))
     })?;
-    let mut command = Command::new(linker_path);
-    apply_command_working_dir(&mut command, output_path);
     let thread_count = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(1);
-    command
-        .arg(windows_flag_with_path("/out:", output_path))
-        .arg(format!("/machine:{}", windows_machine_flag(link.target)))
-        .arg(format!("/threads:{thread_count}"))
-        .arg("/incremental:no")
-        .arg("/opt:ref")
-        .arg("/opt:icf")
-        .arg("/Brepro")
-        .arg("/release")
-        .arg("/dynamicbase")
-        .arg("/nxcompat");
+    let response_path = unique_link_response_path(output_path);
+    let mut response_args = vec![
+        path_to_response_arg(output_path, "Windows linker output path")
+            .map(|path| format!("/out:{path}"))?,
+        format!("/machine:{}", windows_machine_flag(link.target)),
+        format!("/threads:{thread_count}"),
+        "/incremental:no".to_string(),
+        "/opt:ref".to_string(),
+        "/opt:icf".to_string(),
+        "/Brepro".to_string(),
+        "/release".to_string(),
+        "/dynamicbase".to_string(),
+        "/nxcompat".to_string(),
+    ];
 
     match link.output_kind {
         OutputKind::Bin => {
-            command
-                .arg("/subsystem:console")
-                .arg("/entry:mainCRTStartup");
+            response_args.push("/subsystem:console".to_string());
+            response_args.push("/entry:mainCRTStartup".to_string());
         }
         OutputKind::Shared => {
-            command.arg("/dll");
-            command.arg(windows_flag_with_path(
-                "/implib:",
-                &output_path.with_extension("lib"),
+            response_args.push("/dll".to_string());
+            response_args.push(format!(
+                "/implib:{}",
+                path_to_response_arg(
+                    &output_path.with_extension("lib"),
+                    "Windows import library output path"
+                )?
             ));
         }
         OutputKind::Static => {}
     }
 
     for object in objects {
-        command.arg(object);
+        response_args.push(path_to_response_arg(object, "Windows object file")?);
     }
     for path in windows_search_paths(link) {
-        command.arg(windows_flag_with_path("/libpath:", &path));
+        response_args.push(format!(
+            "/libpath:{}",
+            path_to_response_arg(&path, "Windows library search path")?
+        ));
     }
     if let Some(builtins) = maybe_find_windows_builtins() {
-        command.arg(builtins);
+        response_args.push(path_to_response_arg(&builtins, "Windows builtins library")?);
     }
 
-    command.arg("/defaultlib:msvcrt");
+    response_args.push("/defaultlib:msvcrt".to_string());
 
     for lib in ["oldnames", "legacy_stdio_definitions", "kernel32"] {
-        command.arg(normalize_windows_lib_name(lib));
+        response_args.push(
+            normalize_windows_lib_name(lib)
+                .to_string_lossy()
+                .into_owned(),
+        );
     }
     for lib in link.link_libs {
-        command.arg(normalize_windows_lib_name(lib));
+        response_args.push(
+            normalize_windows_lib_name(lib)
+                .to_string_lossy()
+                .into_owned(),
+        );
     }
     for arg in link.link_args {
-        command.arg(arg);
+        response_args.push(arg.clone());
     }
 
-    run_link_command(command, "lld-link")
+    write_link_response_file(&response_path, &response_args)?;
+    let mut command = Command::new(linker_path);
+    apply_command_working_dir(&mut command, output_path);
+    let mut response_arg = OsString::from("@");
+    response_arg.push(response_path.as_os_str());
+    command.arg(response_arg);
+    let result = run_link_command(command, "lld-link");
+    if let Err(err) = fs::remove_file(&response_path) {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            eprintln!(
+                "warning: failed to remove temporary linker response file '{}': {}",
+                format_cli_path(&response_path),
+                err
+            );
+        }
+    }
+    result
 }
 
 #[cfg(target_os = "macos")]

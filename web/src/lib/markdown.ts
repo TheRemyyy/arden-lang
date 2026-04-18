@@ -1,4 +1,4 @@
-import { marked } from 'marked';
+import { marked, type Token } from 'marked';
 import createDOMPurify from 'dompurify';
 import { JSDOM } from 'jsdom';
 
@@ -17,7 +17,7 @@ function stripHtmlTags(text: string): string {
 type HeadingTokenLike = {
     text?: string;
     depth?: number;
-    tokens?: unknown[];
+    tokens?: Token[];
 };
 
 function isHeadingTokenLike(value: unknown): value is HeadingTokenLike {
@@ -34,10 +34,12 @@ function resolveHeadingText(value: string | HeadingTokenLike): string {
 function createRenderer() {
     const renderer = new marked.Renderer();
     const headingCounts = new Map<string, number>();
+    const rendererWithHeading = renderer as typeof renderer & {
+        heading: (value: string | HeadingTokenLike, depth?: number, raw?: string) => string;
+    };
 
     // `marked` heading runtime args differ across versions; support both text and token forms.
-    // @ts-expect-error runtime API is broader than the bundled type signature here
-    renderer.heading = function (value: string | HeadingTokenLike, depth?: number) {
+    rendererWithHeading.heading = function (value: string | HeadingTokenLike, depth?: number) {
         const headingText = resolveHeadingText(value);
         const headingDepth =
             typeof depth === 'number'
