@@ -61,7 +61,7 @@ jobs:
     needs: build-package-linux
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: arden-linux-x64-portable
           path: dist
@@ -111,7 +111,7 @@ jobs:
     needs: build-package-macos
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: arden-macos-arm64-portable
           path: dist
@@ -183,7 +183,7 @@ jobs:
     needs: build-package-windows
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: arden-windows-x64-portable
           path: dist
