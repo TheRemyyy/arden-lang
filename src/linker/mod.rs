@@ -11,7 +11,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-#[cfg(target_os = "macos")]
+#[cfg(any(windows, target_os = "macos"))]
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(unix)]
 use std::{fs::Permissions, os::unix::fs::PermissionsExt};
