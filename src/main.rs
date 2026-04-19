@@ -83,7 +83,10 @@ use crate::project::pipeline::{
     RewritePipelineInputs, RewritePrepInputs, RewritePreparation, SemanticGateInputs,
     SemanticPhaseInputs,
 };
-use crate::project::{find_project_root, resolve_project_output_path, OutputKind, ProjectConfig};
+use crate::project::{
+    find_project_root, resolve_binary_output_path, resolve_project_output_path, OutputKind,
+    ProjectConfig,
+};
 pub(crate) use crate::shared::frontend::{
     extract_imports, extract_top_level_imports, parse_program_from_source,
     run_single_file_semantic_checks, validate_entry_main_signature,
@@ -1898,6 +1901,7 @@ fn compile_source_impl(
     target: Option<&str>,
 ) -> Result<(), CompilePipelineError> {
     validate_opt_level(opt_level).map_err(CompilePipelineError::OptLevelValidate)?;
+    let output_path = resolve_binary_output_path(output_path);
 
     let filename = format_cli_path(source_path);
 
@@ -1954,7 +1958,7 @@ fn compile_source_impl(
                     e
                 ))
             })?;
-        let link_result = link_objects(std::slice::from_ref(&object_path), output_path, &link);
+        let link_result = link_objects(std::slice::from_ref(&object_path), &output_path, &link);
         if let Err(err) = fs::remove_file(&object_path) {
             if err.kind() != std::io::ErrorKind::NotFound {
                 eprintln!(

@@ -10,5 +10,7 @@ mod types;
 mod validation;
 
 pub use discovery::find_project_root;
-pub(crate) use runtime::{ensure_project_is_runnable, resolve_project_output_path};
+pub(crate) use runtime::{
+    ensure_project_is_runnable, resolve_binary_output_path, resolve_project_output_path,
+};
 pub use types::{OutputKind, ProjectConfig};
