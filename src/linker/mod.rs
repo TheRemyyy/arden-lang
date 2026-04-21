@@ -733,7 +733,7 @@ fn escape_windows_response_file_body(arg: &str) -> String {
     escaped
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(test)))]
 fn escape_macos_response_file_body(arg: &str) -> String {
     arg.replace('\\', "\\\\")
         .replace('"', "\\\"")
