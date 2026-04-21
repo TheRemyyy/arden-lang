@@ -25,7 +25,7 @@ serde = { version = "1.0", features = ["derive"] }
 bincode = { package = "bincode-next", version = "3.0.0-rc.13", features = ["serde"] }
 rayon = "1.10"
 tower-lsp = { version = "0.20.0", features = ["proposed"] }
-tokio = { version = "1.52.0", features = ["full"] }
+tokio = { version = "1.52.1", features = ["full"] }
 twox-hash = "2.1"
 
 [profile.release]
