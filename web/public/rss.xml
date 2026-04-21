@@ -6,11 +6,11 @@
   <description>Release notes and changelog updates for Arden.</description>
   <language>en-us</language>
   <item>
-    <title>Unreleased</title>
-    <link>https://www.arden-lang.dev/changelog#unreleased</link>
-    <guid>https://www.arden-lang.dev/changelog#unreleased</guid>
-    <description>Benchmark harness: expanded runtime coverage with additional branch-heavy and memory-heavy workloads, including new prefix-sum/scatter-gather/stencil passes, added explicit flat/layered/dense/worst-case synthetic graph compile benchmarks, and switched Rust project compile benchmarks to Cargo release builds for more realistic cold-build numbers.</description>
-    <pubDate>Sat, 18 Apr 2026 00:00:00 GMT</pubDate>
+    <title>v1.3.9</title>
+    <link>https://www.arden-lang.dev/changelog#1-3-9</link>
+    <guid>https://www.arden-lang.dev/changelog#1-3-9</guid>
+    <description>Benchmark &amp; Codegen Throughput Sweep. Benchmark harness: expanded runtime coverage with additional branch-heavy and memory-heavy workloads, including new prefix-sum/scatter-gather/stencil passes, added explicit flat/layered/dense/worst-case synthetic graph compile benchmarks, and switched Rust project compile benchmarks to Cargo release builds for more realistic cold-build numbers.</description>
+    <pubDate>Tue, 21 Apr 2026 00:00:00 GMT</pubDate>
   </item>
   <item>
     <title>v1.3.8</title>
