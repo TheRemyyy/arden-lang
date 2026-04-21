@@ -871,13 +871,6 @@ fn normalize_windows_lib_name(lib: &str) -> OsString {
 }
 
 #[cfg(windows)]
-fn windows_flag_with_path(prefix: &str, path: &Path) -> OsString {
-    let mut value = OsString::from(prefix);
-    value.push(path.as_os_str());
-    value
-}
-
-#[cfg(windows)]
 fn link_with_lld_link(
     objects: &[PathBuf],
     output_path: &Path,
