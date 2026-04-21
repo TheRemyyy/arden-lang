@@ -689,14 +689,67 @@ fn macos_sdk_version() -> Result<String, LinkerCommandError> {
     Ok(version)
 }
 
-#[cfg(any(test, windows, target_os = "macos"))]
-pub(crate) fn escape_response_file_arg(arg: &str) -> String {
-    let escaped = arg
-        .replace('\\', "\\\\")
+#[cfg(any(test, windows))]
+fn escape_windows_response_file_body(arg: &str) -> String {
+    let mut escaped = String::with_capacity(arg.len());
+    let mut pending_backslashes = 0_usize;
+
+    for ch in arg.chars() {
+        match ch {
+            '\\' => pending_backslashes += 1,
+            '"' => {
+                escaped.push_str(&"\\".repeat(pending_backslashes * 2 + 1));
+                escaped.push('"');
+                pending_backslashes = 0;
+            }
+            '\n' => {
+                if pending_backslashes > 0 {
+                    escaped.push_str(&"\\".repeat(pending_backslashes));
+                    pending_backslashes = 0;
+                }
+                escaped.push_str("\\n");
+            }
+            '\r' => {
+                if pending_backslashes > 0 {
+                    escaped.push_str(&"\\".repeat(pending_backslashes));
+                    pending_backslashes = 0;
+                }
+                escaped.push_str("\\r");
+            }
+            _ => {
+                if pending_backslashes > 0 {
+                    escaped.push_str(&"\\".repeat(pending_backslashes));
+                    pending_backslashes = 0;
+                }
+                escaped.push(ch);
+            }
+        }
+    }
+
+    if pending_backslashes > 0 {
+        escaped.push_str(&"\\".repeat(pending_backslashes * 2));
+    }
+
+    escaped
+}
+
+#[cfg(target_os = "macos")]
+fn escape_macos_response_file_body(arg: &str) -> String {
+    arg.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")
-        .replace('\r', "\\r");
-    format!("\"{}\"", escaped)
+        .replace('\r', "\\r")
+}
+
+#[cfg(any(test, windows, target_os = "macos"))]
+pub(crate) fn escape_response_file_arg(arg: &str) -> String {
+    #[cfg(any(test, windows))]
+    let escaped = escape_windows_response_file_body(arg);
+
+    #[cfg(all(not(test), target_os = "macos"))]
+    let escaped = escape_macos_response_file_body(arg);
+
+    format!("\"{escaped}\"")
 }
 
 #[cfg(any(windows, target_os = "macos"))]

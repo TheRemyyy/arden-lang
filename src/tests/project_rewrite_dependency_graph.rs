@@ -3382,7 +3382,7 @@ fn parse_cache_reuses_same_content_even_after_metadata_change() {
 fn response_file_args_escape_quotes_and_backslashes() {
     assert_eq!(
         escape_response_file_arg("C:\\tmp\\a \"b\".o"),
-        "\"C:\\\\tmp\\\\a \\\"b\\\".o\""
+        "\"C:\\tmp\\a \\\"b\\\".o\""
     );
 }
 

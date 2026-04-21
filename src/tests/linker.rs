@@ -29,6 +29,22 @@ fn escape_response_file_arg_escapes_line_breaks() {
     );
 }
 
+#[test]
+fn escape_response_file_arg_preserves_windows_backslashes() {
+    assert_eq!(
+        escape_response_file_arg(r#"\\?\C:\tmp\tagged "set".obj"#),
+        r#""\\?\C:\tmp\tagged \"set\".obj""#
+    );
+}
+
+#[test]
+fn escape_response_file_arg_doubles_trailing_windows_backslashes() {
+    assert_eq!(
+        escape_response_file_arg(r#"C:\tmp\linker-dir\"#),
+        r#""C:\tmp\linker-dir\\""#
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn find_tool_in_path_ignores_non_executable_files() {
